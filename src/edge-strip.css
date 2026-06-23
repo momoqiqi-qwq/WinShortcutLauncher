@@ -1,0 +1,63 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  cursor: pointer;
+}
+
+:root {
+  --edge-strip-color: #c36a2d;
+  --edge-strip-opacity: .88;
+  --edge-strip-size: 10px;
+}
+
+.edge-strip {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--edge-strip-color, var(--accent, #c96b2c)) 88%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--edge-strip-color, var(--accent, #c96b2c)) 44%, transparent);
+  opacity: var(--edge-strip-opacity, .88);
+}
+
+.edge-strip-left {
+  border-radius: 0 calc(var(--edge-strip-size, 10px) * .9) calc(var(--edge-strip-size, 10px) * .9) 0;
+}
+
+.edge-strip-right {
+  border-radius: calc(var(--edge-strip-size, 10px) * .9) 0 0 calc(var(--edge-strip-size, 10px) * .9);
+}
+
+.edge-strip-top {
+  border-radius: 0 0 calc(var(--edge-strip-size, 10px) * .9) calc(var(--edge-strip-size, 10px) * .9);
+}
+
+.edge-strip-glow {
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.30), rgba(255,255,255,0)),
+    repeating-linear-gradient(180deg, rgba(255,255,255,.20) 0 8px, transparent 8px 16px);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.edge-strip-right .edge-strip-glow {
+  background:
+    linear-gradient(270deg, rgba(255,255,255,.30), rgba(255,255,255,0)),
+    repeating-linear-gradient(180deg, rgba(255,255,255,.20) 0 8px, transparent 8px 16px);
+}
+
+.edge-strip-top .edge-strip-glow {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.30), rgba(255,255,255,0)),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.20) 0 8px, transparent 8px 16px);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: .68; }
+  50% { opacity: 1; }
+}

@@ -1,0 +1,97 @@
+.transfer-station-panel {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border, rgba(255,255,255,.14));
+  background: color-mix(in srgb, var(--panel, #222) 96%, transparent);
+  color: var(--text, #fff);
+  box-shadow: -18px 0 42px rgba(0,0,0,.28);
+  backdrop-filter: blur(var(--panel-blur, 12px));
+}
+.transfer-station-panel.drag-over {
+  outline: 2px solid var(--accent, #7ea2ff);
+  outline-offset: -8px;
+}
+.station-header {
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.12));
+}
+.station-header button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--text, #fff);
+  background: var(--panel-2, rgba(255,255,255,.1));
+}
+.station-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.12));
+}
+.station-toolbar button,
+.station-item button {
+  border: 0;
+  border-radius: 9px;
+  background: var(--panel-2, rgba(255,255,255,.1));
+  color: var(--text, #fff);
+  height: 32px;
+  padding: 0 10px;
+  font-weight: 700;
+}
+.station-toolbar button.danger { background: rgba(224, 78, 78, .28); color: #ffb4b4; }
+.station-toolbar button:disabled { opacity: .45; }
+.station-drop-hint {
+  padding: 8px 12px;
+  color: var(--muted, #aaa);
+  font-size: 12px;
+}
+.station-list {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+}
+.station-item {
+  cursor: grab;
+  user-select: none;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 10px;
+  border: 1px solid var(--border, rgba(255,255,255,.12));
+  border-radius: 10px;
+  background: var(--panel-2, rgba(255,255,255,.06));
+}
+.station-item:active { cursor: grabbing; }
+.station-icon { object-fit: contain; border-radius: 6px; }
+.station-icon.fallback {
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,.08);
+}
+.station-item-main { min-width: 0; }
+.station-item-main strong,
+.station-item-main span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.station-item-main span { color: var(--muted, #aaa); font-size: 12px; margin-top: 3px; }
+.station-empty {
+  margin: 28px 10px;
+  color: var(--muted, #aaa);
+  text-align: center;
+}

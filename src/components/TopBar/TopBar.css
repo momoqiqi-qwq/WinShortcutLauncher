@@ -1,0 +1,173 @@
+.topbar {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.topbar-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  max-height: none;
+  overflow: visible;
+  padding-bottom: 4px;
+}
+
+.top-tab {
+  max-width: 180px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: var(--top-tab-radius, 999px);
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 0 auto;
+}
+
+.topbar-equal-tabs .top-tab {
+  width: var(--top-tab-width, 104px);
+  max-width: var(--top-tab-width, 104px);
+}
+
+.topbar-shape-square .top-tab {
+  border-radius: 8px;
+}
+
+.topbar-shape-round .top-tab {
+  border-radius: 999px;
+}
+
+.top-tab.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.top-tab.dragging {
+  opacity: 0.58;
+}
+
+.top-tab-input {
+  width: 120px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-actions {
+  gap: var(--window-control-gap, 8px);
+}
+
+.window-control-button {
+  width: var(--window-control-size, 34px);
+  height: var(--window-control-size, 34px);
+  min-width: var(--window-control-size, 34px);
+}
+
+.topbar-actions-round .window-control-button {
+  border-radius: 999px;
+}
+
+.topbar-actions-square .window-control-button {
+  border-radius: 6px;
+}
+
+.topbar-actions-bar .window-control-button {
+  width: calc(var(--window-control-size, 34px) * 1.6);
+  min-width: calc(var(--window-control-size, 34px) * 1.6);
+  height: calc(var(--window-control-size, 34px) * 0.72);
+  border-radius: 8px;
+}
+
+.window-close-button:hover {
+  background: color-mix(in srgb, var(--danger), transparent 82%);
+  color: var(--danger);
+}
+
+.topbar-actions-pad {
+  display: grid;
+  grid-template-columns: repeat(3, var(--window-control-size, 34px));
+  grid-auto-rows: var(--window-control-size, 34px);
+  gap: var(--window-control-gap, 8px);
+  padding: max(4px, calc(var(--window-control-size, 34px) * 0.18));
+  border-radius: max(16px, calc(var(--window-control-size, 34px) * 0.45));
+  background: color-mix(in srgb, var(--text), transparent 92%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white, transparent 82%), var(--shadow);
+}
+
+.topbar-actions-pad .window-control-button {
+  width: var(--window-control-size, 34px);
+  min-width: var(--window-control-size, 34px);
+  height: var(--window-control-size, 34px);
+  border-radius: max(10px, calc(var(--window-control-size, 34px) * 0.28));
+  background: color-mix(in srgb, var(--panel-2), transparent 10%);
+  border: 1px solid color-mix(in srgb, var(--border), transparent 20%);
+}
+
+.topbar-actions-pad .window-control-button:hover {
+  background: color-mix(in srgb, var(--accent), transparent 75%);
+  color: white;
+}
+
+.topbar-actions-pad .window-control-button:nth-child(1) { order: 1; }
+.topbar-actions-pad .window-control-button:nth-child(2) { order: 2; }
+.topbar-actions-pad .window-control-button:nth-child(3) { order: 3; }
+.topbar-actions-pad .window-control-button:nth-child(4) { order: 4; }
+.topbar-actions-pad .window-control-button:nth-child(5) { order: 5; }
+.topbar-actions-pad .window-control-button:nth-child(6) { order: 6; }
+
+/* v15: parent tabs grow without a hard row limit. */
+.topbar {
+  --topbar-tab-height: 32px;
+  --topbar-tab-gap: 8px;
+  min-height: calc((var(--topbar-visible-rows, 1) * var(--topbar-tab-height)) + ((var(--topbar-visible-rows, 1) - 1) * var(--topbar-tab-gap)) + 24px);
+  height: auto;
+  max-height: none;
+}
+
+.topbar-tabs {
+  max-height: none;
+}
+
+.topbar-actions-pad .window-control-button:nth-child(7) { order: 7; }
+
+.draggable-window-control.dragging {
+  opacity: .65;
+  z-index: 20;
+  box-shadow: 0 10px 24px rgba(0,0,0,.28);
+}
+
+.topbar-actions {
+  touch-action: none;
+}
+
+.window-pin-active {
+  background: color-mix(in srgb, var(--accent), transparent 72%);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent), transparent 45%);
+}
+
+.topbar-actions-pad .window-control-button:nth-child(8) { order: 8; }
+
+.topbar-actions-pad .window-control-button:nth-child(9) { order: 9; }

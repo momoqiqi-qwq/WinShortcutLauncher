@@ -1,0 +1,74 @@
+.item-card {
+  width: var(--item-card-width, 98px);
+  min-height: var(--item-card-min-height, 102px);
+  border-radius: 16px;
+  border: 1px solid transparent;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  cursor: pointer;
+  padding: 8px 6px;
+}
+
+.item-card:hover {
+  background: color-mix(in srgb, var(--accent-2), transparent 28%);
+}
+
+.item-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 78%);
+}
+
+.item-card.dragging {
+  opacity: 0.88;
+  border-color: color-mix(in srgb, var(--item-drag-glow, var(--accent)) calc(var(--item-drag-glow-brightness, 0.72) * 100%), transparent);
+  background: color-mix(in srgb, var(--item-drag-bg, var(--accent)) 32%, transparent);
+  box-shadow:
+    0 0 calc(10px + 26px * var(--item-drag-glow-brightness, 0.72)) color-mix(in srgb, var(--item-drag-glow, var(--accent)) calc(var(--item-drag-glow-brightness, 0.72) * 72%), transparent),
+    0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.item-edit-name {
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  cursor: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.item-icon {
+  width: var(--item-icon-size, 52px);
+  height: var(--item-icon-size, 52px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.item-icon img {
+  max-width: var(--item-icon-img-size, 46px);
+  max-height: var(--item-icon-img-size, 46px);
+  object-fit: contain;
+  filter: drop-shadow(0 7px 10px rgba(0, 0, 0, 0.08));
+}
+
+.item-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--label-lines, 2);
+  overflow: hidden;
+  word-break: break-all;
+  text-align: center;
+  width: 100%;
+  max-width: calc(var(--label-chars, 8) * 1em);
+  line-height: 1.4;
+  font-size: calc(var(--label-font-size, 12) * 1px);
+  color: var(--text);
+}

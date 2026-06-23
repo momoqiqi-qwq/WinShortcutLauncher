@@ -1,0 +1,28 @@
+.drop-dialog {
+  width: min(620px, calc(100vw - 48px));
+}
+
+.drop-dialog-body {
+  padding: 18px 20px 20px;
+  display: grid;
+  gap: 14px;
+}
+
+.dropped-list {
+  max-height: 240px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.dropped-list div {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

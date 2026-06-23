@@ -1,0 +1,22 @@
+[package]
+name = "shortcut-launcher"
+version = "0.1.0"
+description = "Windows desktop shortcut launcher built with Tauri 2, React and TypeScript"
+authors = ["Ava Wright"]
+edition = "2021"
+
+[lib]
+name = "shortcut_launcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+rusqlite = { version = "0.32", features = ["bundled"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Threading"] }
