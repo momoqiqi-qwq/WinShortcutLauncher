@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Win Shortcut Launcher",
+  "productName": "Yue Launcher",
   "version": "0.1.44",
-  "identifier": "com.ava.win-shortcut-launcher",
+  "identifier": "com.ava.yue-launcher",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Win Shortcut Launcher",
+        "title": "Yue Launcher",
         "width": 980,
         "height": 660,
         "minWidth": 8,

@@ -1,9 +1,9 @@
 <div align="center">
-  <h1>🚀 Win Shortcut Launcher</h1>
+  <h1>🚀 Yue Launcher</h1>
   <p>Windows 桌面快捷启动器 — 贴边隐藏 · 拖拽排序 · 系统图标 · 多主题</p>
 
-  <a href="./LICENSE"><img src="https://img.shields.io/github/license/momoqiqi-qwq/WinShortcutLauncher" alt="License"/></a>
-  <a href="https://github.com/momoqiqi-qwq/WinShortcutLauncher/releases"><img src="https://img.shields.io/github/v/release/momoqiqi-qwq/WinShortcutLauncher" alt="Release"/></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/momoqiqi-qwq/YueLauncher" alt="License"/></a>
+  <a href="https://github.com/momoqiqi-qwq/YueLauncher/releases"><img src="https://img.shields.io/github/v/release/momoqiqi-qwq/YueLauncher" alt="Release"/></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?logo=windows" alt="Platform"/>
   <img src="https://img.shields.io/badge/Tauri-2.x-FFC131?logo=tauri" alt="Tauri"/>
   <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react" alt="React"/>
@@ -13,7 +13,7 @@
 
 ## 简介
 
-WinShortcutLauncher 是一款基于 **Tauri 2 + React 18 + Rust Win32** 的 Windows 桌面快捷启动器，专注于打造流畅的快捷方式管理体验。
+Yue Launcher 是一款基于 **Tauri 2 + React 18 + Rust Win32** 的 Windows 桌面快捷启动器，专注于打造流畅的快捷方式管理体验。
 
 **技术栈**：Tauri 2.x · React 18 · TypeScript · Tailwind CSS · dnd-kit · Zustand · Rust Win32
 

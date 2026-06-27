@@ -10,7 +10,7 @@ set "LOG=%ROOT%\build.log"
 if exist "%LOG%" del "%LOG%" >nul 2>nul
 
 echo ========================================
-echo Win Shortcut Launcher 一键构建
+echo Yue Launcher 一键构建
 echo 项目目录: %ROOT%
 echo 日志文件: %LOG%
 echo ========================================

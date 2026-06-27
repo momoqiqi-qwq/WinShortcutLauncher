@@ -97,7 +97,7 @@ fn move_hwnd_back_to_screen(hwnd: isize) {
 fn wake_existing_window() {
   use std::ptr::null;
   use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW};
-  let title = wide_null("Win Shortcut Launcher");
+  let title = wide_null("Yue Launcher");
   let hwnd = unsafe { FindWindowW(null(), title.as_ptr()) };
   if hwnd == 0 {
     return;
@@ -119,7 +119,7 @@ fn acquire_single_instance_or_wake() -> Option<isize> {
   use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
   use windows_sys::Win32::System::Threading::CreateMutexW;
 
-  let name = wide_null("Global\\WinShortcutLauncherLucySingleInstance");
+  let name = wide_null("Global\\YueLauncherLucySingleInstance");
   let mutex = unsafe { CreateMutexW(null_mut(), 1, name.as_ptr()) };
   if mutex == 0 {
     return Some(0);
@@ -147,7 +147,7 @@ fn remove_dwm_ghost_line() {
 
   // decorations:false 会去掉标题栏，但 DWM 有时仍会给透明窗口留 1px 隐形帧。
   // 把扩展 frame 的四边 margin 明确归零，可减少/消除透明窗口残线。
-  let title = wide_null("Win Shortcut Launcher");
+  let title = wide_null("Yue Launcher");
   let hwnd = unsafe { FindWindowW(null(), title.as_ptr()) };
   if hwnd == 0 {
     return;
@@ -170,7 +170,7 @@ fn remove_dwm_ghost_line() {
 fn keep_main_taskbar_icon() {
   use std::ptr::null;
   use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW;
-  let title = wide_null("Win Shortcut Launcher");
+  let title = wide_null("Yue Launcher");
   let hwnd = unsafe { FindWindowW(null(), title.as_ptr()) };
   keep_taskbar_visible_by_hwnd(hwnd);
 }
@@ -209,7 +209,7 @@ fn open_new_main_window(app: tauri::AppHandle) -> Result<(), String> {
     .unwrap_or(0));
 
   let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
-    .title("Win Shortcut Launcher - 多开")
+    .title("Yue Launcher - 多开")
     .inner_size(980.0, 660.0)
     .min_inner_size(8.0, 8.0)
     .decorations(false)
@@ -245,7 +245,7 @@ pub fn run() {
       let tray_menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
 
       let mut tray = TrayIconBuilder::new()
-        .tooltip("Win Shortcut Launcher")
+        .tooltip("Yue Launcher")
         .menu(&tray_menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {

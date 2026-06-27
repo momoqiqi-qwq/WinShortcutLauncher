@@ -200,13 +200,13 @@ fn launcher_cache_dir() -> PathBuf {
   #[cfg(target_os = "windows")]
   {
     if let Ok(appdata) = env::var("APPDATA") {
-      return PathBuf::from(appdata).join("WinShortcutLauncher").join("favicons");
+      return PathBuf::from(appdata).join("YueLauncher").join("favicons");
     }
   }
   if let Ok(home) = env::var("HOME") {
-    return PathBuf::from(home).join(".win-shortcut-launcher").join("favicons");
+    return PathBuf::from(home).join(".yue-launcher").join("favicons");
   }
-  env::temp_dir().join("win-shortcut-launcher").join("favicons")
+  env::temp_dir().join("yue-launcher").join("favicons")
 }
 
 fn safe_file_part(value: &str) -> String {

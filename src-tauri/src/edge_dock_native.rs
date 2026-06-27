@@ -672,7 +672,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
     let cfg = config.lock().map(|g| g.clone()).unwrap_or_default();
 
     if last_lookup.elapsed() > Duration::from_millis(700) || cached_main == 0 || cached_strip == 0 {
-      cached_main = find_window_by_title("Win Shortcut Launcher");
+      cached_main = find_window_by_title("Yue Launcher");
       if cached_main != 0 { keep_taskbar_visible(cached_main); }
       cached_strip = find_window_by_title("edge-strip");
       last_lookup = Instant::now();
