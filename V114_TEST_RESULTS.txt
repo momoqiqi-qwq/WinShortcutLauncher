@@ -1,0 +1,51 @@
+Yue launcher v0.1.114 - Settings Effect Fixes Verification
+Date: 2026-08-18
+
+PASS - TypeScript/TSX syntax transpile check
+  - 164 TS/TSX source files checked (excluding .d.ts)
+  - 0 syntax diagnostics
+
+PASS - Targeted settings-effect assertions: 28/28
+  - removed hardcoded rememberPanel=false
+  - removed hardcoded adaptivePanel=true
+  - rememberSettingsPanelBounds is consumed by SettingsPanel
+  - settingsPanelAdaptiveSize is consumed by SettingsPanel
+  - manual settings-panel title drag is connected
+  - manual settings-panel resize CSS is restored when adaptive mode is disabled
+  - both panel-layout switches are exposed in Settings -> Window
+  - always-on-top has a real Settings -> Window row
+  - transfer station disabled state closes/blocks invisible open state
+  - image browser disabled state closes/blocks invisible open state
+  - transfer/image shortcuts respect each enabled switch
+  - transfer/image topbar entry points respect each enabled switch
+  - transfer/image DOM drop paths respect acceptExternalDrops
+  - globalSearch.debounceMs now has a central settings control
+  - transferStation.showIcon now has a central settings control
+  - transferStation.confirmClear now has a central settings control
+  - settings search points always-on-top to a real Window setting
+  - settings-panel layout search entries exist
+  - new central settings have precise search entries
+  - legacy windowState.edgeAutoHide update path synchronizes behavior.edgeAutoHide
+  - config rehydrate synchronizes the legacy edgeAutoHide shadow field
+  - v114 Vitest regression file added
+  - package.json / tauri.conf.json / Cargo.toml versions are 0.1.114
+
+PASS - Dead hardcode scan
+  - no remaining `const rememberPanel = false`
+  - no remaining `const adaptivePanel = true`
+
+PASS - JSON/TOML metadata parse
+  - package.json parsed
+  - src-tauri/tauri.conf.json parsed
+  - src-tauri/Cargo.toml parsed
+
+LIMITATION - Full `tsc --noEmit`, Vitest, Vite and Tauri builds were not claimed as passed in this environment.
+  - The uploaded v113 archive contained an incomplete/stale node_modules tree, so project type definitions and local Vitest/Vite binaries were not reliable.
+  - The final v114 source package intentionally removes node_modules; run `npm ci` on the target machine before `npm run test` / `npm run build`.
+  - Cargo/Rust is not installed in this execution environment, so the Windows Tauri native build could not be executed here.
+
+Recommended Windows verification after unpacking:
+  1. npm ci
+  2. npm run test
+  3. npm run build
+  4. npm run tauri:build

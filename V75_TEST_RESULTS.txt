@@ -1,0 +1,23 @@
+Yue launcher v75 verification
+
+Frontend regression:
+- Test files: 11 passed
+- Tests: 40 passed
+- New window persistence priority tests: 4 passed
+- New store independence test: passed
+
+Production build:
+- TypeScript: passed
+- Vite production build: passed
+- Modules transformed: 1672
+
+Native source review:
+- tauri-plugin-window-state dependency added
+- plugin configured with hidden initial window and manual Rust-side restore
+- manual snapshot priority implemented
+- exit/shutdown auto snapshot switch implemented
+- invalid size fallback implemented
+
+Environment limitation:
+- Cargo/Rust is not installed in this environment, so native cargo check and EXE build were not run locally.
+- The existing Windows CI cargo-check job will validate the Rust source when run in the repository.

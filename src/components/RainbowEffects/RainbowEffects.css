@@ -1,0 +1,88 @@
+.rainbow-effects-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  pointer-events: none;
+}
+
+.rainbow-trail-dot {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  filter: blur(0.5px) drop-shadow(0 0 8px currentColor);
+  box-shadow: 0 0 12px currentColor;
+  animation: rainbow-trail-fade 760ms ease-out forwards;
+}
+
+@keyframes rainbow-trail-fade {
+  to { transform: translate(-50%, -50%) scale(0.35); opacity: 0; }
+}
+
+.rainbow-cursor {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.rainbow-cursor-dot-ring::before {
+  content: '';
+  width: 38%;
+  height: 38%;
+  border-radius: 50%;
+  background: conic-gradient(var(--rainbow-cursor-gradient));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent), transparent 20%);
+}
+
+.rainbow-cursor-dot-ring::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: max(2px, calc(var(--rainbow-cursor-size) / 12)) solid transparent;
+  background: linear-gradient(var(--panel), var(--panel)) padding-box, conic-gradient(var(--rainbow-cursor-gradient)) border-box;
+  opacity: 0.9;
+}
+
+.rainbow-cursor-mac-ring {
+  border-radius: 50%;
+  background: conic-gradient(var(--rainbow-cursor-gradient));
+  animation: rainbow-spin 1s linear infinite;
+  -webkit-mask: radial-gradient(circle, transparent 48%, #000 52%);
+  mask: radial-gradient(circle, transparent 48%, #000 52%);
+  filter: drop-shadow(0 0 8px rgba(255,255,255,.35));
+}
+
+.rainbow-cursor-arrow-fill { fill: white; }
+.rainbow-cursor-arrow-stroke { fill: none; stroke-width: 2.6; stroke-linejoin: round; }
+.rainbow-cursor-windows-outline .rainbow-cursor-arrow-stroke { stroke: url(#unused); }
+.rainbow-cursor-windows-outline svg { filter: drop-shadow(0 0 4px rgba(255,255,255,.3)); }
+.rainbow-cursor-windows-outline .rainbow-cursor-arrow-stroke { stroke: #fff; }
+.rainbow-cursor-windows-full .rainbow-cursor-arrow-fill,
+.rainbow-cursor-windows-inside .rainbow-cursor-arrow-fill { fill: url(#rainbowCursorSvgGradient); }
+.rainbow-cursor-windows-full svg,
+.rainbow-cursor-windows-inside svg {
+  filter: drop-shadow(0 0 7px rgba(255,255,255,.4));
+}
+.rainbow-cursor-windows-full::before,
+.rainbow-cursor-windows-outline::before,
+.rainbow-cursor-windows-inside::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(16% 6%, 82% 58%, 52% 64%, 70% 94%, 54% 99%, 37% 70%, 15% 92%);
+  background: conic-gradient(var(--rainbow-cursor-gradient));
+  z-index: -1;
+  filter: blur(1px);
+}
+.rainbow-cursor-windows-inside::before { inset: 12%; opacity: .8; }
+
+@keyframes rainbow-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* v104 performance: cursor movement stays on the compositor path. */
+.rainbow-cursor,
+.rainbow-trail-dot {
+  will-change: left, top, transform, opacity;
+}

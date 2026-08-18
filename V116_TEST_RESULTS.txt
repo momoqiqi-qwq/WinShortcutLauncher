@@ -1,0 +1,47 @@
+Yue launcher v0.1.116 verification
+=================================
+
+PASS - Version metadata updated to 0.1.116:
+  package.json
+  package-lock.json
+  src-tauri/Cargo.toml
+  src-tauri/tauri.conf.json
+
+PASS - Browser-drop compatibility module strict TypeScript compile:
+  src/lib/browserDrop.ts
+  target ES2022 / DOM libs / strict
+
+PASS - TypeScript/TSX syntax transpile check:
+  166 source files checked
+  0 syntax errors
+
+PASS - Runtime browser drag parser assertions: 14/14
+  Floorp / Firefox text/x-moz-url-data + text/x-moz-url-desc
+  Firefox text/x-moz-url
+  Firefox text/x-moz-url-priv
+  Firefox Places JSON (text/x-moz-place)
+  Gecko virtual .url file-promise URL
+  Gecko image/file promise is NOT misclassified as website
+  Chromium text/uri-list + text/plain
+  text/url alias
+  Windows UniformResourceLocatorW alias
+  unknown text/*url* browser flavor fallback
+  UTF-8 .url Internet Shortcut file
+  UTF-16LE .url Internet Shortcut file
+  NUL-padded URL normalization
+
+PASS - Existing website drop flow preserved:
+  browser URL is handled before file paths
+  dropped website rename setting remains in handleDroppedWebLink()
+  website favicon/title resolution remains unchanged
+  .url/.website real file path fallback remains available
+
+NOTE - Live cross-application Windows GUI drag testing with installed Floorp/Chrome/etc.
+       cannot be executed in this Linux container. The compatibility logic was validated
+       against the actual DataTransfer format families and runtime parser assertions.
+
+NOTE - A full npm ci / Vitest / Vite production build was not claimed. The environment
+       did not provide a complete reliable dependency installation. A partial node_modules
+       directory created during the attempt is removed before packaging.
+
+NOTE - Cargo/Rust Windows native build was not run in this environment.

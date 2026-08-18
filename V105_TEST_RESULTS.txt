@@ -1,0 +1,35 @@
+Yue launcher v0.1.105 - settings opacity / glass UX validation
+
+Version consistency:
+  PASS - package.json: 0.1.105
+  PASS - package-lock.json root package: 0.1.105
+  PASS - src-tauri/tauri.conf.json: 0.1.105
+  PASS - src-tauri/Cargo.toml: 0.1.105
+  PASS - AboutSettingsSection: 0.1.105
+
+Static validation:
+  PASS - 149 TS/TSX files transpile without syntax errors
+  PASS - src/index.css parses with PostCSS
+  PASS - Settings.css parses with PostCSS
+  PASS - SettingsSurfaceAppearanceControls.css parses with PostCSS
+  PASS - translucent built-in rgba theme surfaces flatten to deterministic opaque RGB colors
+  PASS - glass CSS no longer contains the legacy 62% / 68% / 66% panel alpha overrides
+  PASS - glass CSS reads --settings-panel-alpha for the settings panel, header/footer/cards and navigation
+  PASS - new glass blur / saturation / highlight settings are wired through types, defaults, normalizers and App CSS variables
+  PASS - opacity quick presets and glass presets are present
+  PASS - settings search contains opacity / saturation / highlight keywords
+  PASS - regression test files were added for theme color flattening and the settings opacity CSS contract
+
+Environment limitation:
+  Full npm dependency installation did not complete in this sandbox, so npm run test / npm run build could not be executed here.
+  The source archive does not include node_modules.
+
+Recommended Windows regression:
+  - Use a normal opaque theme: set settings panel opacity to 100 / 90 / 75 / 60 and compare visually.
+  - Use the bundled translucent blue/glass themes: verify 100% is fully opaque.
+  - Enable glass effect at 100% opacity: verify blur/highlight remain while wallpaper does not show through the panel surfaces.
+  - Change glass blur / saturation / highlight and verify the settings window updates immediately.
+  - Verify Soft / Standard / Strong presets show an active state when values match.
+  - Restart the app and verify the three new glass values persist.
+  - Verify settings search can find opacity, saturation and highlight controls.
+  - Verify main launcher panel opacity also behaves correctly with translucent themes.

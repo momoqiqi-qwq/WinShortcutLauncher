@@ -1,0 +1,27 @@
+v0.1.112 tray-only / restore stability verification
+==================================================
+
+PASS - package.json parses as JSON and version is 0.1.112
+PASS - package-lock.json parses as JSON and root version is 0.1.112
+PASS - src-tauri/tauri.conf.json parses as JSON, version is 0.1.112
+PASS - main Tauri window has skipTaskbar=true
+PASS - old keep_main_taskbar_icon / keep_taskbar_visible helpers are removed
+PASS - main Windows style now adds WS_EX_TOOLWINDOW and removes WS_EX_APPWINDOW
+PASS - native edge thread uses the same out-of-taskbar rule
+PASS - tray snapshot minimum is aligned to 900 x 640
+PASS - tray snapshots outside all monitors are rejected
+PASS - invalid/missing tray geometry falls back to 1180 x 880 and centers safely
+PASS - real tray restore no longer emits edge-force-show concurrently
+PASS - CloseRequested uses the shared hide_main_window path
+PASS - after-launch 'hide' uses hide_main_window_to_tray instead of direct appWindow.hide()
+PASS - duplicate tray-hide calls do not overwrite the current known-good snapshot
+PASS - delayed restore guards are invalidated by a newer hide/show generation
+PASS - lightweight edited Rust delimiter sanity check passed
+PASS - source audit found no stale direct appWindow.hide(), keep_main_taskbar_icon, or keep_taskbar_visible references
+
+Environment limitations
+-----------------------
+NOT RUN - full Rust cargo check/build: rustc/cargo are not installed in this execution environment.
+NOT RUN - full npm typecheck/build: the source archive did not contain node_modules and dependency installation did not complete in this environment.
+
+The modified TypeScript surface for this fix is one existing invoke call path; JSON/source-level checks above passed. A Windows machine with the project toolchain should still run the normal build/regression script before release distribution.

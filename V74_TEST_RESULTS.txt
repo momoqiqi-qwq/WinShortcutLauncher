@@ -1,0 +1,45 @@
+
+> yue-launcher@0.1.74 verify
+> npm run test && npm run build
+
+
+> yue-launcher@0.1.74 test
+> vitest run
+
+
+ RUN  v4.1.10 Yue launcher v74 source
+
+ ✓ src/lib/__tests__/noteEditor.test.ts (5 tests) 9ms
+ ✓ src/lib/__tests__/settingsSearch.test.ts (2 tests) 56ms
+ ✓ src/lib/__tests__/pageIconPolicy.test.ts (3 tests) 54ms
+ ✓ src/lib/__tests__/experienceSettings.test.ts (2 tests) 7ms
+ ✓ src/lib/__tests__/windowBounds.test.ts (4 tests) 8ms
+ ✓ src/lib/__tests__/faviconProviders.test.ts (4 tests) 9ms
+ ✓ src/lib/__tests__/configDiagnostics.test.ts (2 tests) 9ms
+ ✓ src/lib/__tests__/sort.test.ts (4 tests) 67ms
+ ✓ src/lib/__tests__/importAdapters.test.ts (4 tests) 15ms
+ ✓ src/stores/appStore/__tests__/appStoreSlices.test.ts (5 tests) 18ms
+
+ Test Files  10 passed (10)
+      Tests  35 passed (35)
+   Start at  08:52:26
+   Duration  2.73s (transform 1.97s, setup 5.00s, import 2.23s, tests 253ms, environment 2ms)
+
+
+> yue-launcher@0.1.74 build
+> tsc && vite build
+
+vite v8.1.4 building client environment for production...
+transforming...✓ 1673 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                        0.47 kB │ gzip:  0.29 kB
+dist/edge-strip.html                   0.48 kB │ gzip:  0.29 kB
+dist/assets/sponsor-qr-HpU2ljib.png   53.38 kB
+dist/assets/edgeStrip-COkiNyGD.css     1.36 kB │ gzip:  0.47 kB
+dist/assets/main-71YWSppd.css         77.03 kB │ gzip: 14.42 kB
+dist/assets/edgeStrip-7LSF3_Lj.js      1.53 kB │ gzip:  0.79 kB
+dist/assets/themes-48MG5d7_.js       158.54 kB │ gzip: 51.81 kB
+dist/assets/main-ChaYmALR.js         349.51 kB │ gzip: 98.24 kB
+
+✓ built in 2.15s

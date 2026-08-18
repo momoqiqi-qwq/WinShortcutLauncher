@@ -1,0 +1,84 @@
+.import-center-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(0, 0, 0, .46);
+  backdrop-filter: blur(8px);
+}
+.import-center-dialog {
+  width: min(820px, calc(100vw - 34px));
+  max-height: min(760px, calc(100vh - 34px));
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--border), transparent 4%);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--panel) 98%, transparent);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .42);
+  color: var(--text);
+  animation: import-center-in 170ms cubic-bezier(.2,.8,.2,1);
+}
+.import-center-header,
+.import-center-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+}
+.import-center-header { border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 22%); }
+.import-center-header h3 { margin: 3px 0 0; font-size: 20px; }
+.import-center-header p { max-width: 620px; margin: 4px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.import-center-eyebrow { display: flex; align-items: center; gap: 5px; color: var(--accent); font-size: 11px; font-weight: 750; }
+.import-center-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 16px 20px 8px; }
+.import-center-mode-grid > button { display: flex; align-items: flex-start; gap: 10px; padding: 13px; text-align: left; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--panel) 88%, transparent); color: var(--text); cursor: pointer; }
+.import-center-mode-grid > button span { display: grid; gap: 3px; }
+.import-center-mode-grid > button small { color: var(--muted); }
+.import-center-mode-grid > button.active { border-color: color-mix(in srgb, var(--accent), transparent 28%); background: color-mix(in srgb, var(--accent), transparent 88%); }
+.import-center-mode-grid > button.active.danger { border-color: rgba(244, 94, 94, .65); background: rgba(244, 94, 94, .08); }
+.import-center-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 8px 20px 14px; }
+.import-center-stats > div { display: grid; gap: 2px; padding: 10px 11px; border: 1px solid color-mix(in srgb, var(--border), transparent 28%); border-radius: 12px; background: color-mix(in srgb, var(--panel) 70%, transparent); }
+.import-center-stats strong { font-size: 18px; }
+.import-center-stats span { color: var(--muted); font-size: 10px; }
+.import-center-stats .warning strong { color: #f2a84b; }
+.import-center-replace-warning { display: flex; gap: 10px; margin: 3px 20px 18px; padding: 13px; border: 1px solid rgba(244, 166, 71, .42); border-radius: 13px; background: rgba(244, 166, 71, .08); }
+.import-center-replace-warning div { display: grid; gap: 3px; }
+.import-center-replace-warning span { color: var(--muted); font-size: 11px; }
+.import-center-conflict-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 20px 10px; }
+.import-center-conflict-toolbar > div:first-child { display: grid; gap: 2px; }
+.import-center-conflict-toolbar span { color: var(--muted); font-size: 10px; }
+.import-center-bulk-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.import-center-bulk-actions button { padding: 6px 9px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--text); cursor: pointer; font-size: 11px; }
+.import-center-bulk-actions button.active { border-color: color-mix(in srgb, var(--accent), transparent 35%); background: color-mix(in srgb, var(--accent), transparent 86%); }
+.import-center-conflicts { display: grid; gap: 8px; max-height: 350px; overflow: auto; padding: 0 20px 16px; }
+.import-conflict-card { padding: 12px; border: 1px solid color-mix(in srgb, var(--border), transparent 20%); border-radius: 13px; background: color-mix(in srgb, var(--panel) 72%, transparent); }
+.import-conflict-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.import-conflict-title > div { display: grid; gap: 2px; }
+.import-conflict-title small { color: var(--muted); }
+.import-conflict-title select { width: 128px; flex: 0 0 auto; }
+.import-conflict-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.import-conflict-compare > div { min-width: 0; padding: 8px 9px; border-radius: 10px; background: color-mix(in srgb, var(--bg), transparent 22%); }
+.import-conflict-compare span { color: var(--muted); font-size: 9px; font-weight: 700; }
+.import-conflict-compare p { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 11px; line-height: 1.5; }
+.import-center-empty { display: flex; align-items: center; gap: 9px; padding: 15px; border: 1px solid color-mix(in srgb, var(--accent), transparent 65%); border-radius: 13px; background: color-mix(in srgb, var(--accent), transparent 92%); }
+.import-center-empty span { display: grid; gap: 2px; }
+.import-center-footer { border-top: 1px solid color-mix(in srgb, var(--border), transparent 22%); }
+.import-center-footer > span { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
+.import-center-footer > div { display: flex; gap: 7px; }
+.import-center-footer button { display: inline-flex; align-items: center; gap: 5px; }
+@keyframes import-center-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+@media (max-width: 680px) {
+  .import-center-mode-grid, .import-conflict-compare { grid-template-columns: 1fr; }
+  .import-center-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .import-center-conflict-toolbar, .import-center-footer { align-items: stretch; flex-direction: column; }
+  .import-center-footer > div { justify-content: flex-end; }
+}
+@media (prefers-reduced-motion: reduce) { .import-center-dialog { animation: none; } }
+.settings-data-snapshot-card { display: grid; gap: 3px; margin: 8px 0; padding: 10px 11px; border: 1px solid color-mix(in srgb, var(--border), transparent 24%); border-radius: 11px; background: color-mix(in srgb, var(--panel), transparent 24%); }
+.settings-data-snapshot-card span { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+
+.import-center-dialog.reduce-motion,
+.import-center-dialog.reduce-motion * { scroll-behavior: auto !important; }
+.import-center-dialog.reduce-motion .import-conflict-card,
+.import-center-dialog.reduce-motion button { transition: none !important; }

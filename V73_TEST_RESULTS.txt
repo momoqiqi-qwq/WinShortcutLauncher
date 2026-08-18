@@ -1,0 +1,43 @@
+
+> yue-launcher@0.1.73 verify
+> npm run test && npm run build
+
+
+> yue-launcher@0.1.73 test
+> vitest run
+
+
+ RUN  v4.1.10 /mnt/data/yue-v73-work/tauri-shortcut-launcher-v72-ux-freedom-features
+
+ ✓ src/lib/__tests__/pageIconPolicy.test.ts (3 tests) 11ms
+ ✓ src/lib/__tests__/faviconProviders.test.ts (4 tests) 12ms
+ ✓ src/lib/__tests__/sort.test.ts (4 tests) 29ms
+ ✓ src/lib/__tests__/windowBounds.test.ts (4 tests) 12ms
+ ✓ src/lib/__tests__/settingsSearch.test.ts (2 tests) 11ms
+ ✓ src/lib/__tests__/configDiagnostics.test.ts (2 tests) 11ms
+ ✓ src/lib/__tests__/experienceSettings.test.ts (2 tests) 13ms
+ ✓ src/lib/__tests__/importAdapters.test.ts (4 tests) 59ms
+
+ Test Files  8 passed (8)
+      Tests  25 passed (25)
+   Start at  07:16:30
+   Duration  3.08s (transform 1.33s, setup 0ms, import 6.53s, tests 158ms, environment 2ms)
+
+
+> yue-launcher@0.1.73 build
+> tsc && vite build
+
+vite v8.1.4 building client environment for production...
+[2Ktransforming...✓ 1661 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                        0.47 kB │ gzip:  0.30 kB
+dist/edge-strip.html                   0.48 kB │ gzip:  0.29 kB
+dist/assets/sponsor-qr-HpU2ljib.png   53.38 kB
+dist/assets/edgeStrip-COkiNyGD.css     1.36 kB │ gzip:  0.47 kB
+dist/assets/main-CqTLvlzU.css         76.78 kB │ gzip: 14.37 kB
+dist/assets/edgeStrip-7LSF3_Lj.js      1.53 kB │ gzip:  0.79 kB
+dist/assets/themes-48MG5d7_.js       158.54 kB │ gzip: 51.81 kB
+dist/assets/main-B_YQUP1o.js         348.45 kB │ gzip: 97.69 kB
+
+✓ built in 3.09s

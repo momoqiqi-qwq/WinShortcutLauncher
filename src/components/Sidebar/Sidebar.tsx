@@ -1,50 +1,73 @@
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { DndContext, DragEndEvent, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { FolderPlus } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { byOrder } from '../../lib/sort';
-import { showLauncherNotice } from '../../lib/notify';
+import { getDirectoryDisplayCount } from '../../lib/directoryExperience';
+import { useDirectoryCreator } from '../../hooks/useDirectoryCreator';
 import type { Directory } from '../../types';
 
-function EditableDirectory({ directory, onContextMenu, onContextMenuArea }: { directory: Directory; onContextMenu: (directoryId: string, x: number, y: number) => void; onContextMenuArea: (x: number, y: number) => void }) {
+function EditableDirectory({
+  directory,
+  count,
+  onContextMenu,
+}: {
+  directory: Directory;
+  count: number;
+  onContextMenu: (directoryId: string, x: number, y: number) => void;
+}) {
   const activeDirectoryId = useAppStore((state) => state.activeDirectoryId);
   const setActiveDirectory = useAppStore((state) => state.setActiveDirectory);
   const renameDirectory = useAppStore((state) => state.renameDirectory);
+  const experience = useAppStore((state) => state.experience);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(directory.name);
+  const localRef = useRef<HTMLDivElement | null>(null);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: directory.id });
+  const isActive = activeDirectoryId === directory.id;
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition
+    transition,
   };
+  const setCombinedRef = useCallback((node: HTMLDivElement | null) => {
+    localRef.current = node;
+    setNodeRef(node);
+  }, [setNodeRef]);
+
+  useEffect(() => {
+    if (isActive) localRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [isActive]);
+
+  useEffect(() => setValue(directory.name), [directory.name]);
 
   function save() {
     const next = value.trim();
     if (next) renameDirectory(directory.id, next);
+    else setValue(directory.name);
     setEditing(false);
   }
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setCombinedRef}
       style={style}
-      className={`side-tab side-tab-${directory.kind ?? 'normal'} ${activeDirectoryId === directory.id ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
+      className={`side-tab side-tab-${directory.kind ?? 'normal'} ${isActive ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
+      data-directory-id={directory.id}
       onClick={() => !editing && setActiveDirectory(directory.id)}
-      onDoubleClick={() => setEditing(true)}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        setEditing(true);
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
         setActiveDirectory(directory.id);
         useAppStore.getState().clearSelection();
-        if (event.ctrlKey || event.metaKey || event.shiftKey) {
-          onContextMenu(directory.id, event.clientX, event.clientY);
-        } else {
-          onContextMenuArea(event.clientX, event.clientY);
-        }
+        onContextMenu(directory.id, event.clientX, event.clientY);
       }}
-      title={directory.name}
+      title={`${directory.name}${experience.showDirectoryItemCount ? `（${count}）` : ''}`}
       {...attributes}
       {...listeners}
     >
@@ -58,27 +81,38 @@ function EditableDirectory({ directory, onContextMenu, onContextMenuArea }: { di
           onBlur={save}
           onKeyDown={(event) => {
             if (event.key === 'Enter') save();
-            if (event.key === 'Escape') setEditing(false);
+            if (event.key === 'Escape') {
+              setValue(directory.name);
+              setEditing(false);
+            }
           }}
         />
       ) : (
-        <span>{directory.name}</span>
+        <>
+          <span className="side-tab-label">{directory.name}</span>
+          {experience.showDirectoryItemCount && <span className="side-tab-count">{count}</span>}
+        </>
       )}
     </div>
   );
 }
 
-export function Sidebar({ onContextMenuDirectory, onContextMenuArea }: { onContextMenuDirectory: (directoryId: string, x: number, y: number) => void; onContextMenuArea: (x: number, y: number) => void }) {
+export function Sidebar({
+  onContextMenuDirectory,
+  onContextMenuArea,
+}: {
+  onContextMenuDirectory: (directoryId: string, x: number, y: number) => void;
+  onContextMenuArea: (x: number, y: number) => void;
+}) {
   const activeGroup = useAppStore((state) => state.getActiveGroup());
-  const activeDirectoryId = useAppStore((state) => state.activeDirectoryId);
-  const activeDirectory = useAppStore((state) => state.getActiveDirectory());
-  const addDirectory = useAppStore((state) => state.addDirectory);
   const reorderDirectories = useAppStore((state) => state.reorderDirectories);
+  const experience = useAppStore((state) => state.experience);
+  const createDirectory = useDirectoryCreator();
   const directories = useMemo(() => activeGroup?.directories.slice().sort(byOrder) ?? [], [activeGroup]);
   const ids = useMemo(() => directories.map((dir) => dir.id), [directories]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   function handleDragEnd(event: DragEndEvent) {
@@ -97,29 +131,32 @@ export function Sidebar({ onContextMenuDirectory, onContextMenuArea }: { onConte
     onContextMenuArea(event.clientX, event.clientY);
   }
 
+  function handleSidebarDoubleClick(event: MouseEvent<HTMLElement>) {
+    if (!experience.doubleClickSidebarToCreate) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('.side-tab, .icon-button, .sidebar-header')) return;
+    void createDirectory('normal', '新目录');
+  }
+
   return (
-    <aside className="sidebar panel" onContextMenu={handleSidebarContext}>
+    <aside className="sidebar panel" onContextMenu={handleSidebarContext} onDoubleClick={handleSidebarDoubleClick}>
       <div className="sidebar-header">
         <span>子目录</span>
-        <button
-          className="icon-button"
-          title="新增子目录"
-          onClick={() => {
-            if (!activeGroup) return;
-            if ((activeDirectory?.kind ?? 'normal') === 'all') {
-              showLauncherNotice('特殊标签不可添加子标签');
-              return;
-            }
-            addDirectory(activeGroup.id, '新目录');
-          }}
-        >
+        <button className="icon-button" title="新增子目录" onClick={() => void createDirectory('normal', '新目录')}>
           <FolderPlus size={15} />
         </button>
       </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           <div className="sidebar-tabs">
-            {directories.map((directory) => <EditableDirectory directory={directory} key={directory.id} onContextMenu={onContextMenuDirectory} onContextMenuArea={onContextMenuArea} />)}
+            {directories.map((directory) => (
+              <EditableDirectory
+                directory={directory}
+                count={getDirectoryDisplayCount(directory, directories)}
+                key={directory.id}
+                onContextMenu={onContextMenuDirectory}
+              />
+            ))}
           </div>
         </SortableContext>
       </DndContext>

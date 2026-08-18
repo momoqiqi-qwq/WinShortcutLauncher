@@ -1,0 +1,21 @@
+Yue launcher v0.1.99 验证结果
+日期：2026-08-04
+
+已完成：
+1. 使用 TypeScript 5.8.3 对 src 下全部 TS/TSX 做独立严格语义检查：通过。
+2. 解析 128 个 TypeScript/TSX 文件：无语法错误。
+3. 全局命令面板回归脚本：通过。
+   - 损坏的搜索设置可恢复到安全默认值。
+   - 异常旧目录/分组名称不会使索引构建崩溃。
+   - 拼音首字母匹配回归通过。
+4. package.json、package-lock.json、tauri.conf.json：JSON 校验通过。
+5. package.json、package-lock.json、Cargo.toml、tauri.conf.json、关于页面版本一致：0.1.99。
+6. Rust 新增文件和注册入口做了括号/分隔符静态检查：通过。
+7. 已确认活动源码中不存在自动化全局快捷键运行时；旧自动化、自定义命令和动作链字段仅在配置迁移时删除。
+8. 全局命令面板增加独立错误边界；单次面板渲染错误不会替换整个应用界面。
+9. 设置快捷入口在从关闭状态打开设置时会跳过“恢复上次分类”，避免目标子设置被旧分类覆盖。
+
+当前环境限制：
+- npm 依赖未能从当前仓库完整安装，因此没有执行项目原生的 npm run verify / Vite 生产构建。
+- 当前环境没有 Rust/Cargo 工具链，因此没有执行 cargo check、Tauri Windows 打包或 exe 实机播放测试。
+- GIF/APNG/动态 WebP 由 WebView 图片解码器播放，当前版本只能控制视频的暂停与速度，不能单独暂停动态图片。

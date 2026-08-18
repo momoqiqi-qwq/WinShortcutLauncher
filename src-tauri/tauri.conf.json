@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Yue Launcher",
-  "version": "0.1.44",
-  "identifier": "com.ava.yue-launcher",
+  "productName": "Yue launcher",
+  "version": "0.1.117",
+  "identifier": "com.yue.launcher",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,20 +12,28 @@
   "app": {
     "windows": [
       {
-        "title": "Yue Launcher",
-        "width": 980,
-        "height": 660,
-        "minWidth": 8,
-        "minHeight": 8,
+        "title": "Yue launcher",
+        "width": 1180,
+        "height": 880,
+        "visible": false,
+        "minWidth": 900,
+        "minHeight": 640,
         "decorations": false,
         "transparent": true,
         "shadow": true,
         "resizable": true,
-        "dragDropEnabled": true
+        "dragDropEnabled": false,
+        "skipTaskbar": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/**/*"
+        ]
+      }
     }
   },
   "bundle": {

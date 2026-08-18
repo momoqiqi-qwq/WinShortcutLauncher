@@ -1,0 +1,76 @@
+.background-media-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+  --background-media-overscan: 0px;
+}
+
+.background-media-element,
+.background-media-tile,
+.background-media-dim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.background-media-element {
+  display: block;
+  max-width: none;
+  max-height: none;
+  transform: translateZ(0);
+  transition: opacity 180ms ease, filter 180ms ease, object-position 180ms ease, transform 180ms ease;
+}
+
+.background-media-primary,
+.background-media-tile {
+  inset: calc(var(--background-media-overscan, 0px) * -1);
+  width: calc(100% + var(--background-media-overscan, 0px) * 2);
+  height: calc(100% + var(--background-media-overscan, 0px) * 2);
+}
+
+.background-media-ambient {
+  z-index: 0;
+  transform: translateZ(0) scale(1.08);
+}
+
+.background-media-fit-cover .background-media-primary,
+.background-media-fit-stretch .background-media-primary {
+  transform: translateZ(0) scale(1.01);
+}
+
+.background-media-primary {
+  z-index: 1;
+}
+
+.background-media-tile {
+  z-index: 1;
+  background-repeat: repeat;
+  background-size: auto;
+  transform: translateZ(0);
+}
+
+.background-media-dim {
+  z-index: 2;
+  background: rgba(0, 0, 0, var(--background-media-dim, 0.18));
+}
+
+.background-media-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted, #aaa);
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--accent, #5b8def) 28%, transparent), transparent 42%),
+    linear-gradient(145deg, color-mix(in srgb, var(--panel-2, #2b2b2b) 90%, transparent), var(--bg, #111));
+}
+
+.reduce-motion .background-media-element {
+  transition: none;
+}

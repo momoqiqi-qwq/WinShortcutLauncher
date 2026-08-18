@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { Folder, Link2, TerminalSquare, FileIcon } from 'lucide-react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
+import { Folder, Link2, TerminalSquare, FileIcon, Pin } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { BehaviorSettings, DisplaySettings, ShortcutItem } from '../../types';
@@ -9,6 +8,9 @@ import { chooseIconResolveCommand, getCachedIcon, isDirectImageSource, resolveIc
 import type { IconResolveMode, TransferStationSettings } from '../../utils/v16Types';
 import { transferStationFolderDropProps } from './ItemCard.drop-patch';
 import { uiAlert } from '../../lib/uiDialog';
+import { buildItemTooltip, getItemActivationHint, shouldLaunchItemFromInteraction } from '../../lib/itemExperience';
+import { launchShortcutItem } from '../../lib/launchShortcut';
+import { trackActivePointerReset } from '../../lib/pointerResetHub';
 
 interface ItemCardProps {
   item: ShortcutItem;
@@ -21,18 +23,22 @@ interface ItemCardProps {
 
 const LAUNCH_DEBOUNCE_MS = 500;
 
+function safeTrim(value: unknown) {
+  return typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
+}
+
 function shouldResolveIcon(value: string) {
   return Boolean(value) && !isDirectImageSource(value);
 }
 
 function canAutoExtractIcon(item: ShortcutItem) {
-  return item.type !== 'url' && Boolean(item.path?.trim());
+  return item.type !== 'url' && Boolean(safeTrim(item.path));
 }
 
 function getIconResolveTarget(item: ShortcutItem) {
-  const customIcon = item.icon?.trim();
+  const customIcon = safeTrim(item.icon);
   if (customIcon) return { value: customIcon, fromItemPath: false };
-  if (canAutoExtractIcon(item)) return { value: item.path.trim(), fromItemPath: true };
+  if (canAutoExtractIcon(item)) return { value: safeTrim(item.path), fromItemPath: true };
   return { value: '', fromItemPath: false };
 }
 
@@ -47,11 +53,20 @@ function FallbackIcon({ type, size }: { type: ShortcutItem['type']; size: number
   return <FileIcon size={size} />;
 }
 
-export function ItemCard({ item, selected, display, behavior, transferStation, onContextMenu }: ItemCardProps) {
+function ItemCardComponent({ item, selected, display, behavior, transferStation, onContextMenu }: ItemCardProps) {
   const selectItem = useAppStore((state) => state.selectItem);
-  const selectedItemIds = useAppStore((state) => state.selectedItemIds);
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const clearSelection = useAppStore((state) => state.clearSelection);
+  const itemTooltipMode = useAppStore((state) => state.experience.itemTooltipMode);
+  const showLaunchCountBadge = useAppStore((state) => state.experience.showLaunchCountBadge);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: display.sortMode !== 'custom' });
   const sortableListeners = listeners as Record<string, ((event: unknown) => void) | undefined>;
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const untrackPointerResetRef = useRef<(() => void) | null>(null);
+  const [iconVisible, setIconVisible] = useState(false);
+  const setCardNodeRef = useCallback((node: HTMLDivElement | null) => {
+    cardRef.current = node;
+    setNodeRef(node);
+  }, [setNodeRef]);
   const effectiveLines = item.labelLines ?? display.labelLines;
   const fallbackIconSize = Math.max(28, display.iconSize - 12);
   const pointerDownRef = useRef<{ x: number; y: number; button: number; pointerId: number } | null>(null);
@@ -68,18 +83,36 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
     const command = resolveCommand(rawIcon, target.fromItemPath, itemIconMode);
     return { rawIcon, command };
   }, [item.icon, item.path, item.type, itemIconMode]);
-  const [resolvedIcon, setResolvedIcon] = useState<string | undefined>(() => {
-    const target = getIconResolveTarget(item);
-    const rawIcon = target.value;
-    if (!rawIcon) return undefined;
-    if (isDirectImageSource(rawIcon)) return rawIcon;
-    const command = resolveCommand(rawIcon, target.fromItemPath, itemIconMode);
-    return getCachedIcon(command, rawIcon);
-  });
+  const [resolvedIcon, setResolvedIcon] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    const element = cardRef.current;
+    if (!element || typeof IntersectionObserver === 'undefined') {
+      setIconVisible(true);
+      return;
+    }
+    const root = element.closest('.content-area');
+    try {
+      const observer = new IntersectionObserver((records) => {
+        if (records.some((record) => record.isIntersecting)) {
+          setIconVisible(true);
+          observer.disconnect();
+        }
+      }, { root, rootMargin: '320px 0px' });
+      observer.observe(element);
+      return () => observer.disconnect();
+    } catch {
+      setIconVisible(true);
+    }
+  }, [item.id]);
 
   useEffect(() => {
     const { rawIcon, command } = iconTarget;
     if (!rawIcon) {
+      setResolvedIcon(undefined);
+      return;
+    }
+    if (!iconVisible) {
       setResolvedIcon(undefined);
       return;
     }
@@ -107,7 +140,7 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
     return () => {
       cancelled = true;
     };
-  }, [iconTarget]);
+  }, [iconTarget, iconVisible]);
 
   const stationDropProps = transferStation?.dragToShortcutFolders === false ? {} : transferStationFolderDropProps(item);
 
@@ -124,7 +157,7 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
     if (launchLockRef.current.pending || now - launchLockRef.current.lastAt < LAUNCH_DEBOUNCE_MS) return;
     launchLockRef.current = { pending: true, lastAt: now };
     try {
-      await invoke('launch_item', { path: item.path, asAdmin });
+      await launchShortcutItem(item, asAdmin);
     } catch (error) {
       console.error(error);
       void uiAlert(`启动失败：${String(error)}`);
@@ -153,6 +186,8 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
   function resetPressState(pointerId?: number) {
     const start = pointerDownRef.current;
     if (pointerId !== undefined && start && start.pointerId !== pointerId) return;
+    untrackPointerResetRef.current?.();
+    untrackPointerResetRef.current = null;
     clearSingleClickDragTimer();
     pointerStillDownRef.current = false;
     pointerDownRef.current = null;
@@ -160,30 +195,23 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
     singleClickSortableStartedRef.current = false;
   }
 
-  useEffect(() => {
-    const clearSoon = () => window.setTimeout(() => resetPressState(), 0);
-    const clearNow = () => resetPressState();
-    window.addEventListener('pointerup', clearSoon, true);
-    window.addEventListener('pointercancel', clearSoon, true);
-    window.addEventListener('mouseup', clearSoon, true);
-    window.addEventListener('blur', clearNow, true);
-    return () => {
-      window.removeEventListener('pointerup', clearSoon, true);
-      window.removeEventListener('pointercancel', clearSoon, true);
-      window.removeEventListener('mouseup', clearSoon, true);
-      window.removeEventListener('blur', clearNow, true);
-    };
+  useEffect(() => () => {
+    untrackPointerResetRef.current?.();
+    untrackPointerResetRef.current = null;
+    clearSingleClickDragTimer();
   }, []);
 
   function handleClick(event: MouseEvent<HTMLDivElement>) {
+    // 左键点击只负责启动判定，不再改变选中项目；普通左键同时清掉旧选择，避免残留蓝色状态造成歧义。
     event.stopPropagation();
-    const append = event.ctrlKey || event.metaKey;
-    selectItem(item.id, append);
+    if (!(event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)) clearSelection();
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     pointerDownRef.current = { x: event.clientX, y: event.clientY, button: event.button, pointerId: event.pointerId };
     pointerStillDownRef.current = true;
+    untrackPointerResetRef.current?.();
+    untrackPointerResetRef.current = trackActivePointerReset(() => resetPressState());
     pointerMovedBeyondClickRef.current = false;
     singleClickSortableStartedRef.current = false;
     try {
@@ -205,12 +233,11 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
     clearSingleClickDragTimer();
     pointerStillDownRef.current = false;
     pointerDownRef.current = null;
-    if (!start || start.pointerId !== event.pointerId || behavior.launchMode !== 'single') return;
-    if (sortableAlreadyStarted) return;
-    if (start.button !== 0 || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-    if (pointerMovedBeyondClickRef.current || wasPointerDrag(start, event) || isDragging) return;
+    if (!start || start.pointerId !== event.pointerId) return;
+    const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
+    const dragged = sortableAlreadyStarted || pointerMovedBeyondClickRef.current || wasPointerDrag(start, event) || isDragging;
+    if (!shouldLaunchItemFromInteraction(behavior.launchMode, 'pointer-up', { button: event.button, modified, dragged })) return;
     event.stopPropagation();
-    selectItem(item.id, false);
     // 让 dnd-kit 的 document pointerup 先完成清理，再启动外部程序。
     // 否则外部程序抢焦点时，偶发会留下一个已经激活/待激活的拖拽态。
     window.setTimeout(() => void launch(false), 60);
@@ -223,9 +250,8 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
   function handleDoubleClick(event: MouseEvent<HTMLDivElement>) {
     event.preventDefault();
     event.stopPropagation();
-    if (behavior.launchMode !== 'double') return;
-    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-    selectItem(item.id, false);
+    const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
+    if (!shouldLaunchItemFromInteraction(behavior.launchMode, 'double-click', { button: event.button, modified, dragged: isDragging })) return;
     void launch(false);
   }
 
@@ -234,7 +260,7 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
     event.stopPropagation();
     if (event.ctrlKey || event.metaKey) {
       selectItem(item.id, true);
-    } else if (selectedItemIds.length === 0) {
+    } else {
       selectItem(item.id, false);
     }
     onContextMenu(item.id, event.clientX, event.clientY);
@@ -242,10 +268,14 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setCardNodeRef}
       style={style}
-      className={`item-card ${selected ? 'selected' : ''} ${isDragging ? 'dragging' : ''}`}
-      title={item.name}
+      className={`item-card ${selected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${item.pinned ? 'pinned' : ''}`}
+      title={[buildItemTooltip(item, itemTooltipMode), getItemActivationHint(behavior.launchMode, display.sortMode === 'custom')].filter(Boolean).join('\n')}
+      data-item-id={item.id}
+      aria-selected={selected}
+      aria-label={`${item.name}，${getItemActivationHint(behavior.launchMode, display.sortMode === 'custom')}`}
+      data-launch-mode={behavior.launchMode}
       {...attributes}
       {...listeners}
       {...stationDropProps}
@@ -278,9 +308,13 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContext}
     >
+      {item.pinned && <span className="item-pin-badge" title="固定项目"><Pin size={11} fill="currentColor" /></span>}
+      {showLaunchCountBadge && (item.launchCount ?? 0) > 0 && (
+        <span className="item-launch-count-badge" title={`已启动 ${item.launchCount} 次`}>{item.launchCount}</span>
+      )}
       <div className="item-edit-name">
         <div className="item-icon">
-          {resolvedIcon ? <img src={resolvedIcon} alt="" draggable={false} /> : <FallbackIcon type={item.type} size={fallbackIconSize} />}
+          {resolvedIcon ? <img src={resolvedIcon} alt="" draggable={false} loading="lazy" decoding="async" /> : <FallbackIcon type={item.type} size={fallbackIconSize} />}
         </div>
         <div className="item-label">{item.name}</div>
       </div>
@@ -288,6 +322,20 @@ export function ItemCard({ item, selected, display, behavior, transferStation, o
   );
 }
 
-export async function launchItem(item: ShortcutItem, asAdmin = false) {
-  await invoke('launch_item', { path: item.path, asAdmin });
+function areItemCardPropsEqual(previous: ItemCardProps, next: ItemCardProps) {
+  return previous.item === next.item
+    && previous.selected === next.selected
+    && previous.onContextMenu === next.onContextMenu
+    && previous.transferStation.dragToShortcutFolders === next.transferStation.dragToShortcutFolders
+    && previous.display.sortMode === next.display.sortMode
+    && previous.display.labelLines === next.display.labelLines
+    && previous.display.iconSize === next.display.iconSize
+    && previous.display.itemIconResolveMode === next.display.itemIconResolveMode
+    && previous.display.charsPerLine === next.display.charsPerLine
+    && previous.display.fontSize === next.display.fontSize
+    && previous.behavior.launchMode === next.behavior.launchMode
+    && previous.behavior.itemDragTolerance === next.behavior.itemDragTolerance
+    && previous.behavior.itemDragLongPressMs === next.behavior.itemDragLongPressMs;
 }
+
+export const ItemCard = memo(ItemCardComponent, areItemCardPropsEqual);

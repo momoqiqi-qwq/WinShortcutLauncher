@@ -1,0 +1,63 @@
+v0.1.108 Browser Router - validation summary
+============================================
+
+PASS  TypeScript syntax transpile
+      158 TS/TSX files checked
+      0 syntax errors
+
+PASS  Browser Router pure TypeScript semantic check
+      tsc --noEmit --strict on:
+      - src/types.ts
+      - src/utils/v16Types.ts
+      - src/lib/browserRouter.ts
+      - src/lib/browserLaunchTarget.ts
+
+PASS  Browser Router runtime smoke test
+      - v107 foreground-browser migration -> PASS
+      - parent-group route inheritance -> PASS
+      - item route overrides parent route -> PASS
+
+PASS  CSS parse
+      26 CSS files checked with PostCSS
+      0 parse errors
+
+PASS  JSON/config parse
+      package.json
+      package-lock.json
+      src-tauri/tauri.conf.json
+
+PASS  Version consistency
+      package.json               0.1.108
+      src-tauri/Cargo.toml       0.1.108
+      src-tauri/tauri.conf.json  0.1.108
+
+PASS  Packaging hygiene
+      node_modules removed from deliverable
+
+NOT RUN  Full npm test/build
+         The project dependencies are not installed in this sandbox.
+         npm ci was attempted but did not complete within the available execution window.
+         No claim is made that npm run test/build passed.
+
+NOT RUN  Rust cargo check / rustfmt
+         cargo, rustc and rustfmt are not installed in this sandbox.
+         The Rust/Tauri browser scanning and launch code therefore requires a Windows-side compile check.
+
+Recommended Windows regression checklist
+----------------------------------------
+1. npm ci
+2. npm run test
+3. npm run build
+4. cargo check (inside src-tauri, or npm run tauri:dev)
+5. Test Chrome default profile and at least one Profile N
+6. Test Edge default profile and Work/Personal profile
+7. Test Firefox profiles.ini profiles
+8. Test Floorp standard installation profiles
+9. Add a Floorp/Firefox portable EXE and manually choose its Profile root
+10. Verify parent route: AI -> Floorp AI, Work -> Edge Work, Money -> Chrome Personal
+11. Verify a single URL can override its parent route
+12. Rename/color a profile, restart app, verify persistence
+13. Temporarily make a custom browser path invalid and verify fallback to system default browser
+14. Test foreground-browser mode with launcher in front of Chrome/Edge/Firefox/Floorp
+15. Export config, re-import, and verify Browser Router settings survive
+16. Load a v107 config with foreground-browser and verify automatic migration

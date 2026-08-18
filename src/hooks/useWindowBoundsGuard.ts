@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 
-const BOUNCE_DURATION_MS = 160;
+const BOUNCE_DURATION_MS = 220;
 
 type Point = { x: number; y: number };
 
@@ -37,7 +37,7 @@ async function animateWindowPosition(from: Point, to: Point, duration = BOUNCE_D
   }
 }
 
-export function useWindowBoundsGuard(enabled: boolean) {
+export function useWindowBoundsGuard(enabled: boolean, animate = true, durationMs = BOUNCE_DURATION_MS) {
   const animatingRef = useRef(false);
 
   useEffect(() => {
@@ -78,7 +78,11 @@ export function useWindowBoundsGuard(enabled: boolean) {
         if (targetX === position.x && targetY === position.y) return;
 
         animatingRef.current = true;
-        await animateWindowPosition(position, { x: targetX, y: targetY });
+        if (animate && durationMs > 10) {
+          await animateWindowPosition(position, { x: targetX, y: targetY }, durationMs);
+        } else {
+          await appWindow.setPosition(new PhysicalPosition(targetX, targetY));
+        }
       } catch (error) {
         console.warn('bounds guard failed', error);
       } finally {
@@ -88,5 +92,5 @@ export function useWindowBoundsGuard(enabled: boolean) {
 
     window.addEventListener('mouseup', onMouseUp);
     return () => window.removeEventListener('mouseup', onMouseUp);
-  }, [enabled]);
+  }, [enabled, animate, durationMs]);
 }

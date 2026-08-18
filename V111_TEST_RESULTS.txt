@@ -1,0 +1,36 @@
+v0.1.111 Tray / Taskbar Restore Fix - validation summary
+========================================================
+
+PASS  Version consistency
+      package.json               0.1.111
+      package-lock.json          0.1.111
+      src-tauri/Cargo.toml       0.1.111
+      src-tauri/tauri.conf.json  0.1.111
+
+PASS  Tray restore state path static check
+      - tray hide captures width / height / x / y / maximized
+      - tray show restores captured geometry before focus
+      - close-to-tray path captures the same geometry
+
+PASS  Native edge/tray separation static check
+      - TRAY_HIDDEN prevents native edge state machine from moving/re-showing tray-hidden main window
+      - EXTERNAL_SHOW_RESET clears stale edge restore geometry before tray show
+      - prepare_tray_show temporarily suspends edge movement during restore
+
+PASS  Windows taskbar icon static check
+      - WS_EX_APPWINDOW is forced
+      - WS_EX_TOOLWINDOW is removed
+      - SWP_FRAMECHANGED refreshes taskbar eligibility
+      - application icon is re-applied when the main window is shown from tray
+
+PASS  Performance review
+      - no new React render loop / polling path
+      - tray snapshot is in-memory only
+      - no disk write is added to tray click handling
+      - native tray-hidden mode skips edge movement work while hidden
+
+NOT RUN  Full npm test/build
+         Project node_modules are not included in the source archive.
+
+NOT RUN  Rust cargo check
+         cargo/rustc are not installed in this sandbox, so native compilation cannot be claimed.

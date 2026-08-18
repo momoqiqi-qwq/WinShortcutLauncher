@@ -1,0 +1,10 @@
+Yue launcher v78 verification
+
+- npm ci: passed
+- npm run test: passed
+- Test files: 14 passed
+- Regression tests: 55 passed
+- TypeScript check: passed
+- Vite production build: passed
+- npm audit: 0 vulnerabilities
+- Rust/Tauri native build: not executed in this environment

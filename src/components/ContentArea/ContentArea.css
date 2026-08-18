@@ -142,3 +142,167 @@
   white-space: nowrap;
   user-select: none;
 }
+
+/* v52: 便签右上角行号开关与行号显示 */
+.notes-title-row {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.notes-line-toggle {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2), transparent 8%);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.notes-line-toggle:hover,
+.notes-line-toggle.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent), transparent 35%);
+  background: color-mix(in srgb, var(--accent), transparent 86%);
+}
+
+.notes-editor-wrap {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--note-radius, 16px);
+  background: color-mix(in srgb, var(--panel), transparent 12%);
+}
+
+.notes-editor-wrap.with-line-numbers {
+  grid-template-columns: max(42px, calc(var(--note-font-size, 15px) * 2.8)) minmax(0, 1fr);
+}
+
+.notes-editor-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 80%);
+}
+
+.notes-editor-wrap .notes-textarea {
+  min-width: 0;
+  height: 100%;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: var(--note-padding, 16px);
+  font-size: var(--note-font-size, 15px);
+  line-height: var(--note-line-height, 1.7);
+}
+
+.notes-line-number-gutter {
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--note-padding, 16px) 8px var(--note-padding, 16px) 4px;
+  border-right: 1px solid color-mix(in srgb, var(--border), transparent 16%);
+  background: color-mix(in srgb, var(--panel-2), transparent 35%);
+  color: color-mix(in srgb, var(--muted), transparent 14%);
+  text-align: right;
+  user-select: none;
+  pointer-events: none;
+}
+
+.notes-line-number {
+  height: calc(var(--note-font-size, 15px) * var(--note-line-height, 1.7));
+  line-height: calc(var(--note-font-size, 15px) * var(--note-line-height, 1.7));
+  font-size: calc(var(--note-font-size, 15px) * 0.78);
+  font-variant-numeric: tabular-nums;
+}
+
+.notes-panel.notes-title-hidden {
+  grid-template-rows: auto 1fr;
+}
+
+/* v53: line numbers can jump to the corresponding logical line. */
+.notes-line-number-gutter {
+  pointer-events: auto;
+}
+
+.notes-line-number {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: right;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.notes-line-number:hover,
+.notes-line-number:focus-visible {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+  outline: none;
+  border-radius: 6px;
+}
+
+/* v55: 行号按真实逻辑行高度渲染，长行自动换行时也和正文对齐。 */
+.notes-line-number {
+  display: block;
+  box-sizing: border-box;
+  min-height: calc(var(--note-font-size, 15px) * var(--note-line-height, 1.7));
+  font-family: inherit;
+  height: auto;
+  line-height: calc(var(--note-font-size, 15px) * var(--note-line-height, 1.7));
+}
+
+
+
+/* v56: 行号使用和 textarea 同一个行高盒子，禁止 button 默认外观造成累计错位。 */
+.notes-line-number {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  border: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  padding: 0 2px;
+  min-height: 0;
+  line-height: 1;
+}
+
+/* v74: 便签保存状态，避免用户不确定输入是否已经落盘。 */
+.notes-title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.notes-save-status {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: color 160ms ease, opacity 160ms ease;
+}
+
+.notes-save-status.pending {
+  color: var(--accent);
+}
+
+.notes-editor-wrap,
+.notes-editor-wrap .notes-title,
+.notes-editor-wrap .notes-textarea,
+.notes-editor-wrap .note-line-number,
+.notes-editor-wrap .note-line-numbers {
+  font-family: var(--note-font-family, var(--font-family));
+}

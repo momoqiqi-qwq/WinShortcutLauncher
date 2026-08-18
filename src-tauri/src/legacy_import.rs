@@ -259,6 +259,30 @@ fn looks_like_separator(name: &str) -> bool {
   trimmed.is_empty() || trimmed.contains("分隔") || trimmed.chars().all(|ch| ch == '-' || ch == '—' || ch == '_' || ch.is_whitespace())
 }
 
+
+fn looks_like_note_group(group: &LegacyGroupRow, item_count: usize) -> bool {
+  let content = group.content.as_deref().unwrap_or("").trim();
+  if content.is_empty() {
+    return false;
+  }
+  let name = group.name.trim().to_ascii_lowercase();
+  let note_name = name.contains("便签") || name.contains("笔记") || name.contains("备忘") || name.contains("note") || name.contains("memo");
+  // Lucy / Maye 的便签导出常见形态是 Groups.Content 有内容，但 Links 里没有项目。
+  // 这里直接导成 notes，避免导入后还要手动“空标签切换为便签”。
+  item_count == 0 || note_name || group.group_type != 0
+}
+
+fn legacy_directory_kind(group: &LegacyGroupRow, item_count: usize) -> String {
+  let clean_name = group.name.trim();
+  if clean_name == "全部" {
+    "all".to_string()
+  } else if looks_like_note_group(group, item_count) {
+    "notes".to_string()
+  } else {
+    "normal".to_string()
+  }
+}
+
 fn sanitize_id_part(value: i64) -> String {
   if value < 0 { format!("n{}", -value) } else { value.to_string() }
 }
@@ -446,13 +470,14 @@ fn build_config(link_path: &Path, icon_path: Option<PathBuf>) -> Result<AppConfi
         .enumerate()
         .map(|(index, row)| shortcut_item(row, index, icon_conn))
         .collect();
-      let kind = if clean_name == "全部" { "all" } else { "normal" };
+      let kind = legacy_directory_kind(group, items.len());
+      let final_items = if kind == "notes" { Vec::new() } else { items };
       out.push(DirectoryOut {
         id: format!("legacy_dir_{}", sanitize_id_part(group.id)),
         name: clean_name.to_string(),
         order: out.len(),
-        kind: kind.to_string(),
-        items,
+        kind,
+        items: final_items,
         note: group.content.clone().filter(|value| !value.trim().is_empty()),
       });
       if let Some(children) = children_by_parent.get(&group.id) {
@@ -480,6 +505,17 @@ fn build_config(link_path: &Path, icon_path: Option<PathBuf>) -> Result<AppConfi
           note: None,
         });
       }
+    }
+
+    if top.content.as_deref().unwrap_or("").trim().len() > 0 && looks_like_note_group(top, links_by_parent.get(&top.id).map(|items| items.len()).unwrap_or(0)) {
+      directories.push(DirectoryOut {
+        id: format!("legacy_dir_{}_note", sanitize_id_part(top.id)),
+        name: if directories.is_empty() { top.name.trim().to_string() } else { "便签".to_string() },
+        order: directories.len(),
+        kind: "notes".to_string(),
+        items: Vec::new(),
+        note: top.content.clone().filter(|value| !value.trim().is_empty()),
+      });
     }
 
     if let Some(children) = children_by_parent.get(&top.id) {

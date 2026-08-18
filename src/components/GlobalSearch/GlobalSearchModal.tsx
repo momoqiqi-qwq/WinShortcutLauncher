@@ -1,140 +1,51 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { DEFAULT_GLOBAL_SEARCH_SETTINGS, type GlobalSearchSettings } from '../../utils/v16Types';
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  AlertTriangle,
+  Command as CommandIcon,
+  FileText,
+  Folder,
+  Palette,
+  Search,
+  Settings,
+  StickyNote,
+  Type,
+  X,
+} from 'lucide-react';
+import type { GlobalSearchSettings } from '../../utils/v16Types';
+import { normalizeGlobalSearchSettings } from '../../lib/globalSearchSettings';
 import { chooseIconResolveCommand, getCachedIcon, isDirectImageSource, resolveIconDataUrl, setIconParallelTasks, type IconResolveCommand } from '../../lib/iconCache';
+import type { CommandUsage, ShortcutItem } from '../../types';
+import type { PaletteEntry, PaletteEntryKind } from '../../lib/commandPalette';
+import { searchPaletteEntries } from '../../lib/commandPalette';
+import { useAppStore } from '../../stores/appStore';
+import { shortcutMatchesEvent } from '../../lib/keyboardShortcuts';
 import './GlobalSearchModal.css';
-
-type ShortcutLike = {
-  id: string;
-  name: string;
-  path: string;
-  icon?: string;
-  type?: 'file' | 'folder' | 'url' | 'command' | string;
-};
-
-type SearchResult = {
-  id: string;
-  item: ShortcutLike;
-  groupId: string;
-  groupName: string;
-  subId: string;
-  subName: string;
-  note?: boolean;
-  score: number;
-};
-
-type GroupLike = {
-  id: string;
-  name: string;
-  children?: any[];
-  subGroups?: any[];
-  tabs?: any[];
-  directories?: any[];
-  items?: ShortcutLike[];
-};
 
 export interface GlobalSearchModalProps {
   open: boolean;
-  groups: GroupLike[];
+  entries: PaletteEntry[];
+  usage: Record<string, CommandUsage>;
   settings?: Partial<GlobalSearchSettings>;
   onClose: () => void;
-  onLocate?: (groupId: string, subId: string, itemId?: string) => void;
-  onOpenItem?: (item: ShortcutLike) => void | Promise<void>;
+  onExecute: (entry: PaletteEntry, alternate?: boolean) => void | Promise<void>;
 }
 
-const normalize = (value: string) => value.toLowerCase().trim();
-
-function flattenGroups(groups: GroupLike[], settings: GlobalSearchSettings): SearchResult[] {
-  const rows: SearchResult[] = [];
-  for (const group of groups || []) {
-    const subGroups = group.children || group.subGroups || group.tabs || group.directories || [];
-    for (const sub of subGroups) {
-      const subType = sub.type || sub.kind || 'normal';
-      if ((subType === 'note' || subType === 'notes') && !settings.includeNotes) continue;
-      const items = Array.isArray(sub.items) ? sub.items : [];
-      for (const item of items) {
-        if (!settings.includeSystemTools && item.type === 'command' && /system32|\.msc|\.cpl/i.test(item.path || '')) continue;
-        rows.push({
-          id: `${group.id}:${sub.id}:${item.id}`,
-          item,
-          groupId: group.id,
-          groupName: group.name,
-          subId: sub.id,
-          subName: sub.name,
-          score: 0,
-        });
-      }
-      if ((subType === 'note' || subType === 'notes') && settings.includeNotes && (sub.noteContent || sub.note)) {
-        rows.push({
-          id: `${group.id}:${sub.id}:note`,
-          item: { id: `${sub.id}:note`, name: sub.name || '便签', path: sub.noteContent || sub.note, type: 'note' },
-          groupId: group.id,
-          groupName: group.name,
-          subId: sub.id,
-          subName: sub.name,
-          note: true,
-          score: 0,
-        });
-      }
-    }
-  }
-  return rows;
-}
-
-function scoreRow(row: SearchResult, query: string, settings: GlobalSearchSettings) {
-  if (!query) return 1;
-  const q = normalize(query);
-  const fields: Array<[string, number]> = [];
-  if (settings.searchInName) fields.push([row.item.name || '', 8]);
-  if (settings.searchInPath) fields.push([row.item.path || '', 3]);
-  if (settings.searchInUrl) fields.push([row.item.type === 'url' ? row.item.path || '' : '', 4]);
-  if (settings.searchInGroup) fields.push([row.groupName || '', 2]);
-  if (settings.searchInSubGroup) fields.push([row.subName || '', 2]);
-
-  let score = 0;
-  for (const [raw, weight] of fields) {
-    const value = normalize(raw);
-    if (!value) continue;
-    if (value === q) score += 100 * weight;
-    else if (value.startsWith(q)) score += 40 * weight;
-    else if (value.includes(q)) score += 12 * weight;
-    else {
-      // very small fuzzy support: all chars appear in order
-      let j = 0;
-      for (const ch of value) if (ch === q[j]) j++;
-      if (j === q.length) score += 2 * weight;
-    }
-  }
-  return score;
-}
-
-function highlight(text: string, query: string, enabled: boolean) {
-  if (!enabled || !query.trim()) return text;
-  const idx = text.toLowerCase().indexOf(query.toLowerCase());
-  if (idx < 0) return text;
-  return <>{text.slice(0, idx)}<mark>{text.slice(idx, idx + query.length)}</mark>{text.slice(idx + query.length)}</>;
-}
-
-function getSearchIconTarget(item: ShortcutLike, mode: GlobalSearchSettings['iconResolveMode']): { direct?: string; command?: IconResolveCommand; path?: string } {
-  const rawIcon = item.icon?.trim();
+function getSearchIconTarget(item: ShortcutItem, mode: GlobalSearchSettings['iconResolveMode']): { direct?: string; command?: IconResolveCommand; path?: string } {
+  const rawIcon = typeof item.icon === 'string' ? item.icon.trim() : '';
   if (rawIcon) {
     if (isDirectImageSource(rawIcon)) return { direct: rawIcon };
-    const command = chooseIconResolveCommand(rawIcon, false, mode);
-    return { command, path: rawIcon };
+    return { command: chooseIconResolveCommand(rawIcon, false, mode), path: rawIcon };
   }
-  if (item.type !== 'url' && item.path?.trim()) return { command: chooseIconResolveCommand(item.path.trim(), true, mode), path: item.path.trim() };
+  const itemPath = typeof item.path === 'string' ? item.path.trim() : '';
+  if (item.type !== 'url' && itemPath) return { command: chooseIconResolveCommand(itemPath, true, mode), path: itemPath };
   return {};
 }
 
-const ResultIcon = memo(function ResultIcon({ item, size, mode }: { item: ShortcutLike; size: number; mode: GlobalSearchSettings['iconResolveMode'] }) {
+const ResultItemIcon = memo(function ResultItemIcon({ item, size, mode }: { item: ShortcutItem; size: number; mode: GlobalSearchSettings['iconResolveMode'] }) {
   const holderRef = useRef<HTMLDivElement>(null);
   const target = useMemo(() => getSearchIconTarget(item, mode), [item.id, item.icon, item.path, item.type, mode]);
   const [visible, setVisible] = useState(false);
-  const [icon, setIcon] = useState(() => {
-    if (target.direct) return target.direct;
-    if (target.command && target.path) return getCachedIcon(target.command, target.path);
-    return undefined;
-  });
+  const [icon, setIcon] = useState(() => target.direct || (target.command && target.path ? getCachedIcon(target.command, target.path) : undefined));
 
   useEffect(() => {
     const element = holderRef.current;
@@ -143,14 +54,18 @@ const ResultIcon = memo(function ResultIcon({ item, size, mode }: { item: Shortc
       return;
     }
     const root = element.closest('.global-search-results');
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        setVisible(true);
-        observer.disconnect();
-      }
-    }, { root, rootMargin: '160px 0px' });
-    observer.observe(element);
-    return () => observer.disconnect();
+    try {
+      const observer = new IntersectionObserver((records) => {
+        if (records.some((record) => record.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      }, { root, rootMargin: '160px 0px' });
+      observer.observe(element);
+      return () => observer.disconnect();
+    } catch {
+      setVisible(true);
+    }
   }, [item.id]);
 
   useEffect(() => {
@@ -159,20 +74,17 @@ const ResultIcon = memo(function ResultIcon({ item, size, mode }: { item: Shortc
       setIcon(target.direct);
       return;
     }
-    if (!target.command || !target.path) {
-      setIcon(undefined);
-      return;
-    }
+    if (!target.command || !target.path || !visible) return;
     const cached = getCachedIcon(target.command, target.path);
     if (cached) {
       setIcon(cached);
       return;
     }
-    if (!visible) return;
-    setIcon(undefined);
-    resolveIconDataUrl(target.command, target.path).then((next) => {
-      if (!cancelled && next) setIcon(next);
-    });
+    resolveIconDataUrl(target.command, target.path)
+      .then((next) => {
+        if (!cancelled && next) setIcon(next);
+      })
+      .catch(() => undefined);
     return () => { cancelled = true; };
   }, [target.direct, target.command, target.path, visible]);
 
@@ -180,109 +92,178 @@ const ResultIcon = memo(function ResultIcon({ item, size, mode }: { item: Shortc
     <div ref={holderRef} className="global-search-icon-holder" style={{ width: size, height: size }}>
       {icon
         ? <img className="global-search-icon-img" src={icon} width={size} height={size} alt="" loading="lazy" decoding="async" />
-        : <div className="global-search-icon-fallback" style={{ width: size, height: size }}>{item.type === 'folder' ? '📁' : item.type === 'url' ? '↗' : '◇'}</div>}
+        : <FileText size={Math.max(16, size - 8)} />}
     </div>
   );
 });
 
-export function GlobalSearchModal({ open, groups, settings: settingsPatch, onClose, onLocate, onOpenItem }: GlobalSearchModalProps) {
-  const settings = { ...DEFAULT_GLOBAL_SEARCH_SETTINGS, ...settingsPatch };
+const KIND_LABELS: Record<PaletteEntryKind, string> = {
+  item: '项目', group: '父目录', directory: '子目录', note: '便签', setting: '设置', command: '命令', theme: '主题', font: '字体',
+};
 
-  useEffect(() => {
-    setIconParallelTasks(settings.iconParallelTasks ?? 6);
-  }, [settings.iconParallelTasks]);
+function KindIcon({ entry, size, mode }: { entry: PaletteEntry; size: number; mode: GlobalSearchSettings['iconResolveMode'] }) {
+  if (entry.kind === 'item' && entry.item) return <ResultItemIcon item={entry.item} size={size} mode={mode} />;
+  const iconSize = Math.max(16, size - 7);
+  const icon = entry.kind === 'group' || entry.kind === 'directory' ? <Folder size={iconSize} />
+    : entry.kind === 'note' ? <StickyNote size={iconSize} />
+      : entry.kind === 'setting' ? <Settings size={iconSize} />
+        : entry.kind === 'theme' ? <Palette size={iconSize} />
+          : entry.kind === 'font' ? <Type size={iconSize} />
+            : <CommandIcon size={iconSize} />;
+  return <div className={`global-search-kind-icon kind-${entry.kind}`} style={{ width: size, height: size }}>{icon}</div>;
+}
+
+function highlightText(text: string, query: string, enabled: boolean) {
+  if (!enabled || !query.trim()) return text;
+  const normalized = query.trim().toLowerCase();
+  const index = text.toLowerCase().indexOf(normalized);
+  if (index < 0) return text;
+  return <>{text.slice(0, index)}<mark>{text.slice(index, index + normalized.length)}</mark>{text.slice(index + normalized.length)}</>;
+}
+
+export function GlobalSearchModal({ open, entries, usage, settings: settingsPatch, onClose, onExecute }: GlobalSearchModalProps) {
+  const closeShortcut = useAppStore((state) => state.shortcuts.closeOverlay);
+  const settings = useMemo(() => normalizeGlobalSearchSettings(settingsPatch), [settingsPatch]);
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [active, setActive] = useState(0);
+  const [executing, setExecuting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const wheelLockRef = useRef(false);
-  const wheelUnlockTimerRef = useRef<number | null>(null);
+  const activeRowRef = useRef<HTMLDivElement>(null);
 
-  const allRows = useMemo(() => flattenGroups(groups, settings), [groups, settings.includeNotes, settings.includeSystemTools]);
-  const rows = useMemo(() => {
-    const scored = allRows
-      .map((row) => ({ ...row, score: scoreRow(row, query, settings) }))
-      .filter((row) => row.score > 0)
-      .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name, 'zh-Hans-CN'));
-    return scored.slice(0, settings.maxResults);
-  }, [allRows, query, settings.maxResults, settings.searchInName, settings.searchInPath, settings.searchInUrl, settings.searchInGroup, settings.searchInSubGroup, settings.highlightMatches]);
+  useEffect(() => setIconParallelTasks(settings.iconParallelTasks ?? 6), [settings.iconParallelTasks]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query), Math.max(0, settings.debounceMs));
+    return () => window.clearTimeout(timer);
+  }, [query, settings.debounceMs]);
+
+  const rows = useMemo(
+    () => searchPaletteEntries(entries, debouncedQuery, settings, usage),
+    [entries, debouncedQuery, settings, usage],
+  );
 
   useEffect(() => {
     if (!open) return;
-    window.setTimeout(() => inputRef.current?.focus(), 30);
+    setQuery('');
+    setDebouncedQuery('');
     setActive(0);
+    setExecuting(false);
+    window.setTimeout(() => inputRef.current?.focus(), 30);
   }, [open]);
-
-  useEffect(() => setActive(0), [query]);
-
-  useEffect(() => () => {
-    if (wheelUnlockTimerRef.current !== null) window.clearTimeout(wheelUnlockTimerRef.current);
-  }, []);
+  useEffect(() => setActive(0), [debouncedQuery]);
+  useEffect(() => setActive((value) => rows.length ? Math.min(value, rows.length - 1) : 0), [rows.length]);
+  useEffect(() => {
+    const row = activeRowRef.current;
+    if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+  }, [active]);
 
   if (!open || !settings.enabled) return null;
 
-  async function openItem(row: SearchResult) {
-    if (onOpenItem) await onOpenItem(row.item);
-    else await invoke('launch_item', { path: row.item.path, asAdmin: false });
-    onClose();
+  async function requestExecute(entry: PaletteEntry, alternate = false) {
+    if (executing) return;
+    setExecuting(true);
+    try {
+      await onExecute(entry, alternate);
+    } finally {
+      setExecuting(false);
+    }
   }
 
-  function locate(row: SearchResult) {
-    onLocate?.(row.groupId, row.subId, row.item.id);
-    onClose();
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (shortcutMatchesEvent(closeShortcut, event.nativeEvent)) {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActive((value) => rows.length ? (value + 1) % rows.length : 0);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActive((value) => rows.length ? (value - 1 + rows.length) % rows.length : 0);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setActive(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      setActive(Math.max(0, rows.length - 1));
+    } else if (event.key === 'Enter' && rows[active]) {
+      event.preventDefault();
+      void requestExecute(rows[active], event.ctrlKey);
+    }
   }
 
   return (
-    <div className="global-search-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="global-search-modal" role="dialog" aria-label="全局搜索">
+    <div className="global-search-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="global-search-modal" role="dialog" aria-label="全局命令面板" aria-modal="true">
         <div className="global-search-input-row">
-          <span className="global-search-lens">⌕</span>
+          <Search size={21} className="global-search-lens" />
           <input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') onClose();
-              if (e.key === 'ArrowDown') { e.preventDefault(); setActive((v) => Math.min(v + 1, rows.length - 1)); }
-              if (e.key === 'ArrowUp') { e.preventDefault(); setActive((v) => Math.max(v - 1, 0)); }
-              if (e.key === 'Enter' && rows[active]) {
-                e.preventDefault();
-                const action = e.ctrlKey ? settings.ctrlEnterAction : settings.enterAction;
-                action === 'locate' ? locate(rows[active]) : openItem(rows[active]);
-              }
-            }}
-            placeholder={settings.placeholder}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={settings.placeholder || '搜索项目、父目录、子目录、拼音或命令'}
+            aria-label="搜索项目、父目录、子目录、设置或命令，支持拼音"
+            autoComplete="off"
+            spellCheck={false}
           />
-          <span className="global-search-count">{rows.length}</span>
-          <button className="global-search-close" onClick={onClose}>×</button>
+          {query && <button type="button" className="global-search-clear" onClick={() => setQuery('')} title="清空搜索"><X size={15} /></button>}
+          <span className="global-search-count" title="匹配结果数">{rows.length}</span>
+          <button type="button" className="global-search-close" onClick={onClose} title="关闭"><X size={16} /></button>
         </div>
-        <div
-          className="global-search-results"
-          onWheel={() => {
-            wheelLockRef.current = true;
-            if (wheelUnlockTimerRef.current !== null) window.clearTimeout(wheelUnlockTimerRef.current);
-            wheelUnlockTimerRef.current = window.setTimeout(() => { wheelLockRef.current = false; }, 140);
-          }}
-        >
-          {rows.map((row, idx) => (
+
+        <div className="global-search-context-bar">
+          <span>{query ? `搜索“${query}”` : '最近使用与常用入口'}</span>
+          <span>支持模糊匹配{settings.enablePinyin ? ' · 完整拼音 · 拼音首字母' : ''}</span>
+        </div>
+
+        <div className="global-search-results" role="listbox" aria-label="搜索结果">
+          {rows.map((row, index) => (
             <div
               key={row.id}
-              className={`global-search-row ${idx === active ? 'active' : ''}`}
-              onMouseEnter={() => { if (!wheelLockRef.current && idx !== active) setActive(idx); }}
-              onDoubleClick={() => openItem(row)}
+              ref={index === active ? activeRowRef : undefined}
+              className={`global-search-row ${index === active ? 'active' : ''} ${row.dangerous ? 'dangerous' : ''}`}
+              role="option"
+              aria-selected={index === active}
+              onMouseEnter={() => setActive(index)}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setActive(index)}
+              onDoubleClick={() => void requestExecute(row)}
             >
-              {settings.showItemIcon && <ResultIcon item={row.item} size={settings.iconSize} mode={settings.iconResolveMode} />}
+              {settings.showItemIcon && <KindIcon entry={row} size={settings.iconSize} mode={settings.iconResolveMode} />}
               <div className="global-search-main">
-                <div className="global-search-title">{highlight(row.item.name, query, settings.highlightMatches)}</div>
-                {settings.showGroupPath && <div className="global-search-group">{row.groupName} / {row.subName}</div>}
-                {settings.showFullPath && <div className="global-search-path">{highlight(row.item.path || '', query, settings.highlightMatches)}</div>}
+                <div className="global-search-title-row">
+                  <div className="global-search-title">{highlightText(row.title, query, settings.highlightMatches)}</div>
+                  {settings.showResultType && <span className={`global-search-kind kind-${row.kind}`}>{KIND_LABELS[row.kind]}</span>}
+                  {row.dangerous && <span className="global-search-danger-badge"><AlertTriangle size={12} />确认</span>}
+                </div>
+                {settings.showGroupPath && <div className="global-search-group">{highlightText(row.subtitle, query, settings.highlightMatches)}</div>}
+                {settings.showFullPath && row.detail && <div className="global-search-path">{highlightText(row.detail, query, settings.highlightMatches)}</div>}
               </div>
               <div className="global-search-actions">
-                <button onClick={() => locate(row)}>定位</button>
-                <button className="primary" onClick={() => openItem(row)}>打开</button>
+                <button type="button" className="primary" disabled={executing} onClick={(event) => { event.stopPropagation(); void requestExecute(row); }}>
+                  {row.kind === 'item' ? '打开' : '执行'}
+                </button>
               </div>
             </div>
           ))}
-          {rows.length === 0 && <div className="global-search-empty">没有找到匹配项目</div>}
+          {!rows.length && (
+            <div className="global-search-empty">
+              <Search size={30} />
+              <strong>没有找到匹配内容</strong>
+              <span>试试中文、完整拼音或首字母，例如“gongzuo / gz”“wenjianjia / wjj”“liulanqi / llq”。</span>
+              <button type="button" className="btn-secondary btn-compact" onClick={() => setQuery('')}>显示常用入口</button>
+            </div>
+          )}
+        </div>
+
+        <div className="global-search-footer">
+          <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+          <span><kbd>Enter</kbd> 执行</span>
+          <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> 项目备用动作</span>
+          <span><kbd>Esc</kbd> 关闭</span>
         </div>
       </div>
     </div>

@@ -1,0 +1,54 @@
+Yue launcher v0.1.103 - validation report
+Date: 2026-08-10
+
+PASS - Version consistency
+  package.json: 0.1.103
+  src-tauri/tauri.conf.json: 0.1.103
+  src-tauri/Cargo.toml: 0.1.103
+
+PASS - Pure TypeScript strict compile
+  safeJdbParser.ts
+  importCenter.ts
+  importSnapshot.ts
+  quickSettings.ts
+  settingsSearch.ts
+  settingsSearchIndex.ts
+  id.ts / types.ts / v16Types.ts dependencies
+
+PASS - Changed TSX syntax transpilation
+  SettingsPanel.tsx
+  DataSettingsSection.tsx
+  ImportCenterDialog.tsx
+  QuickSettingsMenu.tsx
+  TopBar.tsx
+
+PASS - Manual smoke tests
+  - Maye static JDB parses with leading // and /* */ comments
+  - single quotes and trailing commas parse
+  - Math/globalThis executable expressions are rejected
+  - __proto__ prototype-pollution key is rejected
+  - Windows path case/slash normalization matches equivalent paths
+  - import preview identifies added + duplicate + conflicting items
+  - conflict policy “both” preserves current and imported item
+  - detailed settings search finds rollback entry
+  - rollback snapshot localStorage fallback saves and loads in a Node mock environment
+
+PASS - Unsafe execution scan
+  No Function(...) or eval(...) calls remain under src/ and src-tauri/.
+
+NOT RUN - Full npm/Vitest/Vite verify
+  The execution environment has no installed node_modules. `npm ci` cannot complete because
+  the configured package registry returns HTTP 404 for zustand@5.0.14. This is an environment/
+  dependency-fetch limitation rather than a TypeScript test failure. The added Vitest source tests
+  are included in src/lib/__tests__/ for normal local/CI execution.
+
+NOT RUN - Tauri/Rust Windows build
+  Cargo/Rust toolchain is unavailable in this container. Native edge docking code was intentionally
+  left functionally unchanged; only the Cargo package version changed. A Windows machine should run:
+    npm ci
+    npm run verify
+    npm run tauri:build
+
+Recommended Windows regression focus:
+  Lucy DB + icon.db import; Maye JDB import; all 3 conflict policies; large-config snapshot/rollback;
+  quick settings persistence and drag reorder; search jump/highlight; existing four-edge docking.

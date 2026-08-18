@@ -1,0 +1,13 @@
+Yue launcher v82 validation results
+
+Completed static checks:
+- TypeScript/TSX syntax transpilation: passed for 114 source files
+- Adaptive settings bounds tests expanded from 4 to 7 cases
+- Experience migration test added for per-category scroll position memory
+- Version fields updated to v82 / 0.1.82
+- Persisted configuration version updated to 13
+
+Environment limitation:
+- npm dependency installation could not complete because both the internal npm mirror and the public npm registry were temporarily unavailable.
+- Full Vitest, TypeScript semantic typecheck and Vite production build were therefore not run in this environment.
+- Run `npm ci` followed by `npm run verify` on a machine with npm registry access before producing the final EXE.

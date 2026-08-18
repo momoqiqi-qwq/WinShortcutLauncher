@@ -1,0 +1,59 @@
+v0.1.110 Pinyin Search Expansion - validation summary
+====================================================
+
+PASS  TypeScript syntax transpile
+      162 TS/TSX implementation files checked
+      0 syntax errors
+
+PASS  Core strict TypeScript check
+      tsc --noEmit --strict on pinyin/search core and dependent data modules:
+      - src/lib/pinyinSyllables.ts
+      - src/lib/pinyinSearch.ts
+      - src/lib/settingsPinyinAliases.ts
+      - src/lib/settingsSearch.ts
+      - src/lib/settingsSearchIndex.ts
+      - src/lib/itemExperience.ts
+      - src/lib/commandPalette.ts
+      - related catalog/theme/type modules
+
+PASS  Runtime pinyin smoke test
+      - 工作 -> gongzuo / gz
+      - 文件夹 -> wenjianjia / wjj
+      - 浏览器 -> liulanqi / llq
+      - 爱奇艺 -> aiqiyi, query ai matches
+      - 重庆 -> chongqing / cq phrase override
+
+PASS  Main project search smoke test
+      - 浏览器
+      - liulanqi
+      - liu
+      - llq
+      - existing path search example/project remains functional
+
+PASS  Global search / command palette smoke test
+      - gz / gongzuo -> 工作 parent directory
+      - wjj / wenjianjia -> 文件夹 child directory
+      - llq / liulanqi -> 浏览器 project
+      - parent-directory and child-directory field toggles were checked independently
+
+PASS  Settings search compatibility
+      Existing static aliases remain in use as an additional alias layer.
+      Shared runtime pinyin matching is now reused by settings search.
+
+PASS  Version consistency
+      package.json               0.1.110
+      package-lock.json          0.1.110
+      src-tauri/Cargo.toml       0.1.110
+      src-tauri/tauri.conf.json  0.1.110
+
+PASS  Dependency policy
+      No new npm runtime dependency was added.
+      Runtime pinyin uses the local generated pinyin table.
+
+NOT RUN  Full npm test/build
+         Project node_modules are not included in the source archive.
+         No claim is made that npm run test/build passed in this sandbox.
+
+NOT RUN  Rust cargo check
+         Functional changes are front-end search logic only; Rust code was not changed
+         apart from the application version metadata.

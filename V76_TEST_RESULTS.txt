@@ -1,0 +1,11 @@
+Yue launcher v76 verification
+
+- npm run test: passed
+- Test files: 12 passed
+- Tests: 44 passed
+- npm run typecheck: passed
+- npm run build: passed
+- Vite production build: passed
+- Persisted store version: 7
+- Package version: 0.1.76
+- Rust/Tauri native build: not run in this environment

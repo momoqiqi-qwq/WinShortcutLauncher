@@ -16,8 +16,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
   AnimateWindow, FindWindowW, GetCursorPos, GetWindowLongW, GetWindowRect, IsWindowVisible,
   SetLayeredWindowAttributes, SetWindowLongW, SetWindowPos, ShowWindow, AW_BLEND, AW_HIDE,
   AW_HOR_NEGATIVE, AW_HOR_POSITIVE, AW_SLIDE, AW_VER_NEGATIVE, AW_VER_POSITIVE, GWL_EXSTYLE,
-  HWND_TOPMOST, LWA_ALPHA, SW_HIDE, SW_SHOWNA, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER,
-  SWP_SHOWWINDOW, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_TOOLWINDOW,
+  HWND_TOPMOST, LWA_ALPHA, SW_HIDE, SW_SHOWNA, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+  SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, WS_EX_APPWINDOW, WS_EX_LAYERED,
+  WS_EX_TOOLWINDOW,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -37,6 +38,12 @@ pub struct NativeEdgeOptions {
   pub auto_edge_hide: bool,
   #[serde(default = "default_auto_edge_bounce")]
   pub auto_edge_bounce: bool,
+  #[serde(default = "default_auto_edge_snap_back")]
+  pub auto_edge_snap_back: bool,
+  #[serde(default = "default_auto_edge_snap_back_animation")]
+  pub auto_edge_snap_back_animation: bool,
+  #[serde(default = "default_auto_edge_snap_back_animation_ms")]
+  pub auto_edge_snap_back_animation_ms: u32,
   #[serde(default = "default_auto_edge_hide_delay")]
   pub auto_edge_hide_delay: u64,
   #[serde(default = "default_edge_visible_pixels")]
@@ -53,6 +60,9 @@ fn default_animation_style() -> String { "animate-window".into() }
 fn default_true() -> bool { true }
 fn default_auto_edge_hide() -> bool { true }
 fn default_auto_edge_bounce() -> bool { true }
+fn default_auto_edge_snap_back() -> bool { false }
+fn default_auto_edge_snap_back_animation() -> bool { true }
+fn default_auto_edge_snap_back_animation_ms() -> u32 { 220 }
 fn default_auto_edge_hide_delay() -> u64 { 1000 }
 fn default_edge_visible_pixels() -> i32 { 5 }
 fn default_ghost_frame_fix() -> bool { true }
@@ -72,6 +82,9 @@ impl Default for NativeEdgeOptions {
       dock_auto_hide: true,
       auto_edge_hide: true,
       auto_edge_bounce: true,
+      auto_edge_snap_back: false,
+      auto_edge_snap_back_animation: true,
+      auto_edge_snap_back_animation_ms: 220,
       auto_edge_hide_delay: 1000,
       edge_visible_pixels: 5,
       ghost_frame_fix: true,
@@ -112,6 +125,8 @@ static STARTED: AtomicBool = AtomicBool::new(false);
 static FORCE_SHOW: AtomicBool = AtomicBool::new(false);
 static ANIMATION_RUNNING: AtomicBool = AtomicBool::new(false);
 static NATIVE_SUSPEND_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
+static TRAY_HIDDEN: AtomicBool = AtomicBool::new(false);
+static EXTERNAL_SHOW_RESET: AtomicBool = AtomicBool::new(false);
 static CONFIG_VERSION: AtomicU64 = AtomicU64::new(1);
 static SETTINGS: OnceLock<Arc<Mutex<NativeEdgeOptions>>> = OnceLock::new();
 
@@ -166,7 +181,7 @@ fn cursor_pos() -> Option<(i32, i32)> {
 fn monitor_rect_near(rect: SimpleRect) -> SimpleRect {
   let win_rect = RECT { left: rect.x, top: rect.y, right: rect.right(), bottom: rect.bottom() };
   let hmon = unsafe { MonitorFromRect(&win_rect, MONITOR_DEFAULTTONEAREST) };
-  if hmon != 0 {
+  if !hmon.is_null() {
     let mut mi = MONITORINFO {
       cbSize: std::mem::size_of::<MONITORINFO>() as u32,
       rcMonitor: RECT { left: 0, top: 0, right: 0, bottom: 0 },
@@ -184,6 +199,42 @@ fn monitor_rect_near(rect: SimpleRect) -> SimpleRect {
     }
   }
   SimpleRect { x: 0, y: 0, w: 1920, h: 1080 }
+}
+
+#[cfg(target_os = "windows")]
+fn monitor_full_rect_near(rect: SimpleRect) -> SimpleRect {
+  let win_rect = RECT { left: rect.x, top: rect.y, right: rect.right(), bottom: rect.bottom() };
+  let hmon = unsafe { MonitorFromRect(&win_rect, MONITOR_DEFAULTTONEAREST) };
+  if !hmon.is_null() {
+    let mut mi = MONITORINFO {
+      cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+      rcMonitor: RECT { left: 0, top: 0, right: 0, bottom: 0 },
+      rcWork: RECT { left: 0, top: 0, right: 0, bottom: 0 },
+      dwFlags: 0,
+    };
+    let ok = unsafe { GetMonitorInfoW(hmon, &mut mi) };
+    if ok != 0 {
+      return SimpleRect {
+        x: mi.rcMonitor.left,
+        y: mi.rcMonitor.top,
+        w: mi.rcMonitor.right - mi.rcMonitor.left,
+        h: mi.rcMonitor.bottom - mi.rcMonitor.top,
+      };
+    }
+  }
+  SimpleRect { x: 0, y: 0, w: 1920, h: 1080 }
+}
+
+#[cfg(target_os = "windows")]
+fn hide_monitor_rect_for(edge: Edge, rect: SimpleRect, work_mon: SimpleRect) -> SimpleRect {
+  // Bottom edge is the only direction where the taskbar/work-area boundary can leave
+  // a thick visible band above the taskbar. Use the physical monitor bottom for the
+  // hidden target while keeping normal restore/edge detection on the work area.
+  if edge == Edge::Bottom {
+    monitor_full_rect_near(rect)
+  } else {
+    work_mon
+  }
 }
 
 #[cfg(target_os = "windows")]
@@ -271,6 +322,15 @@ fn start_position_slide(hwnd: HWND, from: SimpleRect, to: SimpleRect, ms: u32) -
   })
 }
 
+#[cfg(target_os = "windows")]
+fn start_snap_back_slide(hwnd: HWND, from: SimpleRect, to: SimpleRect, ms: u32) -> bool {
+  let hwnd_raw = hwnd as isize;
+  start_animation(move || {
+    let hwnd = hwnd_raw as HWND;
+    setwindowpos_slide_with_easing(hwnd, from, to, ms, false, SlideEasing::Back);
+  })
+}
+
 
 #[cfg(target_os = "windows")]
 fn is_left_button_down() -> bool {
@@ -299,19 +359,28 @@ fn aw_show_flag(edge: Edge) -> u32 {
 
 #[cfg(target_os = "windows")]
 
-fn keep_taskbar_visible(hwnd: HWND) {
-  if hwnd == 0 { return; }
+fn keep_out_of_taskbar(hwnd: HWND) {
+  if hwnd.is_null() { return; }
   unsafe {
     let style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
-    let next = (style | WS_EX_APPWINDOW) & !WS_EX_TOOLWINDOW;
+    let next = (style | WS_EX_TOOLWINDOW) & !WS_EX_APPWINDOW;
     if next != style {
       SetWindowLongW(hwnd, GWL_EXSTYLE, next as i32);
+      SetWindowPos(
+        hwnd,
+        std::ptr::null_mut(),
+        0,
+        0,
+        0,
+        0,
+        SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+      );
     }
   }
 }
 
 fn move_window(hwnd: HWND, rect: SimpleRect, topmost: bool, show: bool) {
-  let z = if topmost { HWND_TOPMOST } else { 0 };
+  let z: HWND = if topmost { HWND_TOPMOST } else { std::ptr::null_mut() };
   let mut flags = SWP_NOACTIVATE | SWP_NOOWNERZORDER;
   if !topmost { flags |= SWP_NOZORDER; }
   if show { flags |= SWP_SHOWWINDOW; }
@@ -342,16 +411,20 @@ fn offscreen_rect_for(edge: Edge, rect: SimpleRect) -> SimpleRect {
 }
 
 #[cfg(target_os = "windows")]
-fn force_hide_and_park(hwnd: HWND, edge: Edge, rect: SimpleRect, _ghost_frame_fix: bool) {
-  // 不再使用 SW_HIDE 隐藏主窗口。主窗口一旦被真正 Hide，Windows 任务栏图标会消失。
-  // 现在改为把主窗口停放到屏幕外并保持可见，这样贴边隐藏时任务栏图标仍然保留。
-  let parked = offscreen_rect_for(edge, rect);
-  keep_taskbar_visible(hwnd);
+fn force_hide_and_park(hwnd: HWND, edge: Edge, rect: SimpleRect, ghost_frame_fix: bool) {
   unsafe {
+    ShowWindow(hwnd, SW_HIDE);
+    // Reset alpha in case the previous animation used AW_BLEND / layered alpha.
     SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
-    ShowWindow(hwnd, SW_SHOWNA);
   }
-  move_window(hwnd, parked, false, true);
+
+  if ghost_frame_fix {
+    // Some transparent WebView windows can leave a small DWM/AnimateWindow frame at the
+    // last visible position.  Parking the hidden native window fully outside the edge
+    // keeps the saved restore rect intact while forcing Windows to stop painting it.
+    let parked = offscreen_rect_for(edge, rect);
+    move_window(hwnd, parked, false, false);
+  }
 }
 
 #[cfg(target_os = "windows")]
@@ -502,27 +575,51 @@ fn normalize_animation_style(style: &str) -> &str {
 #[cfg(target_os = "windows")]
 fn animate_hide_impl(hwnd: HWND, edge: Edge, rect: SimpleRect, ms: u32, style: &str, ghost_frame_fix: bool) {
   let ms = ms.clamp(0, 260);
-  let target = offscreen_rect_for(edge, rect);
-  keep_taskbar_visible(hwnd);
-
   match normalize_animation_style(style) {
-    "instant" => {
-      move_window(hwnd, target, false, true);
-      unsafe { ShowWindow(hwnd, SW_SHOWNA); }
+    "instant" => unsafe {
+      ShowWindow(hwnd, SW_HIDE);
+    },
+    "setwindowpos" => {
+      let target = offscreen_rect_for(edge, rect);
+      setwindowpos_slide_with_easing(hwnd, rect, target, ms, true, SlideEasing::Quint);
     }
-    "setwindowpos-linear" => setwindowpos_slide_with_easing(hwnd, rect, target, ms, false, SlideEasing::Linear),
-    "setwindowpos-cubic" => setwindowpos_slide_with_easing(hwnd, rect, target, ms, false, SlideEasing::Cubic),
-    "setwindowpos-back" => setwindowpos_slide_with_easing(hwnd, rect, target, ms, false, SlideEasing::Back),
-    "setwindowpos" | "fade-slide" | "fade" => {
-      setwindowpos_slide_with_easing(hwnd, rect, target, ms, false, SlideEasing::Quint);
+    "setwindowpos-linear" => {
+      let target = offscreen_rect_for(edge, rect);
+      setwindowpos_slide_with_easing(hwnd, rect, target, ms, true, SlideEasing::Linear);
     }
-    _ => {
-      // AnimateWindow 的 AW_HIDE 会让任务栏图标消失，所以默认动画也改成可见窗口滑出屏幕。
-      setwindowpos_slide_with_easing(hwnd, rect, target, ms, false, SlideEasing::Quint);
+    "setwindowpos-cubic" => {
+      let target = offscreen_rect_for(edge, rect);
+      setwindowpos_slide_with_easing(hwnd, rect, target, ms, true, SlideEasing::Cubic);
     }
+    "setwindowpos-back" => {
+      let target = offscreen_rect_for(edge, rect);
+      setwindowpos_slide_with_easing(hwnd, rect, target, ms, true, SlideEasing::Back);
+    }
+    "fade-slide" => {
+      let target = offscreen_rect_for(edge, rect);
+      fade_slide(hwnd, rect, target, ms, true, SlideEasing::Cubic);
+    }
+    "fade" => unsafe {
+      ensure_layered(hwnd);
+      if ms <= 10 {
+        ShowWindow(hwnd, SW_HIDE);
+      } else {
+        AnimateWindow(hwnd, ms, AW_HIDE | AW_BLEND);
+        ShowWindow(hwnd, SW_HIDE);
+      }
+      SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+    },
+    _ => unsafe {
+      if ms <= 10 {
+        ShowWindow(hwnd, SW_HIDE);
+      } else {
+        AnimateWindow(hwnd, ms, aw_hide_flag(edge));
+      }
+    },
   }
-
-  force_hide_and_park(hwnd, edge, rect, ghost_frame_fix);
+  if ghost_frame_fix {
+    force_hide_and_park(hwnd, edge, rect, true);
+  }
 }
 
 #[cfg(target_os = "windows")]
@@ -645,7 +742,7 @@ fn animate_show(hwnd: HWND, edge: Edge, rect: SimpleRect, ms: u32, style: &str) 
 #[cfg(target_os = "windows")]
 fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
   const AUTO_EDGE_THRESHOLD: i32 = 20;
-  const AUTO_BOUNCE_MS: u32 = 200;
+  const AUTO_BOUNCE_MS: u32 = 420;
 
   #[derive(Debug)]
   enum Mode {
@@ -660,8 +757,8 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
   let mut dock_since: Option<Instant> = None;
   let mut auto_overflow_edge: Option<Edge> = None;
   let mut auto_overflow_since: Option<Instant> = None;
-  let mut cached_main: HWND = 0;
-  let mut cached_strip: HWND = 0;
+  let mut cached_main: HWND = std::ptr::null_mut();
+  let mut cached_strip: HWND = std::ptr::null_mut();
   let mut last_lookup = Instant::now() - Duration::from_secs(10);
   let mut last_config_version = CONFIG_VERSION.load(Ordering::SeqCst);
   let mut last_good_visible_rect: Option<SimpleRect> = None;
@@ -671,15 +768,43 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
   loop {
     let cfg = config.lock().map(|g| g.clone()).unwrap_or_default();
 
-    if last_lookup.elapsed() > Duration::from_millis(700) || cached_main == 0 || cached_strip == 0 {
-      cached_main = find_window_by_title("Yue Launcher");
-      if cached_main != 0 { keep_taskbar_visible(cached_main); }
+    if last_lookup.elapsed() > Duration::from_millis(700) || cached_main.is_null() || cached_strip.is_null() {
+      cached_main = find_window_by_title("Yue launcher");
+      if !cached_main.is_null() { keep_out_of_taskbar(cached_main); }
       cached_strip = find_window_by_title("edge-strip");
       last_lookup = Instant::now();
     }
 
-    if native_suspended() && cached_main != 0 {
-      if cached_strip != 0 { hide_strip(cached_strip); }
+    // When the app is explicitly hidden to the system tray, edge docking must stay dormant.
+    // This prevents the strip/edge state machine from re-showing or parking the main window.
+    if TRAY_HIDDEN.load(Ordering::SeqCst) {
+      if !cached_strip.is_null() { hide_strip(cached_strip); }
+      mode = Mode::Visible;
+      dock_since = None;
+      last_edge = None;
+      auto_overflow_edge = None;
+      auto_overflow_since = None;
+      reveal_hold_until = None;
+      reveal_requires_cursor_exit = false;
+      thread::sleep(Duration::from_millis(80));
+      continue;
+    }
+
+    // A tray restore owns the window geometry. Clear any stale edge-hidden restore rect before
+    // the regular suspended/force-show paths can act on it.
+    if EXTERNAL_SHOW_RESET.swap(false, Ordering::SeqCst) {
+      if !cached_strip.is_null() { hide_strip(cached_strip); }
+      mode = Mode::Visible;
+      dock_since = None;
+      last_edge = None;
+      auto_overflow_edge = None;
+      auto_overflow_since = None;
+      reveal_hold_until = None;
+      reveal_requires_cursor_exit = false;
+    }
+
+    if native_suspended() && !cached_main.is_null() {
+      if !cached_strip.is_null() { hide_strip(cached_strip); }
       if !animation_busy() {
         match mode {
           Mode::Hidden { main_rect, .. } => {
@@ -708,18 +833,18 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
       continue;
     }
 
-    if !cfg.enabled || cfg.paused || cached_main == 0 || cached_strip == 0 {
-      if cached_strip != 0 { hide_strip(cached_strip); }
+    if !cfg.enabled || cfg.paused || cached_main.is_null() || cached_strip.is_null() {
+      if !cached_strip.is_null() { hide_strip(cached_strip); }
       match mode {
         Mode::Hidden { main_rect, .. } => {
-          if cached_main != 0 {
+          if !cached_main.is_null() {
             move_window(cached_main, main_rect, true, true);
             unsafe { ShowWindow(cached_main, SW_SHOWNA); }
             last_good_visible_rect = Some(main_rect);
           }
         }
         Mode::AutoHidden { restore_rect, .. } => {
-          if cached_main != 0 {
+          if !cached_main.is_null() {
             move_window(cached_main, restore_rect, true, true);
             unsafe { ShowWindow(cached_main, SW_SHOWNA); }
             last_good_visible_rect = Some(restore_rect);
@@ -747,7 +872,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
           reveal_requires_cursor_exit = true;
           mode = Mode::OpenedByStrip { edge, main_rect, shown_at: Instant::now(), entered_main: false };
         }
-        Mode::AutoHidden { restore_rect, hidden_rect, .. } => {
+        Mode::AutoHidden { edge, restore_rect, hidden_rect, .. } => {
           hide_strip(cached_strip);
           let from = rect_from_hwnd(cached_main).unwrap_or(hidden_rect);
           if start_position_slide(cached_main, from, restore_rect, AUTO_BOUNCE_MS) {
@@ -861,14 +986,44 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
           last_good_visible_rect = Some(current_rect);
         }
 
+        // 触发条展开后，鼠标仍停在窗口内时绝不再次隐藏；必须先离开主窗口。
+        // 这能修复底部贴边时“刚弹出又收回、反复闪烁”的问题。
+        if reveal_requires_cursor_exit && inside_main {
+          mode = Mode::OpenedByStrip { edge, main_rect: current_rect, shown_at, entered_main };
+          thread::sleep(Duration::from_millis(12));
+          continue;
+        }
+        if reveal_requires_cursor_exit && !inside_main {
+          reveal_requires_cursor_exit = false;
+        }
+
         // 防止第一次从触发条展开时，因为鼠标坐标/透明窗口命中检测抖动而马上缩回。
         // 必须先进入过主窗口，并且展开后经过短暂保护时间，才允许离开后隐藏。
-        let can_hide_after_reveal = entered_main && shown_at.elapsed() > Duration::from_millis(1200);
+        let leave_guard_ms = if cfg.mouse_leave_hide_ms <= 10 { 0 } else { 80 };
+        let can_hide_after_reveal = entered_main && shown_at.elapsed() > Duration::from_millis(leave_guard_ms);
         if !inside_main && can_hide_after_reveal {
-          let strip_rect = strip_rect_for(edge, current_rect, mon, cfg.strip_size);
-          show_strip(cached_strip, strip_rect);
-          animate_hide(cached_main, edge, current_rect, cfg.mouse_leave_hide_ms, &cfg.animation_style, cfg.ghost_frame_fix);
-          mode = Mode::Hidden { edge, main_rect: current_rect, strip_rect, must_exit_strip: false };
+          if cfg.use_main_window_strip {
+            hide_strip(cached_strip);
+            let visible = cfg.edge_visible_pixels.max(cfg.strip_size).clamp(2, 48);
+            let hide_mon = hide_monitor_rect_for(edge, current_rect, mon);
+            let hidden_rect = auto_hidden_rect_for(edge, current_rect, hide_mon, visible);
+            let visible_rect = auto_visible_rect_for(edge, hidden_rect, hide_mon, visible);
+            let inside_visible = visible_rect.contains(cx, cy);
+            if edge == Edge::Bottom && cfg.mouse_leave_hide_ms <= 12 {
+              move_window(cached_main, hidden_rect, true, true);
+              mode = Mode::AutoHidden { edge, restore_rect: current_rect, hidden_rect, visible_rect, must_exit_visible: inside_visible || edge == Edge::Bottom };
+            } else if start_position_slide(cached_main, current_rect, hidden_rect, cfg.mouse_leave_hide_ms.min(220)) {
+              mode = Mode::AutoHidden { edge, restore_rect: current_rect, hidden_rect, visible_rect, must_exit_visible: inside_visible || edge == Edge::Bottom };
+            } else {
+              mode = Mode::OpenedByStrip { edge, main_rect: current_rect, shown_at, entered_main };
+            }
+          } else {
+            let hide_mon = hide_monitor_rect_for(edge, current_rect, mon);
+            let strip_rect = strip_rect_for(edge, current_rect, hide_mon, cfg.strip_size);
+            show_strip(cached_strip, strip_rect);
+            animate_hide(cached_main, edge, current_rect, cfg.mouse_leave_hide_ms, &cfg.animation_style, cfg.ghost_frame_fix);
+            mode = Mode::Hidden { edge, main_rect: current_rect, strip_rect, must_exit_strip: false };
+          }
         } else {
           mode = Mode::OpenedByStrip { edge, main_rect: current_rect, shown_at, entered_main };
         }
@@ -920,34 +1075,66 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
           reveal_requires_cursor_exit = false;
         }
 
-        // 拖出屏幕自动隐藏/回弹：支持多显示器和 DPI 缩放，使用 Win32 物理像素坐标。
-        // 与普通贴边隐藏相互独立；即使鼠标左键仍按下，也会实时检测拖出阈值。
+        // 拖出屏幕自动隐藏/弹回：支持多显示器和 DPI 缩放，使用 Win32 物理像素坐标。
+        // 当鼠标仍在 exe 界面内时，不进入隐藏模式，避免拖动窗口时刚松手就被隐藏。
         if cfg.auto_edge_hide {
           if let Some(edge) = detect_overflow_edge(main_rect, mon, AUTO_EDGE_THRESHOLD) {
-            if Some(edge) != auto_overflow_edge {
-              auto_overflow_edge = Some(edge);
-              auto_overflow_since = Some(Instant::now());
+            if is_left_button_down() {
+              auto_overflow_edge = None;
+              auto_overflow_since = None;
+              thread::sleep(Duration::from_millis(10));
+              continue;
             }
-            let elapsed = auto_overflow_since.map(|t| t.elapsed()).unwrap_or_default();
-            if elapsed.as_millis() as u64 >= cfg.auto_edge_hide_delay {
-              hide_strip(cached_strip);
-              let restore_rect = restore_rect_for(edge, main_rect, mon);
-              let hidden_rect = auto_hidden_rect_for(edge, restore_rect, mon, cfg.edge_visible_pixels);
-              let visible_rect = auto_visible_rect_for(edge, hidden_rect, mon, cfg.edge_visible_pixels);
-              let inside_visible = visible_rect.contains(cx, cy);
-              if start_position_slide(cached_main, main_rect, hidden_rect, AUTO_BOUNCE_MS) {
-                mode = Mode::AutoHidden {
-                  edge,
-                  restore_rect,
-                  hidden_rect,
-                  visible_rect,
-                  must_exit_visible: inside_visible,
-                };
-                dock_since = None;
-                last_edge = None;
-                auto_overflow_edge = None;
-                auto_overflow_since = None;
-                continue;
+            if main_rect.contains(cx, cy) && !cfg.auto_edge_snap_back {
+              auto_overflow_edge = None;
+              auto_overflow_since = None;
+            } else {
+              if Some(edge) != auto_overflow_edge {
+                auto_overflow_edge = Some(edge);
+                auto_overflow_since = Some(Instant::now());
+              }
+              let elapsed = auto_overflow_since.map(|t| t.elapsed()).unwrap_or_default();
+              if elapsed.as_millis() as u64 >= cfg.auto_edge_hide_delay {
+                hide_strip(cached_strip);
+                let restore_rect = restore_rect_for(edge, main_rect, mon);
+                if cfg.auto_edge_snap_back {
+                  if restore_rect.x != main_rect.x || restore_rect.y != main_rect.y {
+                    let ms = cfg.auto_edge_snap_back_animation_ms.clamp(80, 600).min(AUTO_BOUNCE_MS);
+                    if !cfg.auto_edge_snap_back_animation || ms <= 10 {
+                      move_window(cached_main, restore_rect, true, true);
+                    } else {
+                      start_snap_back_slide(cached_main, main_rect, restore_rect, ms);
+                    }
+                    last_good_visible_rect = Some(restore_rect);
+                    reveal_hold_until = Some(Instant::now() + Duration::from_millis(900));
+                    reveal_requires_cursor_exit = true;
+                  }
+                  dock_since = None;
+                  last_edge = None;
+                  auto_overflow_edge = None;
+                  auto_overflow_since = None;
+                  thread::sleep(Duration::from_millis(16));
+                  continue;
+                }
+
+                let hide_mon = hide_monitor_rect_for(edge, restore_rect, mon);
+                let hidden_rect = auto_hidden_rect_for(edge, restore_rect, hide_mon, cfg.edge_visible_pixels);
+                let visible_rect = auto_visible_rect_for(edge, hidden_rect, hide_mon, cfg.edge_visible_pixels);
+                let inside_visible = visible_rect.contains(cx, cy);
+                if start_position_slide(cached_main, main_rect, hidden_rect, AUTO_BOUNCE_MS) {
+                  mode = Mode::AutoHidden {
+                    edge,
+                    restore_rect,
+                    hidden_rect,
+                    visible_rect,
+                    must_exit_visible: inside_visible || edge == Edge::Bottom,
+                  };
+                  dock_since = None;
+                  last_edge = None;
+                  auto_overflow_edge = None;
+                  auto_overflow_since = None;
+                  continue;
+                }
               }
             }
           } else {
@@ -960,6 +1147,18 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
         }
 
         hide_strip(cached_strip);
+
+        // 只要鼠标仍在主界面内，就保持贴边窗口展开。
+        // 这同时覆盖“点击按钮后不要自动隐藏”和“鼠标停在界面内不要缩回”两种交互：
+        // 点击期间不会启动隐藏计时，松开后只要指针还在窗口里也不会重新计时。
+        // 等鼠标真正离开主窗口后，才从头开始计算 edge hide delay。
+        if main_rect.contains(cx, cy) {
+          dock_since = None;
+          last_edge = None;
+          thread::sleep(Duration::from_millis(12));
+          continue;
+        }
+
         if is_left_button_down() {
           dock_since = None;
           last_edge = None;
@@ -993,16 +1192,31 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
             // 这样隐藏后的可见区域属于主窗口本身，不会出现透明 WebView 触发条/残影框。
             hide_strip(cached_strip);
             let visible = cfg.edge_visible_pixels.max(cfg.strip_size).clamp(2, 48);
-            let hidden_rect = auto_hidden_rect_for(edge, main_rect, mon, visible);
-            let visible_rect = auto_visible_rect_for(edge, hidden_rect, mon, visible);
+            let hide_mon = hide_monitor_rect_for(edge, main_rect, mon);
+            let hidden_rect = auto_hidden_rect_for(edge, main_rect, hide_mon, visible);
+            let visible_rect = auto_visible_rect_for(edge, hidden_rect, hide_mon, visible);
             let inside_visible = visible_rect.contains(cx, cy);
-            if start_position_slide(cached_main, main_rect, hidden_rect, cfg.animation_ms.max(45).min(220)) {
+            if edge == Edge::Bottom && cfg.animation_ms <= 12 {
+              move_window(cached_main, hidden_rect, true, true);
               mode = Mode::AutoHidden {
                 edge,
                 restore_rect: main_rect,
                 hidden_rect,
                 visible_rect,
-                must_exit_visible: inside_visible,
+                must_exit_visible: inside_visible || edge == Edge::Bottom,
+              };
+              dock_since = None;
+              last_edge = None;
+              auto_overflow_edge = None;
+              auto_overflow_since = None;
+              continue;
+            } else if start_position_slide(cached_main, main_rect, hidden_rect, cfg.animation_ms.min(220)) {
+              mode = Mode::AutoHidden {
+                edge,
+                restore_rect: main_rect,
+                hidden_rect,
+                visible_rect,
+                must_exit_visible: inside_visible || edge == Edge::Bottom,
               };
               dock_since = None;
               last_edge = None;
@@ -1011,10 +1225,11 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
               continue;
             }
           } else {
-            let strip_rect = strip_rect_for(edge, main_rect, mon, cfg.strip_size);
+            let hide_mon = hide_monitor_rect_for(edge, main_rect, mon);
+            let strip_rect = strip_rect_for(edge, main_rect, hide_mon, cfg.strip_size);
             show_strip(cached_strip, strip_rect);
             let inside_strip = strip_rect.contains(cx, cy);
-            keep_taskbar_visible(cached_main);
+            keep_out_of_taskbar(cached_main);
             animate_hide(cached_main, edge, main_rect, cfg.animation_ms, &cfg.animation_style, cfg.ghost_frame_fix);
             mode = Mode::Hidden { edge, main_rect, strip_rect, must_exit_strip: inside_strip };
             dock_since = None;
@@ -1048,6 +1263,23 @@ pub fn edge_native_configure(options: NativeEdgeOptions) -> Result<(), String> {
     }
   }
   Ok(())
+}
+
+pub fn set_tray_hidden(hidden: bool) {
+  TRAY_HIDDEN.store(hidden, Ordering::SeqCst);
+  if hidden {
+    FORCE_SHOW.store(false, Ordering::SeqCst);
+  } else {
+    EXTERNAL_SHOW_RESET.store(true, Ordering::SeqCst);
+  }
+}
+
+pub fn prepare_tray_show(ms: u64) {
+  TRAY_HIDDEN.store(false, Ordering::SeqCst);
+  EXTERNAL_SHOW_RESET.store(true, Ordering::SeqCst);
+  FORCE_SHOW.store(false, Ordering::SeqCst);
+  let until = now_millis().saturating_add(ms.max(250));
+  NATIVE_SUSPEND_UNTIL_MS.store(until, Ordering::SeqCst);
 }
 
 #[tauri::command]

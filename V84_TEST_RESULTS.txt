@@ -1,0 +1,22 @@
+Yue launcher V84 验证结果
+========================
+
+已通过：
+1. 118 个 TypeScript/TSX 文件语法转译检查。
+2. 核心 TypeScript 严格类型检查：uiScale、itemExperience、windowBounds、normalizers。
+3. 离线行为断言：
+   - 界面缩放不会低于 1.00，也不会高于 1.80。
+   - 单击模式只响应左键 pointer-up；双击模式只响应 double-click。
+   - 修饰键、右键和拖动释放不会误启动。
+   - 低于 720 x 520 的历史窗口状态会恢复为默认 1180 x 880。
+   - launchMode 非法配置会安全回退为双击模式。
+4. package.json、package-lock.json、tauri.conf.json JSON 格式检查。
+5. 版本号一致性检查：0.1.84。
+6. 最终压缩包完整性检查。
+
+未完成：
+- npm test / npm run build：当前执行环境的 npm 依赖源持续超时或返回 503，无法完整安装依赖。
+- cargo check / Windows 安装包构建：当前容器没有 Rust/Cargo 和 Windows Tauri 构建环境。
+
+说明：
+源码逻辑、语法、配置和关键回归均已离线验证；建议在 Windows 开发机执行 npm ci && npm run verify && npm run tauri:build 做最终平台构建。

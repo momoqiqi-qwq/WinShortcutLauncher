@@ -1,0 +1,39 @@
+Yue launcher v0.1.104 - performance optimization validation
+
+Version consistency:
+  package.json: 0.1.104
+  package-lock.json root: 0.1.104
+  src-tauri/tauri.conf.json: 0.1.104
+  src-tauri/Cargo.toml: 0.1.104
+  AboutSettingsSection: 0.1.104
+
+Completed checks:
+  PASS - changed TS/TSX files transpile successfully with TypeScript transpileModule
+  PASS - ItemCard no longer registers per-card window pointerup/pointercancel/mouseup/blur listeners
+  PASS - shared pointer reset hub contains one global listener group
+  PASS - ShortcutGrid no longer preloads all item icons on directory render
+  PASS - ItemCard icon resolution is guarded by IntersectionObserver visibility
+  PASS - selected item lookup uses Set in grid render/keyboard navigation
+  PASS - Rainbow cursor mousemove path is requestAnimationFrame throttled and cursor position does not use React state
+  PASS - command palette normalization/pinyin conversions use bounded caches
+  PASS - icon cache LRU index writes are batched and persistent misses are memoized
+  PASS - persistence layer performs top-level shallow change detection and buffered localStorage writes
+  PASS - persistence flush hooks exist for pagehide / beforeunload / visibility hidden
+  PASS - Image Browser thumbnail data loading is guarded by viewport visibility
+  PASS - Image Browser native image reads share bounded cache/inflight de-duplication
+  PASS - Image Browser resize/crop pointer hot paths are requestAnimationFrame throttled
+
+Environment limitation:
+  Full npm test/build could not be run because the configured package mirror returns 404 for zustand-5.0.14.tgz.
+  A direct registry retry was unavailable in the current container environment.
+  The global TypeScript compiler cannot perform a full project typecheck without installed React/Zustand/Tauri dependencies.
+  Rust/Tauri Windows runtime behavior should be verified on a Windows development machine.
+
+Recommended Windows regression:
+  - large directory initial render and scrolling
+  - single click / double click / long press drag sorting
+  - icon loading while scrolling rapidly
+  - settings sliders and persistence after app restart
+  - rainbow cursor/trail at high mouse polling rate
+  - global search with large item sets
+  - image browser with hundreds of images: open, fast scroll, resize and crop

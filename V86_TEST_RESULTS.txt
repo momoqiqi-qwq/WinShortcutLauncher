@@ -1,0 +1,13 @@
+Yue launcher v0.1.86 validation
+
+Passed:
+1. Parsed 118 TypeScript/TSX source files with the TypeScript parser: 0 syntax errors.
+2. JSON files parsed successfully.
+3. Relative source import paths resolved successfully.
+4. Settings CSS brace-balance check passed.
+5. package.json, package-lock.json, Cargo.toml, tauri.conf.json and HelpSettingsSection version values are consistent at 0.1.86.
+6. showSettingsDescriptions type/default/normalizer/panel/toggle wiring checks passed.
+7. Runtime assertions for showSettingsDescriptions default, false persistence and invalid-value fallback passed.
+
+Not run:
+- npm test / npm run build. The configured npm registry returned HTTP 503 while dependencies were being installed, so full dependency-based Vitest and Vite validation was unavailable in this environment.

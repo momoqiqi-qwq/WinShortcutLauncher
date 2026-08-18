@@ -1,0 +1,26 @@
+v0.1.107 static verification
+============================
+
+PASS: 152 TypeScript / TSX files parsed with TypeScript parser, 0 syntax failures.
+PASS: package.json parsed successfully.
+PASS: package-lock.json parsed successfully.
+PASS: src-tauri/tauri.conf.json parsed successfully.
+PASS: version synchronized to 0.1.107 in package.json, package-lock.json, Cargo.toml and tauri.conf.json.
+PASS: urlOpenMode defaults to 'default' and normalizes unsupported values back to 'default'.
+PASS: foreground-browser mode is only passed for URL shortcut items; ordinary files/folders use default launch behavior.
+PASS: direct launch_item callers were updated with urlOpenMode='default'.
+PASS: foreground browser detection has automatic default-browser fallback.
+PASS: minimized browser windows and the Yue launcher process itself are skipped during foreground-browser lookup.
+
+LIMITATION: Rust/Cargo toolchain is not installed in this execution environment, so cargo check / native Windows compilation could not be run here.
+LIMITATION: node_modules is not bundled in the source archive, so the full project npm test/build suite was not executed in this environment.
+
+Recommended Windows regression checks:
+1. default browser mode opens URL exactly as v0.1.106 did;
+2. Chrome foreground + Yue launcher click -> URL opens in Chrome;
+3. Edge foreground + Yue launcher click -> URL opens in Edge;
+4. foreground app is not a browser but browser is immediately behind launcher -> nearest visible browser is selected;
+5. all supported browsers minimized -> fallback to Windows default browser;
+6. unsupported browser foreground -> fallback to Windows default browser;
+7. file/folder/command shortcuts are unaffected;
+8. old config without behavior.urlOpenMode loads as 'default'.

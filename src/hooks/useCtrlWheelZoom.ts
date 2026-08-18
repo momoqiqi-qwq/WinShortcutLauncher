@@ -1,16 +1,9 @@
 import { useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
+import { UI_SCALE_STEP, normalizeUiScale } from '../lib/uiScale';
 
-const MIN_SCALE = 0.65;
-const MAX_SCALE = 1.8;
-const STEP = 0.05;
-
-function clamp(value: number) {
-  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value));
-}
-
-function roundScale(value: number) {
-  return Math.round(value * 100) / 100;
+function nextScale(current: number, direction: -1 | 1) {
+  return normalizeUiScale(current + direction * UI_SCALE_STEP, current);
 }
 
 function isSettingsTarget(target: EventTarget | null, event?: WheelEvent | KeyboardEvent) {
@@ -29,9 +22,11 @@ function isSettingsTarget(target: EventTarget | null, event?: WheelEvent | Keybo
 }
 
 export function useCtrlWheelZoom() {
-  const mainUiScale = useAppStore((state) => state.display.mainUiScale ?? state.display.uiScale ?? 1);
-  const settingsUiScale = useAppStore((state) => state.display.settingsUiScale ?? state.display.uiScale ?? 1);
+  const rawMainUiScale = useAppStore((state) => state.display.mainUiScale ?? state.display.uiScale ?? 1);
+  const rawSettingsUiScale = useAppStore((state) => state.display.settingsUiScale ?? state.display.uiScale ?? 1);
   const updateDisplay = useAppStore((state) => state.updateDisplay);
+  const mainUiScale = normalizeUiScale(rawMainUiScale);
+  const settingsUiScale = normalizeUiScale(rawSettingsUiScale);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--main-ui-scale', String(mainUiScale));
@@ -43,33 +38,47 @@ export function useCtrlWheelZoom() {
   }, [mainUiScale, settingsUiScale]);
 
   useEffect(() => {
+    function applyScale(targetSettings: boolean, next: number) {
+      if (targetSettings) updateDisplay({ settingsUiScale: normalizeUiScale(next) });
+      else updateDisplay({ mainUiScale: normalizeUiScale(next), uiScale: normalizeUiScale(next) });
+    }
+
     function handleWheel(event: WheelEvent) {
       if (!(event.ctrlKey || event.metaKey)) return;
       event.preventDefault();
       event.stopPropagation();
 
       const state = useAppStore.getState();
-      const direction = event.deltaY < 0 ? 1 : -1;
-      if (isSettingsTarget(event.target, event)) {
-        const current = state.display.settingsUiScale ?? state.display.uiScale ?? 1;
-        const next = roundScale(clamp(current + direction * STEP));
-        if (next !== current) updateDisplay({ settingsUiScale: next });
-        return;
-      }
-
-      const current = state.display.mainUiScale ?? state.display.uiScale ?? 1;
-      const next = roundScale(clamp(current + direction * STEP));
-      if (next !== current) updateDisplay({ mainUiScale: next, uiScale: next });
+      const direction: -1 | 1 = event.deltaY < 0 ? 1 : -1;
+      const targetSettings = isSettingsTarget(event.target, event);
+      const current = targetSettings
+        ? normalizeUiScale(state.display.settingsUiScale ?? state.display.uiScale ?? 1)
+        : normalizeUiScale(state.display.mainUiScale ?? state.display.uiScale ?? 1);
+      const next = nextScale(current, direction);
+      if (next !== current) applyScale(targetSettings, next);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (!(event.ctrlKey || event.metaKey)) return;
-      if (event.key !== '0') return;
-      event.preventDefault();
-      if (isSettingsTarget(event.target, event)) {
-        updateDisplay({ settingsUiScale: 1 });
-      } else {
-        updateDisplay({ mainUiScale: 1, uiScale: 1 });
+      const targetSettings = isSettingsTarget(event.target, event);
+      const state = useAppStore.getState();
+      const current = targetSettings
+        ? normalizeUiScale(state.display.settingsUiScale ?? state.display.uiScale ?? 1)
+        : normalizeUiScale(state.display.mainUiScale ?? state.display.uiScale ?? 1);
+
+      if (event.key === '0') {
+        event.preventDefault();
+        event.stopPropagation();
+        applyScale(targetSettings, 1);
+        return;
+      }
+
+      if (event.key === '-' || event.key === '_' || event.key === '+' || event.key === '=') {
+        event.preventDefault();
+        event.stopPropagation();
+        const direction: -1 | 1 = event.key === '-' || event.key === '_' ? -1 : 1;
+        const next = nextScale(current, direction);
+        if (next !== current) applyScale(targetSettings, next);
       }
     }
 
@@ -81,3 +90,4 @@ export function useCtrlWheelZoom() {
     };
   }, [updateDisplay]);
 }
+

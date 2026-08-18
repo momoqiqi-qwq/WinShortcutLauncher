@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { DisplaySettings } from '../../types';
 import type { GlobalSearchSettings, TransferStationSettings, ImageBrowserSettings, IconResolveMode } from '../../utils/v16Types';
 import { DEFAULT_GLOBAL_SEARCH_SETTINGS, DEFAULT_TRANSFER_STATION_SETTINGS, DEFAULT_IMAGE_BROWSER_SETTINGS } from '../../utils/v16Types';
+import { useAppStore } from '../../stores/appStore';
+import { formatShortcut } from '../../lib/keyboardShortcuts';
 
 interface SearchProps {
   globalSearch?: Partial<GlobalSearchSettings>;
@@ -22,9 +24,9 @@ interface ImageProps {
 
 interface LegacyProps extends SearchProps, TransferProps {}
 
-function Row({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
+function Row({ title, desc, targetId, children }: { title: string; desc?: string; targetId?: string; children: ReactNode }) {
   return (
-    <label className="settings-row">
+    <label className="settings-row" data-settings-focus={title} data-settings-target={targetId}>
       <span>
         <strong>{title}</strong>
         {desc && <small>{desc}</small>}
@@ -34,7 +36,8 @@ function Row({ title, desc, children }: { title: string; desc?: string; children
   );
 }
 
-function SettingsCollapseBlock({ title, hint, collapsed, onToggle, children }: {
+function SettingsCollapseBlock({ id, title, hint, collapsed, onToggle, children }: {
+  id: string;
   title: string;
   hint?: string;
   collapsed: boolean;
@@ -42,7 +45,7 @@ function SettingsCollapseBlock({ title, hint, collapsed, onToggle, children }: {
   children: ReactNode;
 }) {
   return (
-    <div className="settings-collapse-block">
+    <div className="settings-collapse-block" data-settings-section={id}>
       <button type="button" className="settings-collapse-header" aria-expanded={!collapsed} onClick={onToggle}>
         <span className="settings-collapse-arrow" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
         <span className="settings-collapse-title">{title}</span>
@@ -161,6 +164,7 @@ const iconModeOptions: Array<{ value: IconResolveMode; label: string }> = [
 
 export function SearchSettingsSection({ globalSearch, display, onChangeGlobalSearch, onChangeDisplay }: SearchProps) {
   const search = { ...DEFAULT_GLOBAL_SEARCH_SETTINGS, ...globalSearch };
+  const openSearchShortcut = useAppStore((state) => state.shortcuts.openGlobalSearch);
   const itemIconMode = display?.itemIconResolveMode ?? 'auto';
   const itemIconParallelTasks = display?.iconParallelTasks ?? 6;
   const sectionIds = ['search', 'icons'] as const;
@@ -180,19 +184,23 @@ export function SearchSettingsSection({ globalSearch, display, onChangeGlobalSea
       />
 
       <SettingsCollapseBlock
+        id="search"
         title="全局搜索"
-        hint="右上角搜索图标和 Ctrl+K"
+        hint={`右上角搜索图标和 ${formatShortcut(openSearchShortcut) || "未设置快捷键"}`}
         collapsed={collapsedSections.has('search')}
         onToggle={() => toggleSection('search')}
       >
-        <Row title="启用全局搜索" desc="右上角搜索图标和 Ctrl+K 都会使用这里的设置">
+        <Row title="启用全局搜索" targetId="global-search" desc={`右上角搜索图标和 ${formatShortcut(openSearchShortcut) || "未设置快捷键"} 都会使用这里的设置`}>
           <input type="checkbox" checked={search.enabled} onChange={(e) => onChangeGlobalSearch({ enabled: e.target.checked })} />
         </Row>
-        <Row title="搜索框提示文字">
+        <Row title="搜索框提示文字" desc="同时用于主界面项目搜索框和全局搜索框">
           <input value={search.placeholder} onChange={(e) => onChangeGlobalSearch({ placeholder: e.target.value })} />
         </Row>
         <Row title="最大结果数" desc={`${search.maxResults} 条`}>
           <input type="range" min={20} max={300} step={10} value={search.maxResults} onChange={(e) => onChangeGlobalSearch({ maxResults: Number(e.target.value) })} />
+        </Row>
+        <Row title="搜索输入防抖" targetId="search-debounce" desc={`${search.debounceMs} ms，数值越小响应越快`}>
+          <input type="range" min={0} max={300} step={10} value={search.debounceMs} onChange={(e) => onChangeGlobalSearch({ debounceMs: Number(e.target.value) })} />
         </Row>
         <Row title="结果图标" desc="在每一行左边显示项目图标">
           <input type="checkbox" checked={search.showItemIcon} onChange={(e) => onChangeGlobalSearch({ showItemIcon: e.target.checked })} />
@@ -224,7 +232,20 @@ export function SearchSettingsSection({ globalSearch, display, onChangeGlobalSea
           <label><input type="checkbox" checked={search.searchInGroup} onChange={(e) => onChangeGlobalSearch({ searchInGroup: e.target.checked })} /> 搜索父目录</label>
           <label><input type="checkbox" checked={search.searchInSubGroup} onChange={(e) => onChangeGlobalSearch({ searchInSubGroup: e.target.checked })} /> 搜索子目录</label>
           <label><input type="checkbox" checked={search.includeNotes} onChange={(e) => onChangeGlobalSearch({ includeNotes: e.target.checked })} /> 包含便签</label>
+          <label><input type="checkbox" checked={search.includeDirectories} onChange={(e) => onChangeGlobalSearch({ includeDirectories: e.target.checked })} /> 包含目录</label>
+          <label><input type="checkbox" checked={search.includeSettings} onChange={(e) => onChangeGlobalSearch({ includeSettings: e.target.checked })} /> 包含设置项</label>
+          <label><input type="checkbox" checked={search.includeCommands} onChange={(e) => onChangeGlobalSearch({ includeCommands: e.target.checked })} /> 包含内置功能</label>
+          <label><input type="checkbox" checked={search.includeSystemTools} onChange={(e) => onChangeGlobalSearch({ includeSystemTools: e.target.checked })} /> 包含系统工具</label>
         </div>
+        <Row title="拼音 / 首字母" desc="支持完整拼音和首字母，例如 gongzuo / gz、wenjianjia / wjj、liulanqi / llq">
+          <input type="checkbox" checked={search.enablePinyin} onChange={(e) => onChangeGlobalSearch({ enablePinyin: e.target.checked })} />
+        </Row>
+        <Row title="最近使用优先" desc="空搜索时优先显示收藏和最近执行内容">
+          <input type="checkbox" checked={search.preferRecent} onChange={(e) => onChangeGlobalSearch({ preferRecent: e.target.checked })} />
+        </Row>
+        <Row title="显示结果类型" desc="显示项目、目录、设置、功能等标签">
+          <input type="checkbox" checked={search.showResultType} onChange={(e) => onChangeGlobalSearch({ showResultType: e.target.checked })} />
+        </Row>
         <Row title="回车动作">
           <select value={search.enterAction} onChange={(e) => onChangeGlobalSearch({ enterAction: e.target.value as any })}>
             <option value="open">打开项目</option>
@@ -240,6 +261,7 @@ export function SearchSettingsSection({ globalSearch, display, onChangeGlobalSea
       </SettingsCollapseBlock>
 
       <SettingsCollapseBlock
+        id="icons"
         title="快捷项目图标"
         hint="主界面图标解析与并发"
         collapsed={collapsedSections.has('icons')}
@@ -278,12 +300,13 @@ export function TransferStationSettingsSection({ transferStation, onChangeTransf
       />
 
       <SettingsCollapseBlock
+        id="station"
         title="中转站选项"
         hint="文件拖入与面板显示"
         collapsed={collapsedSections.has('station')}
         onToggle={() => toggleSection('station')}
       >
-        <Row title="启用文件中转站">
+        <Row title="启用文件中转站" targetId="transfer-station">
           <input type="checkbox" checked={station.enabled} onChange={(e) => onChangeTransferStation({ enabled: e.target.checked })} />
         </Row>
         <Row title="面板宽度" desc={`${station.panelWidth}px`}>
@@ -301,8 +324,14 @@ export function TransferStationSettingsSection({ transferStation, onChangeTransf
             <option value="move">移动</option>
           </select>
         </Row>
+        <Row title="显示文件图标" targetId="transfer-show-icon" desc="关闭后中转站列表不再解析和显示文件图标">
+          <input type="checkbox" checked={station.showIcon} onChange={(e) => onChangeTransferStation({ showIcon: e.target.checked })} />
+        </Row>
         <Row title="中转站图标大小" desc={`${station.iconSize}px`}>
-          <input type="range" min={16} max={48} value={station.iconSize} onChange={(e) => onChangeTransferStation({ iconSize: Number(e.target.value) })} />
+          <input type="range" min={16} max={48} value={station.iconSize} onChange={(e) => onChangeTransferStation({ iconSize: Number(e.target.value) })} disabled={!station.showIcon} />
+        </Row>
+        <Row title="清空中转站前确认" targetId="transfer-confirm-clear">
+          <input type="checkbox" checked={station.confirmClear} onChange={(e) => onChangeTransferStation({ confirmClear: e.target.checked })} />
         </Row>
       </SettingsCollapseBlock>
     </section>
@@ -328,12 +357,13 @@ export function ImageBrowserSettingsSection({ imageBrowser, onChangeImageBrowser
       />
 
       <SettingsCollapseBlock
+        id="preview"
         title="面板与预览"
         hint="宽度、缩略图、显示方式"
         collapsed={collapsedSections.has('preview')}
         onToggle={() => toggleSection('preview')}
       >
-        <label className="check-row">
+        <label className="check-row" data-settings-target="image-browser" data-settings-focus="启用右上角图片浏览器">
           <input
             type="checkbox"
             checked={image.enabled}
@@ -373,6 +403,7 @@ export function ImageBrowserSettingsSection({ imageBrowser, onChangeImageBrowser
       </SettingsCollapseBlock>
 
       <SettingsCollapseBlock
+        id="actions"
         title="按钮与拖拽"
         hint="添加、清空、复制与拖出"
         collapsed={collapsedSections.has('actions')}

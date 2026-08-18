@@ -1,0 +1,33 @@
+Yue launcher v0.1.87 validation
+================================
+
+Passed:
+1. Merged v85 and v86 branches with all source conflicts resolved and no conflict markers remaining.
+2. Existing pure-logic regression suite: 64 passed, 0 failed.
+   - The tests were TypeScript-transpiled and executed with a local Vitest-compatible describe/it/expect runner because the npm registry was unavailable.
+3. TypeScript/TSX syntax parsing: 119 source files, 0 parse errors.
+4. Relative source import resolution: 339 imports checked, 0 unresolved.
+5. CSS parsing with PostCSS: 17 files, 0 errors.
+6. JSON parsing: 5 files, 0 errors.
+7. 18 merged-feature contract assertions passed, including:
+   - package/Cargo/Tauri/About versions are all 0.1.87;
+   - About page author, framework and project URL are present;
+   - main window minimum size is 900 x 640 in frontend, Rust and Tauri config;
+   - UI scale supports x0.1 to x1.8 with x0.1 steps;
+   - parent-directory, child-directory and blank-area menus remain separate;
+   - child-directory menu items do not overlap the blank-area menu;
+   - global dialog host and parent merge click propagation fix are present;
+   - settings background remains independent from the main background;
+   - description toggle/default/migration/panel class are wired;
+   - all top-level settings cards are horizontally centered;
+   - segmented labels are protected from single-character wrapping;
+   - settings panel remains fixed and centered.
+
+Environment limitations:
+- Full `npm ci`, `npm run verify` and Vite production build could not run because the configured npm registry returned HTTP 503.
+- `cargo check` and Windows EXE build could not run because Rust/Cargo and a Windows Tauri build environment are not installed in this container.
+
+Recommended Windows verification:
+  npm ci
+  npm run verify
+  npm run tauri:build

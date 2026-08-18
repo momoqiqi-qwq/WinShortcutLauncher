@@ -1,0 +1,14 @@
+Edge hover hold fix checks
+==========================
+
+PASS - Native Visible dock path checks main_rect.contains(cursor) before edge auto-hide countdown.
+PASS - While cursor is inside main window, dock_since and last_edge are reset.
+PASS - After cursor leaves, existing edge detection and hide delay logic runs from a fresh timer.
+PASS - Existing mouse-button-down guard is preserved.
+PASS - Existing OpenedByStrip cursor-inside guard is preserved.
+PASS - No new React mousemove/pointermove state updates or Tauri invoke loop were added.
+PASS - Modified TSX has no TypeScript parser/syntax diagnostics in a focused parse check.
+
+Environment limitation:
+- Rust toolchain (cargo/rustc/rustfmt) is not installed in this execution environment, so a native Cargo compile/fmt check could not be run here.
+- Project node_modules are not bundled, so a full npm build was not run.

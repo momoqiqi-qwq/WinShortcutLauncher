@@ -123,11 +123,12 @@ export function TransferStationPanel({ openPanel, items, settings: settingsPatch
       style={{ width: settings.panelWidth }}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragOver={(e) => { e.preventDefault(); if (!settings.acceptExternalDrops) return; setDragOver(true); }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
+        if (!settings.acceptExternalDrops) return;
         const dropped = Array.from(e.dataTransfer.files).map((file: any) => file.path || file.name).filter(Boolean);
         if (dropped.length) onChange(mergeItems(items, dropped));
       }}
@@ -171,7 +172,7 @@ export function TransferStationPanel({ openPanel, items, settings: settingsPatch
               <span>{item.path}</span>
             </div>
             <button title="复制路径" onClick={() => navigator.clipboard.writeText(item.path)}>⧉</button>
-            <button title="打开" onClick={() => invoke('launch_item', { path: item.path, asAdmin: false })}>↗</button>
+            <button title="打开" onClick={() => invoke('launch_item', { path: item.path, asAdmin: false, urlOpenMode: 'default', specifiedBrowserId: '', specifiedProfileId: '', customBrowsers: [] })}>↗</button>
             <button title="删除" onClick={() => remove(item.id)}>🗑</button>
           </div>
         ))}

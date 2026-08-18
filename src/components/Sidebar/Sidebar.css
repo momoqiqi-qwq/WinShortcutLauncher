@@ -93,3 +93,30 @@
   color: var(--accent);
   font-weight: 800;
 }
+
+.side-tab-label {
+  flex: 1;
+}
+
+.side-tab-count {
+  flex: none;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-2), var(--accent) 8%);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap !important;
+  overflow: visible !important;
+}
+
+.side-tab.active .side-tab-count {
+  background: color-mix(in srgb, var(--accent), transparent 82%);
+  color: var(--accent);
+}

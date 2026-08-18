@@ -1,0 +1,45 @@
+v0.1.94 检查结果
+================
+
+通过的检查
+----------
+1. TypeScript / TSX 语法解析
+   - 使用 TypeScript 5.8.3 对 src 下 126 个 .ts/.tsx 文件逐个解析。
+   - 结果：0 个语法错误。
+
+2. 核心严格类型检查
+   - commandPalette.ts、customCommands.ts、settingsCatalog.ts、fontCatalog.ts、types.ts、主题与搜索类型通过 strict 检查。
+   - appStore 类型、命令切片、配置导入导出、持久化迁移与设置切片通过 strict 检查。
+   - 检查时仅为缺失的外部包提供临时声明；临时声明不写入项目源码。
+
+3. 运行逻辑检查
+   - 验证“全局命令面板 / 设置 / 便签”等中文的拼音首字母。
+   - 验证项目、便签、设置和命令别名搜索。
+   - 验证收藏与最近使用排序。
+   - 验证动作链别名去重、等待时间上限和危险步骤识别。
+
+4. 工程结构检查
+   - 相对 import 路径均存在。
+   - package.json、package-lock.json、tauri.conf.json 可正常解析。
+   - CSS 花括号结构检查通过。
+   - package、Tauri、Cargo、关于页和 README 版本均为 0.1.94。
+
+未能完成的检查
+--------------
+1. npm ci / npm run verify
+   - 当前内部 npm 软件源下载 zustand-5.0.14.tgz 时返回 404。
+   - 因依赖无法完整安装，未声称完整 Vitest、Vite build 或 npm run verify 通过。
+
+2. Windows Tauri 实机构建
+   - 当前环境不是完整 Windows + WebView2 + Rust/Cargo 构建环境。
+   - 应在 Windows 开发机执行 npm ci、npm run verify、npm run tauri:build，并实际检查文件对话框、窗口置顶和项目启动动作。
+
+建议的 Windows 回归步骤
+----------------------
+1. Ctrl+K 打开命令面板，分别搜索项目、子目录、便签正文、设置分类和功能命令。
+2. 输入 qj、sz、bq、qdq 等拼音首字母检查匹配结果。
+3. 创建“切换主题 -> 切换字体 -> 打开目录 -> 启动项目”的动作链并执行预览。
+4. 分别验证“失败立即停止”和“记录失败并继续”。
+5. 添加清除启动统计或恢复默认设置步骤，确认危险操作无法跳过确认。
+6. 收藏命令、执行多次并重新打开 Ctrl+K，检查收藏和最近使用排序。
+7. 导出配置后重新导入，确认自定义命令、别名、收藏和最近使用记录保留。

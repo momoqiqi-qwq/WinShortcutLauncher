@@ -10,7 +10,7 @@ set "LOG=%ROOT%\build.log"
 if exist "%LOG%" del "%LOG%" >nul 2>nul
 
 echo ========================================
-echo Yue Launcher 一键构建
+echo Yue launcher 一键构建
 echo 项目目录: %ROOT%
 echo 日志文件: %LOG%
 echo ========================================
@@ -19,6 +19,8 @@ echo.
 echo [检查] Node.js / npm / Rust / Cargo
 where node >nul 2>nul || goto missing_node
 where npm >nul 2>nul || goto missing_node
+node -e "const [M,m]=process.versions.node.split('.').map(Number);process.exit(M>22||(M===22&&m>=12)||(M===20&&m>=19)?0:1)"
+if errorlevel 1 goto unsupported_node
 where rustc >nul 2>nul || goto missing_rust
 where cargo >nul 2>nul || goto missing_rust
 node -v
@@ -27,20 +29,26 @@ rustc -V
 cargo -V
 
 echo.
-echo [1/3] 安装 / 更新 npm 依赖...
-echo [1/3] npm install>>"%LOG%"
-call npm install >>"%LOG%" 2>&1
+echo [1/4] 按锁定版本安装 npm 依赖...
+echo [1/4] npm ci>>"%LOG%"
+call npm ci >>"%LOG%" 2>&1
 if errorlevel 1 goto error
 
 echo.
-echo [2/3] 构建前端 dist...
-echo [2/3] npm run build>>"%LOG%"
+echo [2/4] 执行自动化回归测试...
+echo [2/4] npm run test>>"%LOG%"
+call npm run test >>"%LOG%" 2>&1
+if errorlevel 1 goto error
+
+echo.
+echo [3/4] 构建前端 dist...
+echo [3/4] npm run build>>"%LOG%"
 call npm run build >>"%LOG%" 2>&1
 if errorlevel 1 goto error
 
 echo.
-echo [3/3] 构建 Tauri EXE / 安装包...
-echo [3/3] npm run tauri:build>>"%LOG%"
+echo [4/4] 构建 Tauri EXE / 安装包...
+echo [4/4] npm run tauri:build>>"%LOG%"
 call npm run tauri:build >>"%LOG%" 2>&1
 if errorlevel 1 goto error
 
@@ -54,8 +62,14 @@ pause
 exit /b 0
 
 :missing_node
-echo [错误] 未找到 Node.js / npm。请安装 Node.js LTS 后重试。
+echo [错误] 未找到 Node.js / npm。请安装 Node.js 20.19+ 或 22.12+ 后重试。
 echo 下载: https://nodejs.org/
+pause
+exit /b 1
+
+:unsupported_node
+echo [错误] 当前 Node.js 版本不受支持。Vite 8 需要 Node.js 20.19+ 或 22.12+。
+node -v
 pause
 exit /b 1
 

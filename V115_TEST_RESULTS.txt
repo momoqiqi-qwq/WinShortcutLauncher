@@ -1,0 +1,34 @@
+Yue launcher v0.1.115 verification
+=================================
+
+PASS - Version metadata updated to 0.1.115:
+  package.json
+  package-lock.json
+  src-tauri/Cargo.toml
+  src-tauri/tauri.conf.json
+
+PASS - TypeScript/TSX syntax transpile check:
+  164 source files checked
+  0 syntax errors
+
+PASS - Precise-jump source assertions:
+  SettingsPanel expands collapsed target sections before locating controls
+  SettingsPanel prefers data-settings-target over text/card fallback
+  Exact targets receive scroll/highlight and keyboard focus
+  All v115 precise target metadata is represented in Settings components
+
+PASS - Pinyin/search runtime smoke assertion:
+  zqd -> 开机自动启动
+  tab=behavior
+  section=launchClose
+  targetId=autostart
+  focusText=开机自启动
+
+PASS - Additional metadata assertion:
+  搜索输入防抖 -> section=search / targetId=search-debounce
+
+NOTE - npm ci did not complete in the execution environment before timeout.
+       A partial dependency tree therefore could not provide a trustworthy full npm run typecheck/test/build result.
+       The partial node_modules directory was removed before packaging.
+
+NOTE - This change is frontend settings-navigation logic only; no Rust behavior was changed.

@@ -18,6 +18,38 @@ export interface ImageBrowserPanelProps {
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|svg|ico|tiff?|avif)$/i;
 const DEFAULT_GROUP_ID = 'default';
+const imageDataCache = new Map<string, string>();
+const imageDataInflight = new Map<string, Promise<string>>();
+const IMAGE_DATA_CACHE_LIMIT = 80;
+
+function rememberImageData(key: string, value: string) {
+  imageDataCache.delete(key);
+  imageDataCache.set(key, value);
+  while (imageDataCache.size > IMAGE_DATA_CACHE_LIMIT) {
+    const oldest = imageDataCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    imageDataCache.delete(oldest);
+  }
+}
+
+function loadImageDataUrl(item: ImageBrowserItem) {
+  if (item.dataUrl?.startsWith('data:image/')) return Promise.resolve(item.dataUrl);
+  const key = item.path.trim();
+  if (!key) return Promise.resolve('');
+  const cached = imageDataCache.get(key);
+  if (cached) return Promise.resolve(cached);
+  const running = imageDataInflight.get(key);
+  if (running) return running;
+  const promise = invoke<string>('read_icon_as_data_url', { path: item.path })
+    .then((value) => {
+      if (value) rememberImageData(key, value);
+      return value || '';
+    })
+    .catch(() => '')
+    .finally(() => imageDataInflight.delete(key));
+  imageDataInflight.set(key, promise);
+  return promise;
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -96,10 +128,9 @@ function groupOf(item: ImageBrowserItem) {
 
 
 type CropRect = { left: number; top: number; width: number; height: number };
+type CropPointer = { x: number; y: number; visible: boolean };
 type ImageContentMetrics = {
   stageRect: DOMRect;
-  stageScrollLeft: number;
-  stageScrollTop: number;
   imageRect: DOMRect;
   selectableRect: { left: number; top: number; width: number; height: number };
   scale: number;
@@ -128,18 +159,21 @@ function getImageContentMetrics(img: HTMLImageElement, fit: ImageBrowserSettings
     ? { left: imageRect.left, top: imageRect.top, width: imageRect.width, height: imageRect.height }
     : { left: imageRect.left + offsetX, top: imageRect.top + offsetY, width: contentWidth, height: contentHeight };
 
-  return { stageRect, stageScrollLeft: stage.scrollLeft, stageScrollTop: stage.scrollTop, imageRect, selectableRect, scale, offsetX, offsetY };
+  return { stageRect, imageRect, selectableRect, scale, offsetX, offsetY };
 }
 
 function cropRectArea(rect?: CropRect | null) {
   return rect ? Math.round(Math.abs(rect.width) * Math.abs(rect.height)) : 0;
 }
 
-function useImageDataUrl(item?: ImageBrowserItem) {
-  const [dataUrl, setDataUrl] = useState<string | undefined>(item?.dataUrl);
+function useImageDataUrl(item?: ImageBrowserItem, enabled = true) {
+  const [dataUrl, setDataUrl] = useState<string | undefined>(() => {
+    if (!item || !enabled) return undefined;
+    return item.dataUrl?.startsWith('data:image/') ? item.dataUrl : imageDataCache.get(item.path.trim());
+  });
   useEffect(() => {
     let cancelled = false;
-    if (!item) {
+    if (!item || !enabled) {
       setDataUrl(undefined);
       return;
     }
@@ -147,24 +181,53 @@ function useImageDataUrl(item?: ImageBrowserItem) {
       setDataUrl(item.dataUrl);
       return;
     }
+    const cached = imageDataCache.get(item.path.trim());
+    if (cached) {
+      setDataUrl(cached);
+      return;
+    }
     setDataUrl(undefined);
-    invoke<string>('read_icon_as_data_url', { path: item.path })
-      .then((value) => { if (!cancelled && value) setDataUrl(value); })
-      .catch(() => { if (!cancelled) setDataUrl(undefined); });
+    loadImageDataUrl(item).then((value) => {
+      if (!cancelled && value) setDataUrl(value);
+    });
     return () => { cancelled = true; };
-  }, [item?.id, item?.path, item?.dataUrl]);
+  }, [enabled, item?.id, item?.path, item?.dataUrl]);
   return dataUrl;
 }
 
 function Thumbnail({ item, selected, width, settings, onSelect }: { item: ImageBrowserItem; selected: boolean; width: number; settings: ImageBrowserSettings; onSelect: () => void }) {
-  const src = useImageDataUrl(item);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [visible, setVisible] = useState(false);
+  const src = useImageDataUrl(item, visible);
   const showName = settings.showFileName && settings.imageNamePosition !== 'hidden';
   const name = <span className={`image-browser-thumb-name ${settings.imageNamePosition}`}>{item.name}</span>;
+
+  useEffect(() => {
+    const element = buttonRef.current;
+    if (!element || typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return;
+    }
+    const root = element.closest('.image-browser-thumbs');
+    try {
+      const observer = new IntersectionObserver((records) => {
+        if (records.some((record) => record.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      }, { root, rootMargin: '240px 0px' });
+      observer.observe(element);
+      return () => observer.disconnect();
+    } catch {
+      setVisible(true);
+    }
+  }, [item.id]);
+
   return (
-    <button className={`image-browser-thumb ${selected ? 'active' : ''} name-${settings.imageNamePosition}`} style={{ width }} onClick={onSelect} title={item.path} data-no-drag>
+    <button ref={buttonRef} className={`image-browser-thumb ${selected ? 'active' : ''} name-${settings.imageNamePosition}`} style={{ width }} onClick={onSelect} title={item.path} data-no-drag>
       {showName && settings.imageNamePosition === 'top' && name}
       <div className="image-browser-thumb-frame">
-        {src ? <img src={src} alt="" draggable={false} /> : <span>图片</span>}
+        {src ? <img src={src} alt="" draggable={false} loading="lazy" decoding="async" /> : <span>图片</span>}
         {showName && settings.imageNamePosition === 'inside' && name}
       </div>
       {showName && settings.imageNamePosition === 'bottom' && name}
@@ -185,8 +248,11 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
   const [imageNameDraft, setImageNameDraft] = useState('');
   const [cropMode, setCropMode] = useState(false);
   const [cropRect, setCropRect] = useState<CropRect | null>(null);
+  const [cropPointer, setCropPointer] = useState<CropPointer | null>(null);
   const cropDraggingRef = useRef(false);
   const previewImageRef = useRef<HTMLImageElement | null>(null);
+  const cropHoverFrameRef = useRef<number | null>(null);
+  const cropHoverPointRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const activeItem = useMemo(() => groupItems.find((item) => item.id === activeId) ?? groupItems[0], [activeId, groupItems]);
   const previewSrc = useImageDataUrl(activeItem);
   const visiblePaths = useMemo(() => groupItems.map((item) => item.path), [groupItems]);
@@ -201,7 +267,12 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
     setImageNameDraft(activeItem?.name ?? '');
     setCropMode(false);
     setCropRect(null);
+    setCropPointer(null);
   }, [activeItem?.id]);
+
+  useEffect(() => () => {
+    if (cropHoverFrameRef.current !== null) window.cancelAnimationFrame(cropHoverFrameRef.current);
+  }, []);
 
   useEffect(() => {
     if (!openPanel || !settings.acceptExternalDrops) return;
@@ -258,14 +329,28 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
     event.stopPropagation();
     const startX = event.clientX;
     const startWidth = settings.panelWidth;
+    let frame: number | null = null;
+    let pendingWidth = startWidth;
+    let lastCommitted = startWidth;
     document.body.classList.add('image-browser-resizing');
 
+    const commit = () => {
+      frame = null;
+      const rounded = Math.round(pendingWidth);
+      if (rounded === Math.round(lastCommitted)) return;
+      lastCommitted = rounded;
+      updateSettings({ panelWidth: rounded });
+    };
+
     function handleMove(moveEvent: PointerEvent) {
-      const nextWidth = clamp(startWidth + (startX - moveEvent.clientX), 180, 10000);
-      updateSettings({ panelWidth: Math.round(nextWidth) });
+      pendingWidth = clamp(startWidth + (startX - moveEvent.clientX), 180, 10000);
+      if (frame === null) frame = window.requestAnimationFrame(commit);
     }
 
     function handleUp() {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = null;
+      commit();
       document.body.classList.remove('image-browser-resizing');
       window.removeEventListener('pointermove', handleMove, true);
       window.removeEventListener('pointerup', handleUp, true);
@@ -280,15 +365,29 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
     event.stopPropagation();
     const startX = event.clientX;
     const startWidth = settings.thumbnailPaneWidth;
+    const maxPane = Math.max(48, settings.panelWidth - 80);
+    let frame: number | null = null;
+    let pendingWidth = startWidth;
+    let lastCommitted = startWidth;
     document.body.classList.add('image-browser-resizing');
 
+    const commit = () => {
+      frame = null;
+      const rounded = Math.round(pendingWidth);
+      if (rounded === Math.round(lastCommitted)) return;
+      lastCommitted = rounded;
+      updateSettings({ thumbnailPaneWidth: rounded });
+    };
+
     function handleMove(moveEvent: PointerEvent) {
-      const maxPane = Math.max(48, settings.panelWidth - 80);
-      const nextWidth = clamp(startWidth + (moveEvent.clientX - startX), 48, maxPane);
-      updateSettings({ thumbnailPaneWidth: Math.round(nextWidth) });
+      pendingWidth = clamp(startWidth + (moveEvent.clientX - startX), 48, maxPane);
+      if (frame === null) frame = window.requestAnimationFrame(commit);
     }
 
     function handleUp() {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = null;
+      commit();
       document.body.classList.remove('image-browser-resizing');
       window.removeEventListener('pointermove', handleMove, true);
       window.removeEventListener('pointerup', handleUp, true);
@@ -356,7 +455,8 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
     setCropMode((value) => {
       if (value) {
         setCropRect(null);
-          }
+        setCropPointer(null);
+      }
       return !value;
     });
   }
@@ -365,31 +465,39 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
     if (!cropMode || !previewImageRef.current) return null;
     const metrics = getImageContentMetrics(previewImageRef.current, settings.previewFit);
     if (!metrics) return null;
-    const { selectableRect } = metrics;
+    const { stageRect, selectableRect } = metrics;
     const x = clamp(event.clientX, selectableRect.left, selectableRect.left + selectableRect.width);
     const y = clamp(event.clientY, selectableRect.top, selectableRect.top + selectableRect.height);
+    const inside = event.clientX >= selectableRect.left && event.clientX <= selectableRect.left + selectableRect.width
+      && event.clientY >= selectableRect.top && event.clientY <= selectableRect.top + selectableRect.height;
+    const next = { x: x - stageRect.left, y: y - stageRect.top, visible: inside || cropDraggingRef.current };
+    setCropPointer(next);
     return { ...metrics, x, y };
   }
 
   function handleCropPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    updateCropPointerFromEvent(event);
+    cropHoverPointRef.current = { clientX: event.clientX, clientY: event.clientY };
+    if (cropHoverFrameRef.current !== null) return;
+    cropHoverFrameRef.current = window.requestAnimationFrame(() => {
+      cropHoverFrameRef.current = null;
+      const point = cropHoverPointRef.current;
+      if (point) updateCropPointerFromEvent(point);
+    });
   }
 
   function startCrop(event: ReactPointerEvent<HTMLDivElement>) {
     if (!cropMode || !previewImageRef.current) return;
     const metrics = getImageContentMetrics(previewImageRef.current, settings.previewFit);
     if (!metrics) return;
-    const { stageRect, stageScrollLeft, stageScrollTop, selectableRect } = metrics;
+    const { stageRect, selectableRect } = metrics;
     if (
       event.clientX < selectableRect.left ||
       event.clientX > selectableRect.left + selectableRect.width ||
       event.clientY < selectableRect.top ||
       event.clientY > selectableRect.top + selectableRect.height
     ) return;
-    const startClientX = clamp(event.clientX, selectableRect.left, selectableRect.left + selectableRect.width);
-    const startClientY = clamp(event.clientY, selectableRect.top, selectableRect.top + selectableRect.height);
-    const startStageX = startClientX - stageRect.left + stageScrollLeft;
-    const startStageY = startClientY - stageRect.top + stageScrollTop;
+    const startX = clamp(event.clientX, selectableRect.left, selectableRect.left + selectableRect.width);
+    const startY = clamp(event.clientY, selectableRect.top, selectableRect.top + selectableRect.height);
     const stageEl = event.currentTarget;
     const pointerId = event.pointerId;
 
@@ -397,22 +505,34 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
     event.stopPropagation();
     cropDraggingRef.current = true;
     stageEl.setPointerCapture?.(pointerId);
-    setCropRect({ left: startStageX, top: startStageY, width: 0, height: 0 });
+    setCropPointer({ x: startX - stageRect.left, y: startY - stageRect.top, visible: true });
+    setCropRect({ left: startX - stageRect.left, top: startY - stageRect.top, width: 0, height: 0 });
+
+    let dragFrame: number | null = null;
+    let pendingX = startX;
+    let pendingY = startY;
+
+    const commitCropDrag = () => {
+      dragFrame = null;
+      setCropPointer({ x: pendingX - stageRect.left, y: pendingY - stageRect.top, visible: true });
+      setCropRect({
+        left: Math.min(startX, pendingX) - stageRect.left,
+        top: Math.min(startY, pendingY) - stageRect.top,
+        width: Math.abs(pendingX - startX),
+        height: Math.abs(pendingY - startY),
+      });
+    };
 
     function handleMove(moveEvent: PointerEvent) {
-      const nextClientX = clamp(moveEvent.clientX, selectableRect.left, selectableRect.left + selectableRect.width);
-      const nextClientY = clamp(moveEvent.clientY, selectableRect.top, selectableRect.top + selectableRect.height);
-      const nextStageX = nextClientX - stageRect.left + stageScrollLeft;
-      const nextStageY = nextClientY - stageRect.top + stageScrollTop;
-      setCropRect({
-        left: Math.min(startStageX, nextStageX),
-        top: Math.min(startStageY, nextStageY),
-        width: Math.abs(nextStageX - startStageX),
-        height: Math.abs(nextStageY - startStageY),
-      });
+      pendingX = clamp(moveEvent.clientX, selectableRect.left, selectableRect.left + selectableRect.width);
+      pendingY = clamp(moveEvent.clientY, selectableRect.top, selectableRect.top + selectableRect.height);
+      if (dragFrame === null) dragFrame = window.requestAnimationFrame(commitCropDrag);
     }
 
     function handleUp() {
+      if (dragFrame !== null) window.cancelAnimationFrame(dragFrame);
+      dragFrame = null;
+      commitCropDrag();
       cropDraggingRef.current = false;
       stageEl.releasePointerCapture?.(pointerId);
       window.removeEventListener('pointermove', handleMove, true);
@@ -430,9 +550,9 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
     const img = previewImageRef.current;
     const metrics = getImageContentMetrics(img, settings.previewFit);
     if (!metrics) return;
-    const { stageRect, stageScrollLeft, stageScrollTop, imageRect, selectableRect, scale, offsetX, offsetY } = metrics;
-    const absLeft = stageRect.left - stageScrollLeft + cropRect.left;
-    const absTop = stageRect.top - stageScrollTop + cropRect.top;
+    const { stageRect, imageRect, selectableRect, scale, offsetX, offsetY } = metrics;
+    const absLeft = stageRect.left + cropRect.left;
+    const absTop = stageRect.top + cropRect.top;
     const absRight = absLeft + cropRect.width;
     const absBottom = absTop + cropRect.height;
     const visibleLeft = Math.max(absLeft, selectableRect.left);
@@ -465,7 +585,8 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
       updateImageItem(activeItem.id, { dataUrl });
       setCropMode(false);
       setCropRect(null);
-      } catch (error) {
+      setCropPointer(null);
+    } catch (error) {
       console.error('crop image failed', error);
       void uiAlert('截取失败：当前图片可能不支持画布裁剪。');
     }
@@ -476,6 +597,7 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
     updateImageItem(activeItem.id, { dataUrl: undefined });
     setCropMode(false);
     setCropRect(null);
+    setCropPointer(null);
   }
 
   async function clearAll() {
@@ -509,11 +631,12 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
       data-no-drag
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-      onDragOver={(event) => { event.preventDefault(); setDragOver(true); }}
+      onDragOver={(event) => { event.preventDefault(); if (!settings.acceptExternalDrops) return; setDragOver(true); }}
       onDragLeave={(event) => { if (event.currentTarget === event.target) setDragOver(false); }}
       onDrop={(event) => {
         event.preventDefault();
         setDragOver(false);
+        if (!settings.acceptExternalDrops) return;
         const dropped = Array.from(event.dataTransfer.files).map((file: any) => file.path || file.name).filter(Boolean);
         if (dropped.length) onChange(mergeImages(items, dropped, activeGroupId));
       }}
@@ -628,7 +751,7 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
                       {cropMode && <button onClick={applyCrop} disabled={cropRectArea(cropRect) < 16} title="应用截取"><Check size={16} /></button>}
                       {activeItem.dataUrl && <button onClick={resetActiveCrop} title="还原原图预览">原</button>}
                       <button onClick={() => navigator.clipboard.writeText(activeItem.path)} title="复制路径"><Copy size={16} /></button>
-                      <button onClick={() => invoke('launch_item', { path: activeItem.path, asAdmin: false })} title="打开"><ExternalLink size={16} /></button>
+                      <button onClick={() => invoke('launch_item', { path: activeItem.path, asAdmin: false, urlOpenMode: 'default', specifiedBrowserId: '', specifiedProfileId: '', customBrowsers: [] })} title="打开"><ExternalLink size={16} /></button>
                       <button onClick={copyActiveToFolder} title="复制到文件夹"><FolderOpen size={16} /></button>
                       <button onClick={() => remove(activeItem.id)} title="移除"><Trash2 size={16} /></button>
                     </div>
@@ -643,9 +766,16 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
                 onPointerDown={startCrop}
                 onPointerMove={handleCropPointerMove}
                 onPointerEnter={handleCropPointerMove}
+                onPointerLeave={() => { if (!cropDraggingRef.current) setCropPointer(null); }}
                 data-no-drag
               >
                 <img ref={previewImageRef} src={previewSrc} alt={activeItem.name} draggable={false} />
+                {cropMode && cropPointer?.visible && (
+                  <div
+                    className="image-browser-crop-crosshair"
+                    style={{ left: cropPointer.x, top: cropPointer.y }}
+                  />
+                )}
                 {cropMode && cropRect && (
                   <div
                     className="image-browser-crop-box"

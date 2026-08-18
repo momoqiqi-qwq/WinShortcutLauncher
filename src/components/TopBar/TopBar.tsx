@@ -2,27 +2,36 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { DndContext, DragEndEvent, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Archive, Copy, Images, Minus, Pin, PinOff, Plus, Search, Settings, X } from 'lucide-react';
+import { Archive, ArrowDownAZ, Files, Images, Minus, Pin, PinOff, Plus, Search, Settings, SlidersHorizontal, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../../stores/appStore';
+import { DEFAULT_WINDOW_CONTROL_ORDER } from '../../stores/appStore/defaults';
 import { byOrder } from '../../lib/sort';
 import type { Group, WindowControlId } from '../../types';
-
-const DEFAULT_CONTROL_ORDER: WindowControlId[] = ['search', 'transfer', 'image', 'add', 'multi', 'settings', 'pin', 'minimize', 'close'];
+import { QuickSettingsMenu } from './QuickSettingsMenu';
+import { ConfigProfilesMenu } from './ConfigProfilesMenu';
 
 function normalizeControlOrder(order?: WindowControlId[]): WindowControlId[] {
   const next: WindowControlId[] = [];
   for (const id of order ?? []) {
-    if (DEFAULT_CONTROL_ORDER.includes(id) && !next.includes(id)) next.push(id);
+    if (DEFAULT_WINDOW_CONTROL_ORDER.includes(id) && !next.includes(id)) next.push(id);
   }
-  for (const id of DEFAULT_CONTROL_ORDER) {
+  for (const id of DEFAULT_WINDOW_CONTROL_ORDER) {
     if (!next.includes(id)) next.push(id);
   }
   return next;
 }
 
-function EditableGroupTab({ group, onContextMenu }: { group: Group; onContextMenu: (groupId: string, x: number, y: number) => void }) {
+function EditableGroupTab({
+  group,
+  onContextMenu,
+  isExternalDropTarget,
+}: {
+  group: Group;
+  onContextMenu: (groupId: string, x: number, y: number) => void;
+  isExternalDropTarget: boolean;
+}) {
   const activeGroupId = useAppStore((state) => state.activeGroupId);
   const setActiveGroup = useAppStore((state) => state.setActiveGroup);
   const renameGroup = useAppStore((state) => state.renameGroup);
@@ -31,10 +40,13 @@ function EditableGroupTab({ group, onContextMenu }: { group: Group; onContextMen
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: group.id });
   const sortableListeners = listeners as Record<string, ((event: PointerEvent<HTMLDivElement>) => void) | undefined>;
 
+  useEffect(() => setValue(group.name), [group.name]);
+
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition
-  };
+    transition,
+    ...(group.color ? { '--group-accent': group.color } : {}),
+  } as CSSProperties;
 
   function save() {
     const next = value.trim();
@@ -46,7 +58,8 @@ function EditableGroupTab({ group, onContextMenu }: { group: Group; onContextMen
     <div
       ref={setNodeRef}
       style={style}
-      className={`top-tab ${activeGroupId === group.id ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
+      className={`top-tab ${activeGroupId === group.id ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${group.color ? 'has-custom-color' : ''} ${isExternalDropTarget ? 'external-drop-target' : ''}`}
+      data-group-id={group.id}
       onClick={() => !editing && setActiveGroup(group.id)}
       onDoubleClick={() => setEditing(true)}
       onContextMenu={(event) => {
@@ -88,9 +101,13 @@ interface SortableWindowActionProps {
   icon: ReactNode;
   className?: string;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  buttonRef?: (node: HTMLButtonElement | null) => void;
+  ariaExpanded?: boolean;
+  ariaHaspopup?: 'menu';
+  ariaControls?: string;
 }
 
-function SortableWindowAction({ id, title, icon, className = '', onClick }: SortableWindowActionProps) {
+function SortableWindowAction({ id, title, icon, className = '', onClick, buttonRef, ariaExpanded, ariaHaspopup, ariaControls }: SortableWindowActionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -100,11 +117,15 @@ function SortableWindowAction({ id, title, icon, className = '', onClick }: Sort
 
   return (
     <button
-      ref={setNodeRef}
+      ref={(node) => { setNodeRef(node); buttonRef?.(node); }}
       style={style}
       className={`icon-button window-control-button draggable-window-control ${className} ${isDragging ? 'dragging' : ''}`}
       data-no-drag
+      data-window-control-id={id}
       title={`${title}（拖动可调整位置）`}
+      aria-expanded={ariaExpanded}
+      aria-haspopup={ariaHaspopup}
+      aria-controls={ariaControls}
       onPointerDown={(event) => {
         event.stopPropagation();
         sortableListeners.onPointerDown?.(event);
@@ -124,18 +145,21 @@ export function TopBar({
   onContextMenuGroup,
   onOpenGlobalSearch,
   onOpenTransferStation,
-  onOpenImageBrowser
+  onOpenImageBrowser,
+  externalDropTargetGroupId,
 }: {
   onContextMenuGroup: (groupId: string, x: number, y: number) => void;
   onOpenGlobalSearch: () => void;
   onOpenTransferStation: () => void;
   onOpenImageBrowser: () => void;
+  externalDropTargetGroupId?: string | null;
 }) {
   const rawGroups = useAppStore((state) => state.groups);
   const groups = useMemo(() => rawGroups.slice().sort(byOrder), [rawGroups]);
   const activeGroupId = useAppStore((state) => state.activeGroupId);
   const display = useAppStore((state) => state.display);
   const behavior = useAppStore((state) => state.behavior);
+  const experience = useAppStore((state) => state.experience);
   const reorderGroups = useAppStore((state) => state.reorderGroups);
   const addGroup = useAppStore((state) => state.addGroup);
   const updateDisplay = useAppStore((state) => state.updateDisplay);
@@ -151,9 +175,20 @@ export function TopBar({
   );
   const ids = useMemo(() => groups.map((group) => group.id), [groups]);
   const actionOrder = useMemo(() => normalizeControlOrder(display.windowControlOrder), [display.windowControlOrder]);
+  const hiddenControlIds = useMemo(() => new Set(display.windowControlHidden ?? []), [display.windowControlHidden]);
+  const visibleActionOrder = useMemo(() => actionOrder.filter((id) => !hiddenControlIds.has(id)), [actionOrder, hiddenControlIds]);
   const tabsRef = useRef<HTMLDivElement | null>(null);
+  const topbarRef = useRef<HTMLElement | null>(null);
+  const quickSettingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const quickSettingsMenuRef = useRef<HTMLDivElement | null>(null);
+  const configProfilesButtonRef = useRef<HTMLButtonElement | null>(null);
+  const configProfilesMenuRef = useRef<HTMLDivElement | null>(null);
   const [visibleRows, setVisibleRows] = useState(1);
   const [overflowRows, setOverflowRows] = useState(false);
+  const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
+  const [quickSettingsMenuLeft, setQuickSettingsMenuLeft] = useState(12);
+  const [configProfilesOpen, setConfigProfilesOpen] = useState(false);
+  const [configProfilesMenuLeft, setConfigProfilesMenuLeft] = useState(12);
 
   useLayoutEffect(() => {
     const node = tabsRef.current;
@@ -185,9 +220,108 @@ export function TopBar({
   }, [groups.length, display.topTabEqualWidth, display.topTabWidth, display.topTabShape]);
 
 
+  useLayoutEffect(() => {
+    if (!quickSettingsOpen) return;
+    const measure = () => {
+      const topbar = topbarRef.current;
+      const button = quickSettingsButtonRef.current;
+      const menu = quickSettingsMenuRef.current;
+      if (!topbar || !button || !menu) return;
+      const topbarRect = topbar.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const menuWidth = Math.min(340, Math.max(200, menu.getBoundingClientRect().width || 340));
+      const preferred = buttonRect.right - topbarRect.left - menuWidth;
+      setQuickSettingsMenuLeft(Math.max(8, Math.min(preferred, topbarRect.width - menuWidth - 8)));
+    };
+    measure();
+    const frame = window.requestAnimationFrame(() => {
+      measure();
+      quickSettingsMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    });
+    window.addEventListener('resize', measure);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', measure);
+    };
+  }, [quickSettingsOpen, visibleActionOrder]);
+
+  useLayoutEffect(() => {
+    if (!configProfilesOpen) return;
+    const measure = () => {
+      const topbar = topbarRef.current;
+      const button = configProfilesButtonRef.current;
+      const menu = configProfilesMenuRef.current;
+      if (!topbar || !button || !menu) return;
+      const topbarRect = topbar.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const menuWidth = Math.min(430, Math.max(260, menu.getBoundingClientRect().width || 430));
+      const preferred = buttonRect.right - topbarRect.left - menuWidth;
+      setConfigProfilesMenuLeft(Math.max(8, Math.min(preferred, topbarRect.width - menuWidth - 8)));
+    };
+    measure();
+    const frame = window.requestAnimationFrame(() => {
+      measure();
+      configProfilesMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    });
+    window.addEventListener('resize', measure);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', measure);
+    };
+  }, [configProfilesOpen, visibleActionOrder]);
+
+  function closeQuickSettings(restoreFocus = false) {
+    setQuickSettingsOpen(false);
+    if (restoreFocus) window.setTimeout(() => quickSettingsButtonRef.current?.focus(), 0);
+  }
+
+  function closeConfigProfiles(restoreFocus = false) {
+    setConfigProfilesOpen(false);
+    if (restoreFocus) window.setTimeout(() => configProfilesButtonRef.current?.focus(), 0);
+  }
+
   useEffect(() => {
-    const win = getCurrentWindow() as unknown as { setAlwaysOnTop?: (alwaysOnTop: boolean) => Promise<void> };
-    win.setAlwaysOnTop?.(Boolean(behavior.alwaysOnTop)).catch((error) => console.warn('set always on top failed', error));
+    if (!quickSettingsOpen) return;
+    function closeFromOutside(event: globalThis.PointerEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.topbar-quick-settings-menu, [data-window-control-id="settingsQuick"]')) return;
+      closeQuickSettings(true);
+    }
+    function closeFromKeyboard(event: KeyboardEvent) {
+      if (event.key === 'Escape') closeQuickSettings(true);
+    }
+    window.addEventListener('pointerdown', closeFromOutside, true);
+    window.addEventListener('keydown', closeFromKeyboard, true);
+    return () => {
+      window.removeEventListener('pointerdown', closeFromOutside, true);
+      window.removeEventListener('keydown', closeFromKeyboard, true);
+    };
+  }, [quickSettingsOpen]);
+
+  useEffect(() => {
+    if (!configProfilesOpen) return;
+    function closeFromOutside(event: globalThis.PointerEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.topbar-config-profiles-menu, [data-window-control-id="profiles"], .ui-dialog-backdrop')) return;
+      closeConfigProfiles(true);
+    }
+    function closeFromKeyboard(event: KeyboardEvent) {
+      if (event.key === 'Escape') closeConfigProfiles(true);
+    }
+    window.addEventListener('pointerdown', closeFromOutside, true);
+    window.addEventListener('keydown', closeFromKeyboard, true);
+    return () => {
+      window.removeEventListener('pointerdown', closeFromOutside, true);
+      window.removeEventListener('keydown', closeFromKeyboard, true);
+    };
+  }, [configProfilesOpen]);
+
+  useEffect(() => {
+    const alwaysOnTop = Boolean(behavior.alwaysOnTop);
+    void invoke('set_window_always_on_top', { alwaysOnTop }).catch((error) => {
+      const win = getCurrentWindow() as unknown as { setAlwaysOnTop?: (value: boolean) => Promise<void> };
+      win.setAlwaysOnTop?.(alwaysOnTop).catch((fallbackError) => console.warn('set always on top failed', error, fallbackError));
+    });
   }, [behavior.alwaysOnTop]);
 
   function handleDragEnd(event: DragEndEvent) {
@@ -220,16 +354,20 @@ export function TopBar({
     await getCurrentWindow().close().catch((error) => console.warn('close failed', error));
   }
 
-  async function openNewMainWindow(event?: MouseEvent<HTMLButtonElement>) {
-    event?.preventDefault();
-    event?.stopPropagation();
-    await invoke('open_new_main_window').catch((error) => console.warn('open new window failed', error));
-  }
-
   function toggleAlwaysOnTop(event?: MouseEvent<HTMLButtonElement>) {
     event?.preventDefault();
     event?.stopPropagation();
     updateBehavior({ alwaysOnTop: !behavior.alwaysOnTop });
+  }
+
+  function sortGroupsByName(event?: MouseEvent<HTMLButtonElement>) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const sortedIds = groups
+      .slice()
+      .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }))
+      .map((group) => group.id);
+    reorderGroups(sortedIds);
   }
 
   function handleTopbarContext(event: MouseEvent<HTMLElement>) {
@@ -241,11 +379,13 @@ export function TopBar({
   }
 
   const actionMap: Record<WindowControlId, SortableWindowActionProps> = {
-    search: { id: 'search', title: '全局搜索', icon: <Search size={16} />, onClick: onOpenGlobalSearch },
+    search: { id: 'search', title: '全局命令面板（Ctrl+K）', icon: <Search size={16} />, onClick: onOpenGlobalSearch },
     transfer: { id: 'transfer', title: '文件中转站', icon: <Archive size={16} />, onClick: onOpenTransferStation },
     image: { id: 'image', title: '图片浏览', icon: <Images size={16} />, onClick: onOpenImageBrowser },
+    profiles: { id: 'profiles', title: '多配置', icon: <Files size={16} />, className: configProfilesOpen ? 'config-profiles-active' : '', buttonRef: (node) => { configProfilesButtonRef.current = node; }, ariaExpanded: configProfilesOpen, ariaHaspopup: 'menu', ariaControls: 'topbar-config-profiles-menu', onClick: () => { setQuickSettingsOpen(false); setConfigProfilesOpen((open) => !open); } },
+    sortGroups: { id: 'sortGroups', title: '父目录按字母排列', icon: <ArrowDownAZ size={16} />, onClick: sortGroupsByName },
     add: { id: 'add', title: '新增父目录', icon: <Plus size={16} />, onClick: () => addGroup('新分组') },
-    multi: { id: 'multi', title: '多开新窗口', icon: <Copy size={16} />, onClick: openNewMainWindow },
+    settingsQuick: { id: 'settingsQuick', title: '常用设置快捷入口', icon: <SlidersHorizontal size={16} />, className: quickSettingsOpen ? 'quick-settings-active' : '', buttonRef: (node) => { quickSettingsButtonRef.current = node; }, ariaExpanded: quickSettingsOpen, ariaHaspopup: 'menu', ariaControls: 'topbar-quick-settings-menu', onClick: () => { setConfigProfilesOpen(false); if (quickSettingsOpen) closeQuickSettings(false); else setQuickSettingsOpen(true); } },
     settings: { id: 'settings', title: '设置', icon: <Settings size={16} />, onClick: () => setSettingsOpen(true) },
     pin: { id: 'pin', title: behavior.alwaysOnTop ? '取消置顶' : '窗口置顶', icon: behavior.alwaysOnTop ? <PinOff size={16} /> : <Pin size={16} />, className: behavior.alwaysOnTop ? 'window-pin-active' : '', onClick: toggleAlwaysOnTop },
     minimize: { id: 'minimize', title: '最小化', icon: <Minus size={16} />, onClick: minimizeWindow },
@@ -254,6 +394,7 @@ export function TopBar({
 
   return (
     <header
+      ref={topbarRef}
       className={`topbar ${display.topTabEqualWidth ? 'topbar-equal-tabs' : ''} ${overflowRows ? 'topbar-overflow-tabs' : ''} topbar-shape-${display.topTabShape}`}
       style={{ '--topbar-visible-rows': visibleRows } as CSSProperties}
       data-tauri-drag-region
@@ -262,17 +403,33 @@ export function TopBar({
       <DndContext sensors={tabSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={ids} strategy={horizontalListSortingStrategy}>
           <div ref={tabsRef} className="topbar-tabs">
-            {groups.map((group) => <EditableGroupTab group={group} key={group.id} onContextMenu={onContextMenuGroup} />)}
+            {groups.map((group) => <EditableGroupTab group={group} key={group.id} onContextMenu={onContextMenuGroup} isExternalDropTarget={externalDropTargetGroupId === group.id} />)}
           </div>
         </SortableContext>
       </DndContext>
       <DndContext sensors={actionSensors} collisionDetection={closestCenter} onDragEnd={handleActionDragEnd}>
-        <SortableContext items={actionOrder} strategy={horizontalListSortingStrategy}>
+        <SortableContext items={visibleActionOrder} strategy={horizontalListSortingStrategy}>
           <div className={`topbar-actions topbar-actions-${display.windowControlStyle ?? 'round'}`} data-no-drag>
-            {actionOrder.map((id) => <SortableWindowAction key={id} {...actionMap[id]} />)}
+            {visibleActionOrder.map((id) => <SortableWindowAction key={id} {...actionMap[id]} />)}
           </div>
         </SortableContext>
       </DndContext>
+      {quickSettingsOpen && (
+        <QuickSettingsMenu
+          ref={quickSettingsMenuRef}
+          left={quickSettingsMenuLeft}
+          onClose={closeQuickSettings}
+          reduceMotion={experience.reduceMotion}
+        />
+      )}
+      {configProfilesOpen && (
+        <ConfigProfilesMenu
+          ref={configProfilesMenuRef}
+          left={configProfilesMenuLeft}
+          onClose={closeConfigProfiles}
+          reduceMotion={experience.reduceMotion}
+        />
+      )}
     </header>
   );
 }

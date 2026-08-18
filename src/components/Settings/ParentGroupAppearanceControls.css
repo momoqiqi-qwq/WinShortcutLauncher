@@ -1,0 +1,14 @@
+.parent-group-appearance-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.parent-group-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.parent-group-preset-row button {
+  flex: 1 1 86px;
+}

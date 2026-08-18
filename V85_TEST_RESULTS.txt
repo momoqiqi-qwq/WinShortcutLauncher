@@ -1,0 +1,25 @@
+Yue launcher V85 验证结果
+========================
+
+已通过：
+1. 63 个核心 TypeScript 逻辑回归测试，0 失败。
+2. 118 个实际 TypeScript/TSX 源文件语法解析，0 语法错误。
+3. 119 个源文件相对导入路径检查，全部可解析。
+4. src/index.css 与 src/components/Settings/Settings.css CSS 解析检查，0 错误。
+5. 关键行为断言：
+   - 主界面和设置界面缩放允许最低 x0.1，最高 x1.8。
+   - 设置面板在 x0.1 及其他缩放下仍按可视区域居中计算。
+   - 主窗口低于 900 x 640 的历史状态会恢复为默认 1180 x 880。
+   - 父目录、子目录、空白处右键菜单定义相互独立。
+   - 子目录菜单项目与空白处菜单项目无重复。
+   - 旧版无效右键菜单项目会在配置迁移时被过滤。
+6. package.json、package-lock.json、tauri.conf.json 版本号一致：0.1.85。
+
+环境限制：
+- npm install / npm run verify 未能完整执行：当前环境的 npm 内部依赖源对包下载持续返回 HTTP 503。
+- cargo check / Windows exe 构建未执行：当前容器没有 Rust/Cargo 和 Windows Tauri 构建环境。
+
+建议在 Windows 开发机执行：
+  npm ci
+  npm run verify
+  npm run tauri:build

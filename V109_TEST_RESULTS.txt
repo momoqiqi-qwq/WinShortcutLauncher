@@ -1,0 +1,43 @@
+v0.1.109 Pinyin Settings Search - validation summary
+=================================================
+
+PASS  TypeScript syntax transpile
+      159 TS/TSX files checked
+      0 syntax errors
+
+PASS  Settings search strict TypeScript check
+      tsc --noEmit --strict on:
+      - src/lib/settingsPinyinAliases.ts
+      - src/lib/settingsSearch.ts
+      - src/lib/settingsSearchIndex.ts
+      - src/types.ts
+      - src/utils/v16Types.ts
+
+PASS  Settings pinyin runtime smoke test
+      - 浏览器 -> browser match
+      - liulanqi -> browser match
+      - liu -> browser match
+      - llq -> browser match
+      - llq -> 浏览器路由中心 detailed result
+      - hh -> 便签行号 detailed result
+
+PASS  JSON/config parse
+      package.json
+      package-lock.json
+      src-tauri/tauri.conf.json
+
+PASS  Version consistency
+      package.json               0.1.109
+      src-tauri/Cargo.toml       0.1.109
+      src-tauri/tauri.conf.json  0.1.109
+
+PASS  Dependency policy
+      Pinyin search adds no runtime npm dependency.
+      Built-in settings pinyin aliases are stored locally.
+
+NOT RUN  Full npm test/build
+         Project node_modules are not included in the source archive.
+         No claim is made that npm run test/build passed in this sandbox.
+
+NOT RUN  Rust cargo check
+         This change is front-end settings-search only and does not modify Rust code.

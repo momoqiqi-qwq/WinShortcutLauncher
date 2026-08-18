@@ -7,9 +7,11 @@ import { createFastShortcutItemsFromPaths, hydrateShortcutItemsFromPaths } from 
 interface DropImportDialogProps {
   paths: string[];
   onClose: () => void;
+  initialGroupId?: string | null;
+  initialDirectoryId?: string | null;
 }
 
-export function DropImportDialog({ paths, onClose }: DropImportDialogProps) {
+export function DropImportDialog({ paths, onClose, initialGroupId, initialDirectoryId }: DropImportDialogProps) {
   const groups = useAppStore((state) => state.groups);
   const activeGroupId = useAppStore((state) => state.activeGroupId);
   const activeDirectoryId = useAppStore((state) => state.activeDirectoryId);
@@ -23,7 +25,10 @@ export function DropImportDialog({ paths, onClose }: DropImportDialogProps) {
       directoryId: directory.id
     }))
   ), [groups]);
-  const initialTarget = options.find((option) => option.value === `${activeGroupId}::${activeDirectoryId}`)?.value ?? options[0]?.value ?? '';
+  const preferredTargetValue = initialGroupId && initialDirectoryId
+    ? `${initialGroupId}::${initialDirectoryId}`
+    : `${activeGroupId}::${activeDirectoryId}`;
+  const initialTarget = options.find((option) => option.value === preferredTargetValue)?.value ?? options[0]?.value ?? '';
   const [target, setTarget] = useState(initialTarget);
   const [busy, setBusy] = useState(false);
 

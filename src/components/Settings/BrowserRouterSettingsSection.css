@@ -1,0 +1,216 @@
+.browser-router-settings {
+  display: grid;
+  gap: 12px;
+}
+
+.browser-router-heading,
+.browser-router-browser-title,
+.browser-router-catalog-head,
+.browser-router-custom-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.browser-router-heading h4 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.browser-router-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.browser-router-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.browser-router-target-card,
+.browser-router-browser-card,
+.browser-router-custom-row {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-2) 78%, transparent);
+  padding: 12px;
+}
+
+.browser-router-target-card {
+  display: grid;
+  gap: 10px;
+}
+
+.browser-router-catalog {
+  display: grid;
+  gap: 10px;
+}
+
+.browser-router-browser-card {
+  display: grid;
+  gap: 10px;
+}
+
+.browser-router-browser-title > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.browser-router-browser-title span,
+.browser-router-catalog-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.browser-router-browser-card > code,
+.browser-router-custom-row > code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.browser-router-profiles {
+  display: grid;
+  gap: 7px;
+}
+
+.browser-router-profile-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.browser-router-profile-row > input[type='color'] {
+  width: 28px;
+  height: 28px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.browser-router-profile-main {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, 240px) minmax(70px, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.browser-router-profile-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.browser-router-custom-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 150px auto 34px;
+  gap: 8px;
+  align-items: center;
+}
+
+.browser-router-custom-row > code,
+.browser-router-custom-row > .settings-hint {
+  grid-column: 1 / -1;
+}
+
+.browser-router-reset-profile {
+  width: 30px;
+  height: 30px;
+}
+
+.browser-router-error {
+  color: var(--danger);
+}
+
+@media (max-width: 760px) {
+  .browser-router-profile-row,
+  .browser-router-custom-row {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+  }
+  .browser-router-custom-row > select,
+  .browser-router-custom-row > button:not(.danger) {
+    grid-column: 2 / -1;
+  }
+  .browser-router-profile-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+.browser-route-picker {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(150px, 1fr);
+  gap: 8px;
+}
+
+.browser-route-picker.compact {
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+}
+
+@media (max-width: 760px) {
+  .browser-route-picker,
+  .browser-route-picker.compact {
+    grid-template-columns: 1fr;
+  }
+}
+
+.parent-group-browser-routing {
+  display: grid;
+  gap: 12px;
+}
+
+.parent-group-browser-list {
+  display: grid;
+  gap: 8px;
+}
+
+.parent-group-browser-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.42fr) minmax(0, 1.58fr);
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--panel-2) 72%, transparent);
+}
+
+.parent-group-browser-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.parent-group-browser-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parent-group-browser-dot {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent);
+}
+
+@media (max-width: 760px) {
+  .parent-group-browser-row {
+    grid-template-columns: 1fr;
+  }
+}

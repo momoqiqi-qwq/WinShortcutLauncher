@@ -15,6 +15,9 @@ export type StableEdgeDockOptions = {
   animationStyle?: import('../types').EdgeAnimationStyle;
   autoEdgeHide?: boolean;
   autoEdgeBounce?: boolean;
+  autoEdgeSnapBack?: boolean;
+  autoEdgeSnapBackAnimation?: boolean;
+  autoEdgeSnapBackAnimationMs?: number;
   autoEdgeHideDelay?: number;
   edgeVisiblePixels?: number;
   ghostFrameFix?: boolean;
@@ -33,6 +36,9 @@ type NativeEdgeOptions = {
   dockAutoHide: boolean;
   autoEdgeHide: boolean;
   autoEdgeBounce: boolean;
+  autoEdgeSnapBack: boolean;
+  autoEdgeSnapBackAnimation: boolean;
+  autoEdgeSnapBackAnimationMs: number;
   autoEdgeHideDelay: number;
   edgeVisiblePixels: number;
   ghostFrameFix: boolean;
@@ -89,6 +95,9 @@ function buildEdgeOptions(opts: StableEdgeDockOptions, override: Partial<NativeE
     dockAutoHide: opts.dockAutoHide ?? opts.enabled,
     autoEdgeHide: opts.autoEdgeHide ?? false,
     autoEdgeBounce: opts.autoEdgeBounce ?? true,
+    autoEdgeSnapBack: opts.autoEdgeSnapBack ?? false,
+    autoEdgeSnapBackAnimation: opts.autoEdgeSnapBackAnimation ?? true,
+    autoEdgeSnapBackAnimationMs: opts.autoEdgeSnapBackAnimationMs ?? 220,
     autoEdgeHideDelay: opts.autoEdgeHideDelay ?? 1000,
     edgeVisiblePixels: opts.edgeVisiblePixels ?? 5,
     ghostFrameFix: opts.ghostFrameFix ?? true,
@@ -165,6 +174,9 @@ export function useStableEdgeDock(options: StableEdgeDockOptions) {
     options.animationStyle,
     options.autoEdgeHide,
     options.autoEdgeBounce,
+    options.autoEdgeSnapBack,
+    options.autoEdgeSnapBackAnimation,
+    options.autoEdgeSnapBackAnimationMs,
     options.autoEdgeHideDelay,
     options.edgeVisiblePixels,
     options.ghostFrameFix,

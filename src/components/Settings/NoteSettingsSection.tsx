@@ -10,7 +10,7 @@ type SectionId = 'editor' | 'separator' | 'preview';
 const SECTION_IDS: SectionId[] = ['editor', 'separator', 'preview'];
 const STORAGE_PREFIX = 'settings.notes';
 
-function SliderRow({ label, value, min, max, step = 1, onChange, unit = '' }: {
+function SliderRow({ label, value, min, max, step = 1, onChange, unit = '', targetId }: {
   label: string;
   value: number;
   min: number;
@@ -18,16 +18,18 @@ function SliderRow({ label, value, min, max, step = 1, onChange, unit = '' }: {
   step?: number;
   unit?: string;
   onChange: (value: number) => void;
+  targetId?: string;
 }) {
   return (
-    <div className="field-row">
+    <div className="field-row" data-settings-focus={label} data-settings-target={targetId}>
       <label>{label}：{value}{unit}</label>
       <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
     </div>
   );
 }
 
-function SettingsCollapseBlock({ title, hint, collapsed, onToggle, children }: {
+function SettingsCollapseBlock({ id, title, hint, collapsed, onToggle, children }: {
+  id: SectionId;
   title: string;
   hint?: string;
   collapsed: boolean;
@@ -35,7 +37,7 @@ function SettingsCollapseBlock({ title, hint, collapsed, onToggle, children }: {
   children: ReactNode;
 }) {
   return (
-    <div className="settings-collapse-block">
+    <div className="settings-collapse-block" data-settings-section={id}>
       <button type="button" className="settings-collapse-header" aria-expanded={!collapsed} onClick={onToggle}>
         <span className="settings-collapse-arrow" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
         <span className="settings-collapse-title">{title}</span>
@@ -148,6 +150,7 @@ export function NoteSettingsSection({ notes, onChangeNotes }: NoteSettingsSectio
       </div>
 
       <SettingsCollapseBlock
+        id="editor"
         title="编辑器显示"
         hint="字体、行距、内边距"
         collapsed={collapsedSections.has('editor')}
@@ -161,14 +164,37 @@ export function NoteSettingsSection({ notes, onChangeNotes }: NoteSettingsSectio
           <input type="checkbox" checked={notes.wrap !== false} onChange={(event) => onChangeNotes({ wrap: event.target.checked })} />
           自动换行
         </label>
+        <div className="field-row">
+          <label>行号开关范围</label>
+          <div className="segmented segmented-wide">
+            <button
+              className={notes.lineNumberScope !== 'current' ? 'active' : ''}
+              onClick={() => onChangeNotes({ lineNumberScope: 'all' })}
+            >
+              所有便签共用
+            </button>
+            <button
+              className={notes.lineNumberScope === 'current' ? 'active' : ''}
+              onClick={() => onChangeNotes({ lineNumberScope: 'current' })}
+            >
+              当前便签单独保存
+            </button>
+          </div>
+          <small className="settings-hint">选择“当前便签单独保存”后，便签右上角的行号开关只影响当前便签；选择“所有便签共用”则全部便签一起变化。</small>
+        </div>
+        <label className="check-row" data-settings-target="note-lines" data-settings-focus="显示每行行号">
+          <input type="checkbox" checked={Boolean(notes.showLineNumbers)} onChange={(event) => onChangeNotes({ showLineNumbers: event.target.checked })} />
+          {notes.lineNumberScope === 'current' ? '新便签默认显示每行行号' : '所有便签显示每行行号'}
+        </label>
         <SliderRow label="字体大小" min={10} max={32} value={notes.fontSize} unit="px" onChange={(value) => onChangeNotes({ fontSize: value })} />
         <SliderRow label="行距" min={1} max={3} step={0.05} value={notes.lineHeight} onChange={(value) => onChangeNotes({ lineHeight: Math.round(value * 100) / 100 })} />
         <SliderRow label="内边距" min={6} max={48} value={notes.padding} unit="px" onChange={(value) => onChangeNotes({ padding: value })} />
         <SliderRow label="圆角" min={0} max={40} value={notes.radius} unit="px" onChange={(value) => onChangeNotes({ radius: value })} />
-        <SliderRow label="输入后保存延迟" min={120} max={3000} step={30} value={notes.autosaveDelayMs} unit="ms" onChange={(value) => onChangeNotes({ autosaveDelayMs: value })} />
+        <SliderRow targetId="note-autosave" label="输入后保存延迟" min={120} max={3000} step={30} value={notes.autosaveDelayMs} unit="ms" onChange={(value) => onChangeNotes({ autosaveDelayMs: value })} />
       </SettingsCollapseBlock>
 
       <SettingsCollapseBlock
+        id="separator"
         title="右键分割线"
         hint="右键便签插入当前行"
         collapsed={collapsedSections.has('separator')}
@@ -189,6 +215,7 @@ export function NoteSettingsSection({ notes, onChangeNotes }: NoteSettingsSectio
       </SettingsCollapseBlock>
 
       <SettingsCollapseBlock
+        id="preview"
         title="实时预览"
         collapsed={collapsedSections.has('preview')}
         onToggle={() => toggleSection('preview')}

@@ -291,3 +291,161 @@
   margin: 0;
   accent-color: var(--accent, #7ea2ff);
 }
+
+.note-context-menu {
+  max-height: calc(100vh - 20px);
+  overflow: auto;
+}
+
+/* v52: 便签分界线二级菜单 */
+.note-context-menu {
+  overflow: visible;
+}
+
+.note-separator-entry {
+  position: relative;
+}
+
+.note-separator-submenu {
+  position: absolute;
+  top: -8px;
+  min-width: 256px;
+  max-width: min(320px, calc(100vw - 28px));
+  max-height: min(620px, calc(100vh - 28px));
+  overflow: auto;
+  padding: 7px;
+  z-index: 140;
+}
+
+.note-separator-submenu.open-right {
+  left: calc(100% + 7px);
+}
+
+.note-separator-submenu.open-left {
+  right: calc(100% + 7px);
+}
+
+.note-submenu-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 7px 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.note-length-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 2px 3px 7px;
+}
+
+.note-length-grid button {
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2), transparent 8%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.note-length-grid button:hover,
+.note-length-grid button.active {
+  border-color: color-mix(in srgb, var(--accent), transparent 35%);
+  background: color-mix(in srgb, var(--accent), transparent 78%);
+  color: var(--accent);
+}
+
+.note-length-custom {
+  display: grid;
+  grid-template-columns: 1fr 74px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.note-length-custom input {
+  width: 74px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 0 8px;
+  outline: 0;
+}
+
+.note-length-custom input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent), transparent 80%);
+}
+
+.note-separator-option {
+  grid-template-columns: minmax(64px, auto) minmax(0, 1fr) auto;
+}
+
+.note-separator-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  text-align: right;
+}
+
+/* v55: 便签二级菜单改为按视口固定定位，避免靠近右边/底边时超出 exe 界面。 */
+.note-separator-submenu {
+  overscroll-behavior: contain;
+}
+
+
+.context-menu-directory-heading {
+  display: grid;
+  gap: 2px;
+  padding: 5px 10px 8px;
+  border-bottom: 1px solid var(--border);
+  margin: -1px 2px 5px;
+  min-width: 0;
+}
+
+.context-menu-directory-heading span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.context-menu-directory-heading strong {
+  color: var(--text);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-context-menus {
+  --menu-item-height: 29px;
+  --menu-font-size: 13px;
+  --menu-min-width: 192px;
+}
+
+.hide-context-menu-icons .menu-item:not(.with-submenu) > svg {
+  display: none;
+}
+
+.menu-empty-hint {
+  max-width: 260px;
+  padding: 14px 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}

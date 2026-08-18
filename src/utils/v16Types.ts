@@ -21,6 +21,12 @@ export interface GlobalSearchSettings {
   searchInSubGroup: boolean;
   includeNotes: boolean;
   includeSystemTools: boolean;
+  includeDirectories: boolean;
+  includeSettings: boolean;
+  includeCommands: boolean;
+  enablePinyin: boolean;
+  preferRecent: boolean;
+  showResultType: boolean;
   enterAction: SearchOpenAction;
   ctrlEnterAction: SearchOpenAction;
 }
@@ -100,7 +106,7 @@ export interface ThemePreset {
 
 export const DEFAULT_GLOBAL_SEARCH_SETTINGS: GlobalSearchSettings = {
   enabled: true,
-  placeholder: '全局搜索应用、文件、网址或路径',
+  placeholder: '搜索项目、父目录、子目录、拼音或命令',
   maxResults: 80,
   debounceMs: 80,
   iconSize: 28,
@@ -115,8 +121,14 @@ export const DEFAULT_GLOBAL_SEARCH_SETTINGS: GlobalSearchSettings = {
   searchInUrl: true,
   searchInGroup: true,
   searchInSubGroup: true,
-  includeNotes: false,
+  includeNotes: true,
   includeSystemTools: true,
+  includeDirectories: true,
+  includeSettings: true,
+  includeCommands: true,
+  enablePinyin: true,
+  preferRecent: true,
+  showResultType: true,
   enterAction: 'open',
   ctrlEnterAction: 'locate',
 };

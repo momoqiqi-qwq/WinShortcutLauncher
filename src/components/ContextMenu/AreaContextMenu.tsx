@@ -1,14 +1,18 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, FilePlus2, FolderPlus, Globe, RefreshCw, Trash2, Wrench, Grid2X2, ArrowDownAZ, Merge, Repeat2, StickyNote } from 'lucide-react';
+import { ChevronRight, FilePlus2, FolderPlus, Globe, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
-import type { ContextMenuState, Directory, ShortcutItem, SortMode, ViewMode } from '../../types';
+import type { ContextMenuState, Directory, DirectoryKind, ShortcutItem, SortMode, ViewMode } from '../../types';
 import { getEffectiveDisplay, useAppStore } from '../../stores/appStore';
 import { createShortcutItemsFromPaths, createUrlShortcut } from '../../lib/createShortcutItems';
 import { makeId } from '../../lib/id';
 import { systemToolsGroup } from '../../data/systemTools';
 import { useSmartMenuPosition } from './useSmartMenuPosition';
-import { uiConfirm } from '../../lib/uiDialog';
+import { buildOnlineFaviconUrl } from '../../lib/faviconProviders';
+import { refreshShortcutIcon } from '../../lib/refreshShortcutIcon';
+import { getItemsNeedingPageIconRefresh } from '../../lib/pageIconPolicy';
+import { showLauncherNotice } from '../../lib/notify';
+import { useDirectoryCreator } from '../../hooks/useDirectoryCreator';
 
 interface AreaContextMenuProps {
   menu: Extract<ContextMenuState, { kind: 'area' }>;
@@ -25,23 +29,12 @@ function firstNormalDirectory(directories: Directory[], fallbackId: string) {
 }
 
 
-function googleFaviconUrl(url: string) {
-  try {
-    const parsed = new URL(url);
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(parsed.hostname)}&sz=128`;
-  } catch {
-    return '';
-  }
-}
-
-async function resolveWebsiteIcon(url: string, saveLocal: boolean) {
+async function resolveWebsiteIcon(url: string, saveLocal: boolean, providerId = 'auto', fallback = true) {
   if (saveLocal) {
-    const cachedIcon = await invoke<string>('get_cached_website_favicon', { url }).catch(() => '');
-    if (cachedIcon) return cachedIcon;
-    const localIcon = await invoke<string>('fetch_website_favicon', { url }).catch(() => '');
+    const localIcon = await invoke<string>('fetch_website_favicon', { url, providerId, fallback }).catch(() => '');
     if (localIcon) return localIcon;
   }
-  return googleFaviconUrl(url);
+  return buildOnlineFaviconUrl(url, providerId as any);
 }
 
 export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
@@ -50,17 +43,18 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   const activeGroup = useAppStore((state) => state.getActiveGroup());
   const activeDirectory = useAppStore((state) => state.getActiveDirectory());
   const globalDisplay = useAppStore((state) => state.display);
+  const experience = useAppStore((state) => state.experience);
+  const hiddenItems = new Set(experience.areaContextMenuHiddenItems ?? []);
+  const show = (id: import('../../types').AreaContextMenuItemId) => !hiddenItems.has(id);
   const addItems = useAppStore((state) => state.addItems);
   const updateDisplay = useAppStore((state) => state.updateDisplay);
   const updateDirectoryDisplay = useAppStore((state) => state.updateDirectoryDisplay);
   const updateItem = useAppStore((state) => state.updateItem);
-  const clearDirectoryItems = useAppStore((state) => state.clearDirectoryItems);
   const sortDirectoryItems = useAppStore((state) => state.sortDirectoryItems);
-  const mergeDirectory = useAppStore((state) => state.mergeDirectory);
-  const setDirectoryKind = useAppStore((state) => state.setDirectoryKind);
   const clearSelection = useAppStore((state) => state.clearSelection);
+  const createDirectory = useDirectoryCreator();
   const display = useMemo(() => getEffectiveDisplay(globalDisplay, activeDirectory), [globalDisplay, activeDirectory]);
-  type AreaSubmenu = 'system' | 'icon' | 'view' | 'sort' | 'globalIcon' | 'globalView' | 'globalSort' | 'mergeDirectory' | null;
+  type AreaSubmenu = 'directory' | 'system' | 'icon' | 'view' | 'sort' | 'globalIcon' | 'globalView' | 'globalSort' | null;
   const [openSubmenu, setOpenSubmenu] = useState<AreaSubmenu>(null);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [urlDraft, setUrlDraft] = useState('');
@@ -72,12 +66,12 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     ? firstNormalDirectory(activeGroup?.directories ?? [], activeDirectoryId)
     : activeDirectoryId;
   const activeKind = activeDirectory?.kind ?? 'normal';
-  const directoryMergeTargets = useMemo(() => (activeGroup?.directories ?? [])
-    .filter((dir) => dir.id !== activeDirectoryId && (dir.kind ?? 'normal') === activeKind && activeKind !== 'all')
-    .sort((a, b) => a.order - b.order), [activeGroup, activeDirectoryId, activeKind]);
-  const canSwitchToNotes = activeKind === 'normal' && (activeDirectory?.items.length ?? 0) === 0;
-  const canSwitchToNormal = activeKind === 'notes';
 
+  async function addSubdirectory(kind: DirectoryKind, name: string) {
+    setOpenSubmenu(null);
+    const created = await createDirectory(kind, name);
+    if (created) onClose();
+  }
 
   async function addPickedPaths(directory: boolean) {
     const picked = await open({
@@ -121,7 +115,7 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     setUrlDialogOpen(false);
     onClose();
     if (urlAutoFetchIcon) {
-      const icon = await resolveWebsiteIcon(normalizedUrl, globalDisplay.autoSaveWebsiteIcon !== false);
+      const icon = await resolveWebsiteIcon(normalizedUrl, globalDisplay.autoSaveWebsiteIcon !== false, globalDisplay.faviconProvider ?? 'auto', globalDisplay.faviconProviderFallback !== false);
       if (icon) updateItem(item.id, { icon });
     }
   }
@@ -137,22 +131,34 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   }
 
   async function refreshIcons() {
-    const items = activeDirectory?.items ?? [];
-    for (const item of items) {
-      const icon = item.type === 'url'
-        ? await resolveWebsiteIcon(item.path, globalDisplay.autoSaveWebsiteIcon !== false)
-        : await invoke<string>('get_file_icon', { path: item.path }).catch(() => '');
-      if (icon) updateItem(item.id, { icon });
+    const items: ShortcutItem[] = activeDirectory?.kind === 'all'
+      ? (activeGroup?.directories ?? [])
+          .filter((directory) => (directory.kind ?? 'normal') === 'normal')
+          .flatMap((directory) => directory.items)
+      : (activeDirectory?.items ?? []);
+    onClose();
+    if (!items.length) {
+      showLauncherNotice('当前页面没有项目');
+      return;
     }
-    onClose();
-  }
 
-  async function clearCurrentDirectory() {
-    if (!activeDirectory || activeDirectory.kind === 'all' || activeDirectory.kind === 'notes') return;
-    const ok = await uiConfirm(`确定清空「${activeDirectory.name}」中的全部快捷项目吗？`);
-    if (!ok) return;
-    clearDirectoryItems(activeDirectory.id);
-    onClose();
+    // “刷新本页图标”只补齐没有图标的项目，已有图标保持不变。
+    const missingItems = getItemsNeedingPageIconRefresh(items);
+    if (!missingItems.length) {
+      showLauncherNotice('当前页面项目均已有图标，无需补齐');
+      return;
+    }
+
+    const results = await Promise.all(missingItems.map(async (item) => {
+      const icon = await refreshShortcutIcon(item, globalDisplay, { forceRefresh: false });
+      if (!icon) return false;
+      updateItem(item.id, { icon });
+      return true;
+    }));
+    const refreshed = results.filter(Boolean).length;
+    showLauncherNotice(refreshed > 0
+      ? `已补齐本页 ${refreshed}/${missingItems.length} 个缺失图标`
+      : '本页缺失图标获取失败');
   }
 
   function applySort(mode: SortMode, scope: 'directory' | 'global') {
@@ -172,30 +178,6 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     if (scope === 'global') updateDisplay({ iconSize: size });
     if (scope === 'directory') updateDirectoryDisplay(activeDirectoryId, { iconSize: size });
     onClose();
-  }
-
-  async function mergeCurrentDirectoryTo(targetDirectoryId: string) {
-    if (!activeDirectory || !targetDirectoryId) return;
-    const target = activeGroup?.directories.find((dir) => dir.id === targetDirectoryId);
-    const ok = await uiConfirm(`确定把标签「${activeDirectory.name}」合并到「${target?.name ?? '目标标签'}」吗？合并后当前标签会被删除。`);
-    if (ok) mergeDirectory(activeDirectory.id, targetDirectoryId);
-    onClose();
-  }
-
-  function switchCurrentDirectoryKind(kind: 'normal' | 'notes') {
-    if (!activeDirectory) return;
-    setDirectoryKind(activeDirectory.id, kind);
-    onClose();
-  }
-
-  function mergeDirectoryMenu() {
-    return (
-      <div className="menu-surface directory-submenu small-submenu">
-        {directoryMergeTargets.map((target) => (
-          <div className="menu-item" key={target.id} onClick={() => mergeCurrentDirectoryTo(target.id)}><span>{target.name}</span><Merge size={13} /></div>
-        ))}
-      </div>
-    );
   }
 
   function sizeMenu(scope: 'directory' | 'global') {
@@ -232,9 +214,17 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
         <div className="menu-item" onClick={() => applySort('custom', scope)}><span>自定义顺序</span>{current === 'custom' ? <span>✓</span> : null}</div>
         <div className="menu-item" onClick={() => applySort('name', scope)}><span>按名称</span>{current === 'name' ? <span>✓</span> : <ArrowDownAZ size={13} />}</div>
         <div className="menu-item" onClick={() => applySort('type', scope)}><span>按类型</span>{current === 'type' ? <span>✓</span> : null}</div>
+        <div className="menu-item" onClick={() => applySort('recent', scope)}><span>最近启动</span>{current === 'recent' ? <span>✓</span> : <Clock3 size={13} />}</div>
+        <div className="menu-item" onClick={() => applySort('frequent', scope)}><span>最常使用</span>{current === 'frequent' ? <span>✓</span> : <TrendingUp size={13} />}</div>
       </div>
     );
   }
+
+  const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addUrl') || show('addSystem');
+  const showLocalDisplaySection = show('iconSize') || show('viewMode') || show('sortMode');
+  const showGlobalDisplaySection = show('globalIconSize') || show('globalViewMode') || show('globalSortMode');
+  const showMaintenanceSection = show('refreshIcons');
+  const hasAnyVisibleItem = showAddSection || showLocalDisplaySection || showGlobalDisplaySection || showMaintenanceSection;
 
   return (
     <>
@@ -245,10 +235,26 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
       onMouseDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(false)}><span>添加文件</span><FilePlus2 size={15} /></div>
-      <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(true)}><span>添加文件夹</span><FolderPlus size={15} /></div>
-      <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={addUrl}><span>添加网址</span><Globe size={15} /></div>
-      <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('system')} onClick={() => setOpenSubmenu((value) => value === 'system' ? null : 'system')}>
+      {experience.showContextMenuDirectoryHeader && activeDirectory && (
+        <div className="context-menu-directory-heading" title={activeDirectory.name}>
+          <span>当前子目录</span>
+          <strong>{activeDirectory.name}</strong>
+        </div>
+      )}
+      {show('createDirectory') && <div className={`menu-item with-submenu ${activeKind === 'all' ? 'disabled' : ''}`} onMouseEnter={() => activeKind !== 'all' && setOpenSubmenu('directory')} onClick={() => activeKind !== 'all' && setOpenSubmenu((value) => value === 'directory' ? null : 'directory')}>
+        <span>新建子目录</span><ChevronRight size={14} />
+        {openSubmenu === 'directory' && (
+          <div className="menu-surface directory-submenu small-submenu">
+            <div className="menu-item" onClick={(event) => { event.stopPropagation(); void addSubdirectory('normal', '新目录'); }}><span>普通子目录</span><FolderPlus size={13} /></div>
+            <div className="menu-item" onClick={(event) => { event.stopPropagation(); void addSubdirectory('all', '全部'); }}><span>全部子目录</span><Tags size={13} /></div>
+            <div className="menu-item" onClick={(event) => { event.stopPropagation(); void addSubdirectory('notes', '便签'); }}><span>便签子目录</span><StickyNote size={13} /></div>
+          </div>
+        )}
+      </div>}
+      {show('addFile') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(false)}><span>添加文件</span><FilePlus2 size={15} /></div>}
+      {show('addFolder') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(true)}><span>添加文件夹</span><FolderPlus size={15} /></div>}
+      {show('addUrl') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={addUrl}><span>添加网址</span><Globe size={15} /></div>}
+      {show('addSystem') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('system')} onClick={() => setOpenSubmenu((value) => value === 'system' ? null : 'system')}>
         <span>添加系统功能</span><ChevronRight size={14} />
         {openSubmenu === 'system' && (
           <div className="menu-surface directory-submenu system-tool-submenu">
@@ -264,43 +270,36 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
             ))}
           </div>
         )}
-      </div>
-      <div className="menu-separator" />
-      <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('icon')} onClick={() => setOpenSubmenu((value) => value === 'icon' ? null : 'icon')}>
+      </div>}
+      {showAddSection && showLocalDisplaySection && <div className="menu-separator" />}
+      {show('iconSize') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('icon')} onClick={() => setOpenSubmenu((value) => value === 'icon' ? null : 'icon')}>
         <span>图标大小</span><ChevronRight size={14} />
         {openSubmenu === 'icon' && sizeMenu('directory')}
-      </div>
-      <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('view')} onClick={() => setOpenSubmenu((value) => value === 'view' ? null : 'view')}>
+      </div>}
+      {show('viewMode') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('view')} onClick={() => setOpenSubmenu((value) => value === 'view' ? null : 'view')}>
         <span>查看方式</span><ChevronRight size={14} />
         {openSubmenu === 'view' && viewMenu('directory')}
-      </div>
-      <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('sort')} onClick={() => setOpenSubmenu((value) => value === 'sort' ? null : 'sort')}>
+      </div>}
+      {show('sortMode') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('sort')} onClick={() => setOpenSubmenu((value) => value === 'sort' ? null : 'sort')}>
         <span>排序方式</span><ChevronRight size={14} />
         {openSubmenu === 'sort' && sortMenu('directory')}
-      </div>
-      <div className="menu-separator" />
-      <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('globalIcon')} onClick={() => setOpenSubmenu((value) => value === 'globalIcon' ? null : 'globalIcon')}>
+      </div>}
+      {(showAddSection || showLocalDisplaySection) && showGlobalDisplaySection && <div className="menu-separator" />}
+      {show('globalIconSize') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('globalIcon')} onClick={() => setOpenSubmenu((value) => value === 'globalIcon' ? null : 'globalIcon')}>
         <span>统一-图标大小</span><ChevronRight size={14} />
         {openSubmenu === 'globalIcon' && sizeMenu('global')}
-      </div>
-      <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('globalView')} onClick={() => setOpenSubmenu((value) => value === 'globalView' ? null : 'globalView')}>
+      </div>}
+      {show('globalViewMode') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('globalView')} onClick={() => setOpenSubmenu((value) => value === 'globalView' ? null : 'globalView')}>
         <span>统一-查看方式</span><ChevronRight size={14} />
         {openSubmenu === 'globalView' && viewMenu('global')}
-      </div>
-      <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('globalSort')} onClick={() => setOpenSubmenu((value) => value === 'globalSort' ? null : 'globalSort')}>
+      </div>}
+      {show('globalSortMode') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('globalSort')} onClick={() => setOpenSubmenu((value) => value === 'globalSort' ? null : 'globalSort')}>
         <span>统一-排序方式</span><ChevronRight size={14} />
         {openSubmenu === 'globalSort' && sortMenu('global')}
-      </div>
-      <div className="menu-separator" />
-      <div className={`menu-item with-submenu ${directoryMergeTargets.length === 0 ? 'disabled' : ''}`} onMouseEnter={() => setOpenSubmenu('mergeDirectory')} onClick={() => setOpenSubmenu((value) => value === 'mergeDirectory' ? null : 'mergeDirectory')}>
-        <span>合并当前标签到</span><ChevronRight size={14} />
-        {openSubmenu === 'mergeDirectory' && directoryMergeTargets.length > 0 && mergeDirectoryMenu()}
-      </div>
-      <div className={`menu-item ${canSwitchToNotes ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canSwitchToNotes && switchCurrentDirectoryKind('notes')}><span>空标签切换为便签</span><StickyNote size={15} /></div>
-      <div className={`menu-item ${canSwitchToNormal ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canSwitchToNormal && switchCurrentDirectoryKind('normal')}><span>便签切换为普通标签</span><Repeat2 size={15} /></div>
-      <div className="menu-separator" />
-      <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={refreshIcons}><span>刷新本页图标</span><RefreshCw size={15} /></div>
-      <div className={`menu-item danger ${activeDirectory?.kind === 'all' || activeDirectory?.kind === 'notes' ? 'disabled' : ''}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={clearCurrentDirectory}><span>清空本页应用</span><Trash2 size={15} /></div>
+      </div>}
+      {(showAddSection || showLocalDisplaySection || showGlobalDisplaySection) && showMaintenanceSection && <div className="menu-separator" />}
+      {show('refreshIcons') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={refreshIcons}><span>刷新本页图标</span><RefreshCw size={15} /></div>}
+      {!hasAnyVisibleItem && <div className="menu-empty-hint">此菜单项目已全部隐藏，可在设置中恢复</div>}
     </div>
     {urlDialogOpen && (
       <div className="url-shortcut-dialog-backdrop" data-no-drag onMouseDown={(event) => { event.stopPropagation(); }} onContextMenu={(event) => event.preventDefault()}>

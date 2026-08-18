@@ -1,14 +1,18 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, Copy, FolderOpen, ImagePlus, Pencil, Shield, Sparkles, Trash2, CheckSquare, XCircle } from 'lucide-react';
+import { ChevronRight, ClipboardCopy, Copy, CopyPlus, FolderOpen, ImagePlus, Pencil, Pin, PinOff, RefreshCw, Shield, Sparkles, Trash2, CheckSquare, XCircle } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
-import type { ContextMenuState, ShortcutItem, ShortcutType } from '../../types';
+import type { BrowserRouteOverride, ContextMenuState, ShortcutItem, ShortcutType } from '../../types';
 import { useAppStore } from '../../stores/appStore';
 import { byOrder } from '../../lib/sort';
-import { launchItem } from '../ContentArea/ItemCard';
+import { launchShortcutItem } from '../../lib/launchShortcut';
 import { TextDisplaySubmenu } from './TextDisplaySubmenu';
 import { useSmartMenuPosition } from './useSmartMenuPosition';
-import { uiAlert, uiPrompt } from '../../lib/uiDialog';
+import { uiAlert, uiConfirm, uiPrompt } from '../../lib/uiDialog';
+import { refreshShortcutIcon } from '../../lib/refreshShortcutIcon';
+import { showLauncherNotice } from '../../lib/notify';
+import { BrowserRoutePicker } from '../Settings/BrowserRoutePicker';
+import { useBrowserCatalog } from '../../hooks/useBrowserCatalog';
 
 interface ItemContextMenuProps {
   menu: Extract<ContextMenuState, { kind: 'item' }>;
@@ -35,6 +39,9 @@ function ItemEditDialog({ item, onSave, onCancel }: {
   const [path, setPath] = useState(item.path);
   const [type, setType] = useState<ShortcutType>(item.type);
   const [icon, setIcon] = useState(item.icon ?? '');
+  const [browserRoute, setBrowserRoute] = useState<BrowserRouteOverride>(item.browserRoute ?? { mode: 'inherit' });
+  const router = useAppStore((state) => state.browserRouter);
+  const { catalog } = useBrowserCatalog(router.customBrowsers);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -42,7 +49,8 @@ function ItemEditDialog({ item, onSave, onCancel }: {
       name: name.trim() || item.name,
       path: path.trim() || item.path,
       type,
-      icon: icon.trim() || undefined
+      icon: icon.trim() || undefined,
+      browserRoute: type === 'url' ? browserRoute : item.browserRoute,
     });
   }
 
@@ -67,6 +75,18 @@ function ItemEditDialog({ item, onSave, onCancel }: {
             <option value="command">命令</option>
           </select>
         </label>
+        {type === 'url' && (
+          <label className="edit-field">
+            <span>网址浏览器 / Profile</span>
+            <BrowserRoutePicker
+              value={browserRoute}
+              onChange={setBrowserRoute}
+              catalog={catalog}
+              router={router}
+            />
+            <small className="settings-hint">“继承上一级”会先读取所在父目录设置，再读取全局浏览器路由中心。</small>
+          </label>
+        )}
         <label className="edit-field">
           <span>图标</span>
           <textarea
@@ -91,6 +111,8 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
   const selectedItemIds = useAppStore((state) => state.selectedItemIds);
   const activeGroup = useAppStore((state) => state.getActiveGroup());
   const activeDirectory = useAppStore((state) => state.getActiveDirectory());
+  const globalDisplay = useAppStore((state) => state.display);
+  const experience = useAppStore((state) => state.experience);
   const selectItem = useAppStore((state) => state.selectItem);
   const selectItems = useAppStore((state) => state.selectItems);
   const clearSelection = useAppStore((state) => state.clearSelection);
@@ -98,6 +120,7 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
   const updateItem = useAppStore((state) => state.updateItem);
   const copyItemToDirectory = useAppStore((state) => state.copyItemToDirectory);
   const moveItemToDirectory = useAppStore((state) => state.moveItemToDirectory);
+  const duplicateItem = useAppStore((state) => state.duplicateItem);
   const [openSubmenu, setOpenSubmenu] = useState<ItemSubmenu>(null);
   const [editOpen, setEditOpen] = useState(false);
   const { ref, style, submenuClassName } = useSmartMenuPosition(menu.x, menu.y, 8, 320);
@@ -193,6 +216,57 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
     onClose();
   }
 
+
+  async function refreshCurrentItemIcon() {
+    onClose();
+    const icon = await refreshShortcutIcon(currentItem, globalDisplay, { forceRefresh: true });
+    if (!icon) {
+      showLauncherNotice(`「${currentItem.name}」图标刷新失败`);
+      return;
+    }
+    updateItem(currentItem.id, { icon });
+    showLauncherNotice(`已刷新当前项目图标：${currentItem.name}`);
+  }
+
+  function togglePinned() {
+    updateItem(currentItem.id, { pinned: !currentItem.pinned });
+    showLauncherNotice(currentItem.pinned ? `已取消固定：${currentItem.name}` : `已固定到前面：${currentItem.name}`);
+    onClose();
+  }
+
+  function duplicateCurrentItem() {
+    duplicateItem(currentItem.id);
+    showLauncherNotice(`已创建副本：${currentItem.name}`);
+    onClose();
+  }
+
+  async function copyText(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    showLauncherNotice(`已复制${label}`);
+    onClose();
+  }
+
+  async function deleteActionItems() {
+    if (experience.confirmDeleteItems) {
+      const ok = await uiConfirm(`确定删除${actionCount > 1 ? `选中的 ${actionCount} 个项目` : `「${currentItem.name}」`}吗？`);
+      if (!ok) return;
+    }
+    if (!currentIsSelected) selectItem(currentItem.id, false);
+    window.setTimeout(() => useAppStore.getState().deleteSelectedItems(), 0);
+    onClose();
+  }
+
   return (
     <>
       <div
@@ -202,8 +276,8 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
         onMouseDown={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.preventDefault()}
       >
-        <div className="menu-item" onClick={() => { launchItem(currentItem, false).catch((error) => uiAlert(`启动失败：${String(error)}`)); onClose(); }}>打开</div>
-        <div className="menu-item" onClick={() => { launchItem(currentItem, true).catch((error) => uiAlert(`启动失败：${String(error)}`)); onClose(); }}>
+        <div className="menu-item" onClick={() => { launchShortcutItem(currentItem, false).catch((error) => uiAlert(`启动失败：${String(error)}`)); onClose(); }}>打开</div>
+        <div className="menu-item" onClick={() => { launchShortcutItem(currentItem, true).catch((error) => uiAlert(`启动失败：${String(error)}`)); onClose(); }}>
           <span>以管理员身份运行</span><Shield size={14} />
         </div>
         <div className="menu-item" onClick={() => { invoke('open_file_location', { path: currentItem.path }).catch((error) => uiAlert(`打开所在文件夹失败：${String(error)}`)); onClose(); }}>
@@ -234,6 +308,12 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
         )}
         <div className="menu-separator" />
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => setEditOpen(true)}><span>编辑</span><Pencil size={14} /></div>
+        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={togglePinned}>
+          <span>{currentItem.pinned ? '取消固定项目' : '固定项目到前面'}</span>{currentItem.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+        </div>
+        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={duplicateCurrentItem}><span>创建当前项目副本</span><CopyPlus size={14} /></div>
+        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void copyText(currentItem.path, currentItem.type === 'url' ? '网址' : '路径')}><span>复制{currentItem.type === 'url' ? '网址' : '路径'}</span><ClipboardCopy size={14} /></div>
+        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={refreshCurrentItemIcon}><span>刷新当前项目图标</span><RefreshCw size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={editIconByText}><span>编辑图标</span><ImagePlus size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={useSystemIcon}><span>引用系统图标</span><Sparkles size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={chooseLocalIcon}><span>浏览本地图标</span><FolderOpen size={14} /></div>
@@ -267,7 +347,7 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
           )}
         </div>
         <div className="menu-separator" />
-        <div className="menu-item danger" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => { if (!currentIsSelected) selectItem(currentItem.id, false); setTimeout(() => useAppStore.getState().deleteSelectedItems(), 0); onClose(); }}>
+        <div className="menu-item danger" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void deleteActionItems()}>
           <span>删除{actionCount > 1 ? ` ${actionCount} 项` : ''}</span><Trash2 size={14} />
         </div>
       </div>

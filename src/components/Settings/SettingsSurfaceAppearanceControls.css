@@ -1,0 +1,121 @@
+/* v0.1.105: settings surface opacity is authoritative; glass optics are independently tunable. */
+.settings-surface-appearance-card {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-2), transparent 18%);
+}
+
+.settings-surface-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-surface-heading > span {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-surface-heading strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.settings-surface-heading small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.settings-surface-heading output {
+  flex: 0 0 auto;
+  min-width: 56px;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent), transparent 55%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.settings-opacity-presets,
+.settings-glass-presets {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+
+.settings-opacity-presets button,
+.settings-glass-presets button {
+  min-height: 31px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.settings-opacity-presets button:hover,
+.settings-glass-presets button:hover {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 40%);
+  color: var(--accent);
+}
+
+.settings-opacity-presets button.active,
+.settings-glass-presets button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 86%);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent), transparent 86%);
+}
+
+.settings-glass-main-toggle {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-glass-tuning {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed color-mix(in srgb, var(--border), transparent 10%);
+}
+
+.settings-glass-presets {
+  align-items: center;
+  margin-top: 0;
+}
+
+.settings-glass-presets > span {
+  margin-right: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.settings-glass-slider-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
+@container (max-width: 620px) {
+  .settings-glass-slider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-surface-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-surface-heading output {
+    align-self: flex-start;
+  }
+}

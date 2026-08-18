@@ -11,6 +11,9 @@ const SIZE_LIMIT = 2 * 1024 * 1024;
 const IMAGE_ICON_FILE_RE = /\.(png|jpe?g|webp|gif|svg|ico)$/i;
 
 const memoryCache = new Map<string, string>();
+const persistentMisses = new Set<string>();
+let indexCache: string[] | null = null;
+let indexFlushTimer: number | null = null;
 const inflight = new Map<string, Promise<string>>();
 let maxParallelIconTasks = DEFAULT_PARALLEL_ICON_TASKS;
 let activeTasks = 0;
@@ -67,32 +70,53 @@ function storageKey(key: string) {
 }
 
 function readIndex(): string[] {
+  if (indexCache) return indexCache;
   const storage = safeLocalStorage();
   if (!storage) return [];
   try {
     const raw = storage.getItem(STORAGE_INDEX_KEY);
-    if (!raw) return [];
+    if (!raw) return (indexCache = []);
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+    indexCache = Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+    return indexCache;
   } catch {
-    return [];
+    indexCache = [];
+    return indexCache;
   }
 }
 
-function writeIndex(index: string[]) {
+function flushIndex() {
+  indexFlushTimer = null;
   const storage = safeLocalStorage();
-  if (!storage) return;
+  if (!storage || !indexCache) return;
   try {
-    storage.setItem(STORAGE_INDEX_KEY, JSON.stringify(index));
+    storage.setItem(STORAGE_INDEX_KEY, JSON.stringify(indexCache));
   } catch {
-    // Ignore quota / privacy-mode errors. Runtime cache still works.
+    // Runtime cache still works when persistent storage is unavailable.
   }
+}
+
+function scheduleIndexFlush() {
+  if (typeof window === 'undefined') {
+    flushIndex();
+    return;
+  }
+  if (indexFlushTimer !== null) return;
+  indexFlushTimer = window.setTimeout(flushIndex, 180);
+}
+
+function writeIndex(index: string[]) {
+  indexCache = index;
+  scheduleIndexFlush();
 }
 
 function touchIndex(storageKeyValue: string) {
   const storage = safeLocalStorage();
   if (!storage) return;
-  const next = [storageKeyValue, ...readIndex().filter((item) => item !== storageKeyValue)];
+  const current = readIndex();
+  const next = current[0] === storageKeyValue
+    ? current
+    : [storageKeyValue, ...current.filter((item) => item !== storageKeyValue)];
   while (next.length > MAX_PERSISTED_ICONS) {
     const removed = next.pop();
     if (removed) {
@@ -103,17 +127,22 @@ function touchIndex(storageKeyValue: string) {
       }
     }
   }
-  writeIndex(next);
+  if (next !== current) writeIndex(next);
 }
 
 function readPersistentIcon(key: string) {
+  if (persistentMisses.has(key)) return undefined;
   const storage = safeLocalStorage();
   if (!storage) return undefined;
   const keyInStorage = storageKey(key);
   try {
     const value = storage.getItem(keyInStorage) ?? undefined;
-    if (value) touchIndex(keyInStorage);
-    return value;
+    if (value) {
+      touchIndex(keyInStorage);
+      return value;
+    }
+    persistentMisses.add(key);
+    return undefined;
   } catch {
     return undefined;
   }
@@ -127,6 +156,7 @@ function writePersistentIcon(key: string, value: string) {
   const keyInStorage = storageKey(key);
   try {
     storage.setItem(keyInStorage, value);
+    persistentMisses.delete(key);
     touchIndex(keyInStorage);
   } catch {
     // If the cache is full, evict older entries and retry once.
@@ -144,6 +174,7 @@ function writePersistentIcon(key: string, value: string) {
     writeIndex(index);
     try {
       storage.setItem(keyInStorage, value);
+      persistentMisses.delete(key);
       touchIndex(keyInStorage);
     } catch {
       // Persistent cache unavailable. Runtime cache is still enough for this session.
@@ -213,11 +244,14 @@ export function preloadIconDataUrls(targets: Array<{ command: IconResolveCommand
     unique.set(cacheKey(target.command, path), { ...target, path });
   }
 
+  const queue = Array.from(unique.values());
   const start = () => {
-    for (const target of unique.values()) {
+    const chunk = queue.splice(0, 24);
+    for (const target of chunk) {
       if (getCachedIcon(target.command, target.path)) continue;
       void resolveIconDataUrl(target.command, target.path);
     }
+    if (queue.length > 0) window.setTimeout(start, 24);
   };
 
   const idleCallback = (window as unknown as { requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number }).requestIdleCallback;

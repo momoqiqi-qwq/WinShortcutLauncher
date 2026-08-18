@@ -16,3 +16,6 @@ Cargo.lock
 # system / IDE
 .DS_Store
 .vscode/
+
+# Tauri generated schemas
+src-tauri/gen/

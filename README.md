@@ -1,183 +1,137 @@
-<div align="center">
-  <h1>🚀 Yue Launcher</h1>
-  <p>Windows 桌面快捷启动器 — 贴边隐藏 · 拖拽排序 · 系统图标 · 多主题</p>
+# Yue launcher v0.1.116
 
-  <a href="./LICENSE"><img src="https://img.shields.io/github/license/momoqiqi-qwq/YueLauncher" alt="License"/></a>
-  <a href="https://github.com/momoqiqi-qwq/YueLauncher/releases"><img src="https://img.shields.io/github/v/release/momoqiqi-qwq/YueLauncher" alt="Release"/></a>
-  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?logo=windows" alt="Platform"/>
-  <img src="https://img.shields.io/badge/Tauri-2.x-FFC131?logo=tauri" alt="Tauri"/>
-  <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react" alt="React"/>
-</div>
+Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快捷启动器。
 
----
 
-## 简介
 
-Yue Launcher 是一款基于 **Tauri 2 + React 18 + Rust Win32** 的 Windows 桌面快捷启动器，专注于打造流畅的快捷方式管理体验。
+## v0.1.116 浏览器拖入网址兼容
 
-**技术栈**：Tauri 2.x · React 18 · TypeScript · Tailwind CSS · dnd-kit · Zustand · Rust Win32
+- 修复 Floorp / Firefox 系浏览器拖网址时，`text/x-moz-url-data` 等 Gecko 数据格式已能解析但未被拖拽入口放行的问题。
+- 新增 `text/x-moz-url-data / desc / priv / place`、Windows URL 别名、虚拟 `.url/.website` 文件等兼容路径。
+- 虚拟 Internet Shortcut 同时支持 UTF-8 与 UTF-16LE/BE 内容。
+- 保留 Chromium 常见的 `text/uri-list / text/plain / text/html / text/url / DownloadURL` 处理，并增加未知 `text/*url*` 格式的安全回退。
+- 为避免副作用，Gecko 图片/普通文件的 file-promise 不会因为自带资源 URL 被误识别成“网站”。
+- 兼容目标覆盖 Floorp、Firefox、Waterfox、LibreWolf，以及 Chrome、Edge、Brave、Vivaldi、Opera 和多数 Chromium 壳浏览器常见的网页拖拽格式。
 
----
+详细说明见 `V116_BROWSER_DRAG_COMPATIBILITY_README.md`，验证结果见 `V116_TEST_RESULTS.txt`。
 
-## 功能特性
 
-### 📁 分组管理
+## v0.1.115 设置搜索精确定位
 
-- 顶部父目录标签 + 左侧子目录标签，均支持**拖拽排序**、**双击改名**
-- 父目录最多 3 行，超出后横向滚动；子目录选中高亮并显示全名
+- 设置搜索结果支持“目标分组 + 目标控件”精确跳转。
+- 点击结果时会自动展开被折叠的设置分组，再滚动到具体设置行并高亮/聚焦控件。
+- `zqd` / “自启动”命中“开机自动启动”后会直接定位到“启动与关闭”里的“开机自启动”复选框。
+- 同步覆盖便签行号/自动保存、全局搜索/防抖、中转站、图片浏览和彩虹总开关等折叠设置。
 
-### 🗂️ 快捷项目
+## v0.1.114 设置生效链路修复
 
-- ShellX 风格图标卡片，支持 1～5 行文字显示、字号/宽度调节、tooltip 全名
-- 直接将文件/文件夹/`.lnk` **拖入添加**，Rust 自动解析快捷方式并提取 Windows 系统图标
-- `Ctrl + 左键` 多选，`Ctrl + A` 全选，批量复制/移动/删除
+- 修复 `rememberSettingsPanelBounds` / `settingsPanelAdaptiveSize`：设置面板不再硬编码，自适应关闭后恢复标题栏拖动和右下角缩放，并按开关决定是否记忆尺寸/位置。
+- 文件中转站和图片浏览器的总开关现在会约束顶部入口、快捷键、贴边暂停和拖放状态，不再产生“界面没显示但内部 open=true”的隐藏状态。
+- “允许外部拖入”同时约束 Tauri 原生拖放和面板 DOM drop 路径。
+- “窗口置顶”在“设置 → 窗口”增加真实设置项，设置搜索会定位到该项；与右上角图钉、快捷键共享同一状态。
+- 中央设置补齐搜索防抖、文件中转图标显示、清空前确认三个已有运行参数。
+- 旧 `windowState.edgeAutoHide` 保留兼容，但加载和更新时都强制与 `behavior.edgeAutoHide` 同步，避免双状态漂移。
 
-### 🖱️ 右键菜单
+详细说明见 `V114_SETTINGS_EFFECT_FIXES_README.md`，验证结果见 `V114_TEST_RESULTS.txt`。
 
-- 打开、管理员运行、打开所在文件夹、编辑、编辑图标
-- 文字显示行数覆盖、复制/移动到分组、删除
-- 右键二级子菜单根据窗口空间自动选择左右展开
+## v0.1.113 首次启动、搜索设置与网站拖入重命名
 
-### 🔍 搜索与缩放
+- 首次启动默认关闭彩虹总开关，窗口控制按钮默认使用四宫格样式；已有用户配置不被强制覆盖。
+- “搜索框提示文字”同时作用于主界面项目搜索框和全局搜索框。
+- 审计并修正搜索设置：路径/网址搜索独立生效，关闭系统工具后完整排除系统工具组，关闭便签后不再残留便签目录结果，关闭最近使用优先后不再叠加使用次数权重。
+- “启用全局搜索”关闭后，Ctrl+K 和顶部入口不会再打开隐藏搜索状态。
+- 从浏览器或 `.url/.website` 文件拖入网站时，默认先显示应用内重命名界面；可在“设置 → 拖动”关闭“拖入网站后显示重命名界面”。
+- 设置搜索可直接搜索“网站 / 拖入 / 重命名”定位新开关。
 
-- `Ctrl + F` 聚焦内容区搜索栏，`Esc` 清空
-- `Ctrl + 滚轮` 等比例缩放（主界面与设置界面**独立缩放**，`Ctrl + 0` 重置）
+详细说明见 `V113_FIRST_RUN_SEARCH_DROP_RENAME_README.md`，验证结果见 `V113_TEST_RESULTS.txt`。
 
-### 📌 贴边隐藏（Rust 原生 V6）
+## v0.1.110 拼音搜索扩展
 
-- Rust 后端 **8ms 轮询**，Win32 `GetCursorPos / GetWindowRect` 原生检测
-- `AnimateWindow` 原生滑入/滑出动画（默认 90ms）
-- 可调节：隐藏延迟（立即 / 0.3s～10s）、动画速度、触发条宽度/透明度/颜色
+- 主界面项目搜索支持中文、完整拼音、拼音片段和首字母。
+- 全局搜索 / 命令面板统一支持运行时中文名称转拼音。
+- 父目录和子目录可作为独立结果按拼音搜索，`搜索父目录` / `搜索子目录` 开关分别生效。
+- 示例：`gongzuo / gz` → “工作”，`wenjianjia / wjj` → “文件夹”，`liulanqi / llq` → “浏览器”。
+- 拼音表内置在前端，不新增 npm runtime dependency。
 
-### 🎨 界面与主题
+详细说明见 `V110_PINYIN_SEARCH_EXPANSION_README.md`，验证结果见 `V110_TEST_RESULTS.txt`。
 
-- 多主题 + 透明度调节
-- 设置面板：左侧分类导航（常规、操作、界面、数据），可拖动/缩放的浮动窗口
-- 滚动条样式可自定义（宽度、颜色、圆角）
 
-### 🗄️ 系统托盘
+## v0.1.106 父目录配色、外观自由度与拖入体验
 
-- 左键托盘图标：显示主窗口
-- 右键托盘菜单：显示主窗口 / 隐藏到托盘 / 退出
-- 关闭窗口默认隐藏到托盘（可在设置中改为直接退出）
+- 父目录颜色正式进入设置中心：支持每个父目录单独选色、色板快捷按钮、一键彩色分组、换一组颜色和全部跟随主题。
+- 父目录标签新增高度、间距、文字大小、边框粗细、颜色填充强度设置，并提供紧凑 / 标准 / 彩色卡片 / 醒目四套外观预设。
+- 外部文件、文件夹或网址拖到父目录标签时会突出显示目标并显示目标名称；目标父目录没有普通子目录时会自动创建“常用”用于接收。
+- 父目录批量配色改为一次 store 更新，避免连续多次写状态。
+- 将父目录外观、父目录配色拆成独立设置组件和独立 CSS；重复的设置开关卡片抽到 `SettingsPrimitives.tsx`。
+- 设置搜索新增“父目录配色 / 高度 / 间距 / 边框 / 颜色强度”等关键词。
 
-### 💾 数据与配置
+详细说明见 `V106_PARENT_GROUPS_FREEDOM_UX_README.md`，结构复查见 `V106_CODE_STRUCTURE_REVIEW.md`。
 
-- Zustand + localStorage 持久化
-- JSON 一键导入/导出配置
-- 可配置自动保存（目录、文件名、保存间隔）
+## v0.1.105 设置面板透明度与玻璃效果修复
 
----
+- 修复开启「玻璃感」后 62% / 68% / 66% 固定透明度覆盖滑块的问题。
+- 「设置面板不透明度」现在拥有最高优先级：100% 会生成真正不透明的面板。
+- 对内置 `rgba(...)` 半透明主题增加实色表面色计算，避免主题自带 alpha 让 100% 仍然透。
+- 玻璃感改为只控制模糊、饱和度、高光和边缘，新增轻柔 / 标准 / 强烈预设与独立滑块。
+- 新增实色 100%、90%、75%、60% 面板快捷按钮，设置搜索也可搜「不透明度 / 饱和度 / 高光」。
+- 将 DisplaySettings 中的防抖滑块和设置面板外观拆成独立组件，新增样式也不再继续堆入 2700+ 行的 `Settings.css`。
 
-## 环境要求
+详细说明见 `V105_SETTINGS_OPACITY_GLASS_UX_README.md`。
 
-> ⚠️ 仅支持 **Windows 10 / 11**
 
-| 工具 | 版本要求 | 说明 |
-|------|---------|------|
-| Node.js | 20+ | [nodejs.org](https://nodejs.org) |
-| Rust | stable | [rustup.rs](https://rustup.rs) |
-| Visual Studio Build Tools | 最新版 | 勾选「Desktop development with C++」 |
-| WebView2 Runtime | — | Windows 11 自带；Windows 10 请[手动安装](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) |
+## v0.1.104 性能优化
 
----
+这一版重点优化“项目多、图标多、连续调整设置时”的主线程卡顿：配置持久化改为浅比较后合并写盘，快捷项目不再为每张卡片注册全局鼠标监听，离屏图标延迟到接近可视区域再解析，全局搜索缓存重复的中文归一化/拼音计算，彩虹鼠标位置更新改走 requestAnimationFrame + DOM 更新；图片浏览器也改成可视区域缩略图加载、读取请求去重，并对尺寸拖动与裁剪指针更新做逐帧节流。
 
-## 快速开始
+详细说明见 `V104_PERFORMANCE_OPTIMIZATION_README.md`。
 
-```powershell
-# 安装依赖
-npm install
+## v0.1.103 主要更新
 
-# 启动开发服务（热重载）
+### 导入中心
+
+- Lucy DB、Maye/Maya JSON/JDB 导入改为“先预览再执行”。
+- 智能合并会统计新增、重复和冲突，冲突可逐项选择“保留当前 / 使用导入 / 两个都保留”。
+- 保留“完全覆盖”模式，并在执行前二次确认。
+- 每次真正导入前自动保存一份“上次导入前”回滚快照；数据设置中可一键恢复。
+- Windows 路径大小写和斜杠差异会按同一目标识别，Lucy/Maye 外部 ID 不再作为合并依据。
+- Maye JDB 不再使用 `Function(...)` 执行；改为只解析静态对象字面量，函数调用、成员访问和可执行表达式会被拒绝。
+
+### 自由快捷设置
+
+- 右上角快捷设置由固定 6 项扩展为 20 项。
+- 支持拖动排序、收藏、隐藏/恢复和一键恢复默认布局。
+- 收藏项在普通视图中优先展示；配置持久化到本地。
+- 快捷设置菜单拆成独立组件和独立样式文件，减少 `TopBar.tsx` 的职责。
+- 动画优化为更轻的位移/缩放反馈，并尊重“减少界面动画”。
+
+### 设置搜索与代码结构
+
+- 设置搜索新增细粒度索引，可直接搜索“贴边、回滚导入、动态壁纸、快捷键、行号”等具体设置。
+- 点击搜索结果会跳到对应分类/子区块，并滚动到相关设置后短暂高亮。
+- 导入中心、快捷设置、设置搜索均拆分为独立模块和样式文件，避免继续扩张 `Settings.css`、`DisplaySettings.tsx` 和 `TopBar.tsx`。
+
+详细说明：
+
+- `V103_IMPORT_CENTER_QUICK_SETTINGS_UX_README.md`
+- `V103_CODE_STRUCTURE_REVIEW.md`
+- `V103_TEST_RESULTS.txt`
+
+## 开发与构建
+
+需要 Node.js `20.19+` 或 `22.12+`，以及 Rust stable、Cargo 和 Windows WebView2 构建环境。
+
+```bash
+npm ci
+npm run verify
+npm run tauri:build
+```
+
+常用命令：
+
+```bash
 npm run tauri:dev
+npm run typecheck
+npm run test
 ```
 
----
-
-## 构建发布包
-
-```powershell
-npm run tauri:build
-```
-
-构建完成后，安装包位于：
-
-```
-src-tauri\target\release\bundle\
-├── nsis\     <- NSIS 安装包（默认）
-└── msi\      <- MSI 安装包（需在 tauri.conf.json 中开启）
-```
-
-如需 MSI，在 `src-tauri/tauri.conf.json` 中修改：
-
-```json
-"targets": ["msi"]
-```
-
-或同时生成所有格式：
-
-```json
-"targets": ["all"]
-```
-
----
-
-## 文件结构
-
-```
-src/
-├── components/
-│   ├── TopBar/              # 顶部父目录标签
-│   ├── Sidebar/             # 左侧子目录标签
-│   ├── ContentArea/         # 快捷项目卡片（ItemCard.tsx）
-│   ├── ContextMenu/         # 右键菜单（含二级子菜单）
-│   └── Settings/            # 设置面板
-├── stores/
-│   ├── appStore.ts          # 应用状态
-│   ├── themeStore.ts        # 主题状态
-│   └── displayStore.ts      # 显示设置状态
-└── hooks/
-    ├── useDragDrop.ts        # 拖拽逻辑
-    └── useEdgeSnap.ts        # 贴边隐藏（前端部分）
-
-src-tauri/
-├── src/
-│   ├── commands.rs           # Tauri 命令（含贴边原生控制器）
-│   ├── icon.rs               # 系统图标提取（Win32 SHGetFileInfo）
-│   ├── lib.rs
-│   └── main.rs
-└── tauri.conf.json
-```
-
----
-
-## 常见问题
-
-### 窗口只显示透明边框 / 白屏
-
-1. 先执行 `npm run build` 确认前端可以正常编译
-2. 开发模式按 `Ctrl + Shift + I` 打开 DevTools 查看 Console 报错
-3. 项目内置 React ErrorBoundary，前端渲染失败时会直接显示错误信息
-
-### Windows 任务栏仍显示旧图标
-
-系统图标缓存或 Cargo 缓存导致，执行以下命令清理后重新构建：
-
-```powershell
-cd src-tauri
-cargo clean
-cd ..
-npm run tauri:build
-```
-
----
-
-## 更新日志
-
-完整版本历史见 [CHANGELOG.md](./CHANGELOG.md)。
-
----
-
-## 许可证
-
-[GPL-3.0](./LICENSE) © momoqiqi-qwq
+当前程序版本：`0.1.110`

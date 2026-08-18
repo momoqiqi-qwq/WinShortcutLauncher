@@ -1,0 +1,41 @@
+v0.1.106 validation summary
+===========================
+
+Completed checks
+----------------
+1. TypeScript/TSX syntax transpile check: PASS
+   - 151 non-declaration .ts/.tsx files transpiled with TypeScript transpileModule.
+
+2. CSS parser check: PASS
+   - 25 CSS files parsed successfully with PostCSS.
+
+3. Version consistency: PASS
+   - package.json: 0.1.106
+   - package-lock.json: 0.1.106
+   - src-tauri/tauri.conf.json: 0.1.106
+   - src-tauri/Cargo.toml: 0.1.106
+   - AboutSettingsSection: 0.1.106
+
+4. Regression tests added
+   - parent group setGroupColor / setGroupColors behavior
+   - valid/invalid persisted group colors
+   - clamping of top-tab width/height/gap/font/border/color-strength values
+   - group context-menu catalog expectation updated for the color entry
+
+Environment limitation
+----------------------
+The sandbox does not currently contain this project's node_modules. `tsc --noEmit`
+cannot complete because React/Node/Vitest-related type packages are unavailable. `npm ci`
+could not be completed in the sandbox, so `npm run test` and the full Vite/Tauri build
+were not claimed as passing.
+
+Recommended local verification
+------------------------------
+1. npm ci
+2. npm run verify
+3. npm run tauri:dev
+4. Verify parent group colors persist after restart.
+5. Verify the four parent-tab appearance presets on light/dark themes.
+6. Drag a file/folder/URL onto a colored parent tab and confirm target highlighting.
+7. Drag onto a parent group that has no normal child directory and confirm “常用” is created.
+8. Verify settings search finds “父目录配色 / 边框 / 颜色强度”.

@@ -1,0 +1,88 @@
+Yue launcher v0.1.113 验证结果
+================================
+
+验证日期：2026-08-18
+基线版本：v0.1.112
+目标版本：v0.1.113
+
+1. TypeScript / TSX 语法解析
+---------------------------
+结果：PASS
+- 使用 TypeScript 5.8.3 编译器 API 解析 src 下全部 163 个 .ts/.tsx 源文件（排除 .d.ts）。
+- syntax diagnostics: 0。
+
+2. 配置文件解析
+---------------
+结果：PASS
+- package.json：JSON 解析通过。
+- package-lock.json：JSON 解析通过。
+- src-tauri/tauri.conf.json：JSON 解析通过。
+- package / Cargo.toml / tauri.conf.json 版本均已更新为 0.1.113。
+- app store schema 已从 20 更新为 21。
+
+3. v113 定向运行时回归断言
+--------------------------
+结果：PASS
+通过 TypeScript transpile + CommonJS require hook 直接执行纯逻辑模块，验证：
+- 首次启动 defaultRainbow.enabled === false。
+- 首次启动 defaultDisplay.windowControlStyle === 'pad'。
+- promptRenameDroppedWebsite 默认 true。
+- 旧配置缺少该字段时规范化为 true；显式 false 能保持 false。
+- 搜索路径与搜索网址互相独立。
+- includeNotes=false 时不产生便签结果。
+- includeSystemTools=false 时不产生 system-tools 分组项目。
+- preferRecent=false 时使用次数/最近使用时间不再改变评分。
+输出：Manual v113 regression assertions: PASS
+
+4. 搜索设置代码路径审计
+-----------------------
+结果：PASS（源码消费者核对）
+已核对：
+- enabled
+- placeholder
+- maxResults
+- showItemIcon / iconSize / iconResolveMode / iconParallelTasks
+- showGroupPath / showFullPath
+- highlightMatches
+- searchInName / searchInPath / searchInUrl / searchInGroup / searchInSubGroup
+- includeNotes / includeDirectories / includeSettings / includeCommands / includeSystemTools
+- enablePinyin
+- preferRecent
+- showResultType
+- enterAction / ctrlEnterAction
+
+本版修复的实际接线问题：
+- placeholder 现在同时进入主界面项目搜索框与全局搜索框。
+- enabled=false 时 Ctrl+K / 顶部入口不会继续打开全局搜索状态。
+- searchInPath / searchInUrl 独立匹配。
+- includeSystemTools=false 完整过滤内置系统工具组。
+- includeNotes=false 不再残留便签目录。
+- preferRecent=false 完全关闭使用/最近权重。
+
+5. 网站拖入重命名流程审计
+-------------------------
+结果：PASS（源码路径 + 默认值断言）
+- 浏览器网页拖入与 .url/.website 路径都统一进入 handleDroppedWebLink。
+- 默认先调用应用内 uiPrompt 显示“重命名网站”。
+- 用户输入名称后，后台网页标题不会再覆盖该名称。
+- 设置关闭后不弹出重命名，保留原有自动标题解析行为。
+- 设置项位于“设置 → 拖动”，并已加入设置搜索索引。
+
+6. 完整 npm test / build
+-----------------------
+结果：未完成（环境依赖不完整，不标记为通过）
+- 初次执行 npm run test：node_modules 中缺少 vitest 可执行文件。
+- 随后尝试 npm ci --ignore-scripts，120 秒内未完成并超时。
+- 因此未宣称完整 Vitest / Vite build 已通过。
+- 打包前会移除这份不完整的 node_modules，不将其带入源码压缩包。
+
+7. Rust / Tauri 原生编译
+-----------------------
+结果：未执行
+- 当前容器没有 cargo / Rust 工具链。
+- 本版没有改动 Rust 业务代码；仅将 src-tauri 中版本号更新为 0.1.113。
+
+结论
+====
+本版请求涉及的默认配置、搜索逻辑、设置接线与网站拖入逻辑已完成源码级和定向运行时验证；TypeScript/TSX 语法无错误。
+由于当前环境缺少完整 npm 依赖和 Cargo，不能将“完整前端构建 / Windows Tauri 编译”标记为通过。

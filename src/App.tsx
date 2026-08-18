@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { useCallback, useEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
+import { X } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { TopBar } from './components/TopBar/TopBar';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { ContentArea } from './components/ContentArea/ContentArea';
@@ -19,162 +20,118 @@ import { useWindowDrag } from './hooks/useWindowDrag';
 import { useWindowBoundsGuard } from './hooks/useWindowBoundsGuard';
 import { useAutoSave } from './hooks/useAutoSave';
 import { useCtrlWheelZoom } from './hooks/useCtrlWheelZoom';
-import type { ContextMenuState } from './types';
+import { useThemedFormControls } from './hooks/useThemedFormControls';
+import type { ContextMenuState, Group } from './types';
 import { useAppStore } from './stores/appStore';
 import { UiDialogHost } from './components/UiDialog/UiDialogHost';
-import { uiConfirm } from './lib/uiDialog';
+import { uiConfirm, uiPrompt } from './lib/uiDialog';
+import { createUrlShortcut } from './lib/createShortcutItems';
+import { buildOnlineFaviconUrl } from './lib/faviconProviders';
+import { RainbowEffects } from './components/RainbowEffects/RainbowEffects';
+import { BackgroundMediaLayer } from './components/BackgroundMedia/BackgroundMedia';
+import { showLauncherNotice, type LauncherNoticeDetail } from './lib/notify';
+import { getWindowPersistenceSettings } from './lib/windowPersistence';
+import { shortcutMatchesEvent } from './lib/keyboardShortcuts';
+import { cleanDroppedTitle, extractDroppedFilePaths, extractDroppedWebLinkAsync, getDropTypeSummary, getDroppedUrlShortcutFile, nameFromDroppedUrlFile, normalizeDroppedUrl, readDroppedUrlShortcutFile, shouldAcceptExternalDropCandidate } from './lib/browserDrop';
+import './components/RainbowEffects/RainbowEffects.css';
 
 
 
-const DEFAULT_RAINBOW_COLORS = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#00C7FF', '#5856D6', '#FF2D55'];
-
-function normalizeRainbowColors(value: unknown): string[] {
-  const source = Array.isArray(value) ? value : DEFAULT_RAINBOW_COLORS;
-  const seen = new Set<string>();
-  const colors: string[] = [];
-  for (const item of source) {
-    const hex = String(item ?? '').trim().toUpperCase();
-    if (!/^#[0-9A-F]{6}$/.test(hex) || seen.has(hex)) continue;
-    seen.add(hex);
-    colors.push(hex);
+async function resolveDroppedWebsiteIcon(url: string, saveLocal: boolean, providerId = 'auto', fallback = true) {
+  if (saveLocal) {
+    const localIcon = await invoke<string>('fetch_website_favicon', { url, providerId, fallback }).catch(() => '');
+    if (localIcon) return localIcon;
   }
-  return colors.length ? colors : DEFAULT_RAINBOW_COLORS;
+  return buildOnlineFaviconUrl(url, providerId as any);
 }
 
-function cssGradientStops(colors: string[]) {
-  const list = colors.length ? colors : DEFAULT_RAINBOW_COLORS;
-  return [...list, list[0]].join(', ');
+async function resolveDroppedWebsiteTitle(url: string) {
+  const title = await invoke<string>('fetch_website_title', { url }).catch(() => '');
+  return cleanDroppedTitle(title || '', url);
 }
 
-function cssLinearRainbow(colors: string[]) {
-  return `linear-gradient(90deg, ${cssGradientStops(colors)})`;
+type DropTargetSelection = { groupId: string; directoryId: string } | null;
+
+function findFirstNormalDirectory(group?: Group): DropTargetSelection {
+  if (!group) return null;
+  const directory = group.directories.find((entry) => (entry.kind ?? 'normal') === 'normal');
+  return directory ? { groupId: group.id, directoryId: directory.id } : null;
 }
 
-function cssConicRainbow(colors: string[]) {
-  return `conic-gradient(${cssGradientStops(colors)})`;
+function findDropGroupId(target: EventTarget | null) {
+  if (!(target instanceof Element)) return null;
+  return target.closest<HTMLElement>('[data-group-id]')?.dataset.groupId ?? null;
 }
-
-function cssUrl(value: string): string {
-  if (!value) return 'none';
-  const trimmed = value.trim();
-  if (!trimmed) return 'none';
-  const safe = trimmed.replace(/\\/g, '/').replace(/"/g, '\\"');
-  if (/^(data:image\/|blob:|https?:\/\/|asset:|tauri:)/i.test(trimmed)) return `url("${safe}")`;
-  return `url("${convertFileSrc(trimmed).replace(/"/g, '\\"')}")`;
-}
-
-function backgroundSize(fit: string | undefined): string {
-  if (fit === 'stretch') return '100% 100%';
-  if (fit === 'tile') return 'auto';
-  return fit || 'cover';
-}
-
-function backgroundRepeat(fit: string | undefined): string {
-  return fit === 'tile' ? 'repeat' : 'no-repeat';
-}
-
-type RainbowTrailPoint = { id: number; x: number; y: number; t: number; hue: number; size: number; color: string };
 
 function App() {
   useThemeInstaller();
+  useThemedFormControls();
   useAutoSave();
   useCtrlWheelZoom();
+  const behavior = useAppStore((state) => state.behavior);
+  useEffect(() => {
+    void invoke('set_window_persistence_settings', {
+      settings: getWindowPersistenceSettings(behavior),
+    }).catch(() => undefined);
+  }, [
+    behavior.manualWindowStateEnabled,
+    behavior.restoreWindowStateOnLaunch,
+    behavior.saveWindowStateOnExit,
+  ]);
   const display = useAppStore((state) => state.display);
-  const [backgroundImageCss, setBackgroundImageCss] = useState('none');
+  const groups = useAppStore((state) => state.groups);
+  const rainbow = useAppStore((state) => state.rainbow);
+  const experience = useAppStore((state) => state.experience);
+  const globalSearchSettings = useAppStore((state) => state.globalSearch);
+  const transferStationSettings = useAppStore((state) => state.transferStation);
+  const imageBrowserSettings = useAppStore((state) => state.imageBrowser);
   const [edgeDockPausedUntil, setEdgeDockPausedUntil] = useState(0);
   const [edgeDockInteractiveHold, setEdgeDockInteractiveHold] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [dropPaths, setDropPaths] = useState<string[]>([]);
+  const [dropImportTarget, setDropImportTarget] = useState<DropTargetSelection>(null);
+  const [webDragHover, setWebDragHover] = useState(false);
+  const [externalDropTargetGroupId, setExternalDropTargetGroupId] = useState<string | null>(null);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [transferStationOpen, setTransferStationOpen] = useState(false);
   const [imageBrowserOpen, setImageBrowserOpen] = useState(false);
-  const [launcherNotice, setLauncherNotice] = useState('');
-  const [rainbowTrail, setRainbowTrail] = useState<RainbowTrailPoint[]>([]);
-  const [rainbowCursor, setRainbowCursor] = useState({ x: -999, y: -999, visible: false });
-  const behavior = useAppStore((state) => state.behavior);
+  const [launcherNotice, setLauncherNotice] = useState<{ id: number; message: string; durationMs: number } | null>(null);
   const settingsOpen = useAppStore((state) => state.settingsOpen);
   const setSettingsOpen = useAppStore((state) => state.setSettingsOpen);
   const edgeDockPauseActive = edgeDockPausedUntil > Date.now();
-  const rainbowActive = Boolean(behavior.rainbowEnabled);
-  const rainbowMouseTrailActive = rainbowActive && behavior.rainbowMouseTrailEnabled !== false;
-  const rainbowBorderActive = rainbowActive && behavior.rainbowBorderEnabled !== false;
-  const rainbowTextActive = rainbowActive && Boolean(behavior.rainbowTextEnabled);
-  const rainbowCursorActive = rainbowActive;
-  const rainbowMouseColors = useMemo(() => normalizeRainbowColors(behavior.rainbowMouseColors), [behavior.rainbowMouseColors]);
-  const rainbowBorderColors = useMemo(() => normalizeRainbowColors(behavior.rainbowBorderColors), [behavior.rainbowBorderColors]);
-  const rainbowTextColors = useMemo(() => normalizeRainbowColors(behavior.rainbowTextColors), [behavior.rainbowTextColors]);
-  const rainbowMouseColorKey = rainbowMouseColors.join('|');
+  const transferStationActive = transferStationOpen && transferStationSettings.enabled !== false;
+  const imageBrowserActive = imageBrowserOpen && imageBrowserSettings.enabled !== false;
 
   useEffect(() => {
-    if (!rainbowActive) {
-      setRainbowTrail([]);
-      setRainbowCursor({ x: -999, y: -999, visible: false });
-      return;
-    }
+    if (!globalSearchSettings.enabled) setGlobalSearchOpen(false);
+  }, [globalSearchSettings.enabled]);
 
-    let hueIndex = 0;
-    let lastX = -999;
-    let lastY = -999;
-    const lifeMs = Math.max(180, Math.min(2400, Math.round(behavior.rainbowMouseTrailLifeMs ?? 720)));
-    const maxCount = Math.max(4, Math.min(48, Math.round(behavior.rainbowMouseTrailCount ?? 18)));
+  useEffect(() => {
+    if (!transferStationSettings.enabled) setTransferStationOpen(false);
+  }, [transferStationSettings.enabled]);
 
-    function prune(now = Date.now()) {
-      setRainbowTrail((points) => points.filter((point) => now - point.t < lifeMs));
-    }
-
-    function handlePointerMove(event: PointerEvent) {
-      lastX = event.clientX;
-      lastY = event.clientY;
-      setRainbowCursor({ x: lastX, y: lastY, visible: true });
-    }
-
-    function handlePointerLeave() {
-      setRainbowCursor((current) => ({ ...current, visible: false }));
-    }
-
-    window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    window.addEventListener('mouseleave', handlePointerLeave);
-    const pruneTimer = window.setInterval(() => prune(), 80);
-    const trailTimer = rainbowMouseTrailActive
-      ? window.setInterval(() => {
-          if (lastX < 0 || lastY < 0) return;
-          const now = Date.now();
-          const sizeBase = Math.max(4, Math.min(42, Math.round(behavior.rainbowMouseTrailSize ?? 16)));
-          const size = Math.max(3, Math.round(sizeBase * (0.28 + Math.random() * 0.48)));
-          const color = rainbowMouseColors[hueIndex % rainbowMouseColors.length] || DEFAULT_RAINBOW_COLORS[0];
-          const point: RainbowTrailPoint = { id: now + Math.random(), x: lastX, y: lastY, t: now, hue: hueIndex * 30, size, color };
-          hueIndex += 1;
-          setRainbowTrail((points) => {
-            const fresh = points.filter((item) => now - item.t < lifeMs);
-            return [...fresh, point].slice(-maxCount);
-          });
-        }, 40)
-      : 0;
-
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('mouseleave', handlePointerLeave);
-      window.clearInterval(pruneTimer);
-      if (trailTimer) window.clearInterval(trailTimer);
-    };
-  }, [rainbowActive, rainbowMouseTrailActive, behavior.rainbowMouseTrailLifeMs, behavior.rainbowMouseTrailCount, behavior.rainbowMouseTrailSize, rainbowMouseColorKey]);
+  useEffect(() => {
+    if (!imageBrowserSettings.enabled) setImageBrowserOpen(false);
+  }, [imageBrowserSettings.enabled]);
 
 
   useEffect(() => {
     let timeoutId = 0;
     function handleNotice(event: Event) {
-      const message = typeof (event as CustomEvent<string>).detail === 'string' ? (event as CustomEvent<string>).detail : '';
+      const detail = (event as CustomEvent<LauncherNoticeDetail | string>).detail;
+      const message = typeof detail === 'string' ? detail : detail?.message;
       if (!message) return;
+      const durationMs = Math.max(500, Math.min(10000, typeof detail === 'string' ? (display.toastDurationMs ?? 2400) : (detail.durationMs ?? display.toastDurationMs ?? 2400)));
       window.clearTimeout(timeoutId);
-      setLauncherNotice(message);
-      timeoutId = window.setTimeout(() => setLauncherNotice(''), 1600);
+      setLauncherNotice({ id: Date.now(), message, durationMs });
+      timeoutId = window.setTimeout(() => setLauncherNotice(null), durationMs);
     }
     window.addEventListener('launcher-show-notice', handleNotice);
     return () => {
       window.clearTimeout(timeoutId);
       window.removeEventListener('launcher-show-notice', handleNotice);
     };
-  }, []);
+  }, [display.toastDurationMs]);
 
   useEffect(() => {
     if (!edgeDockPauseActive) return;
@@ -190,43 +147,20 @@ function App() {
     setEdgeDockInteractiveHold(true);
   }
 
-  useEffect(() => {
-    let cancelled = false;
-    const raw = display.backgroundImage?.trim() ?? '';
-    if (!display.backgroundEnabled || !raw) {
-      setBackgroundImageCss('none');
-      return;
-    }
-
-    if (/^(data:image\/|blob:|https?:\/\/|asset:|tauri:)/i.test(raw)) {
-      setBackgroundImageCss(cssUrl(raw));
-      return;
-    }
-
-    // Local Windows paths are most reliable as data URLs inside CSS backgrounds.
-    // convertFileSrc is kept as a fallback for unusual paths.
-    invoke<string>('read_icon_as_data_url', { path: raw })
-      .then((dataUrl) => {
-        if (!cancelled && dataUrl) setBackgroundImageCss(cssUrl(dataUrl));
-      })
-      .catch(() => {
-        if (!cancelled) setBackgroundImageCss(cssUrl(raw));
-      });
-
-    return () => { cancelled = true; };
-  }, [display.backgroundEnabled, display.backgroundImage]);
-
   useStableEdgeDock({
-    enabled: behavior.edgeAutoHide || behavior.autoEdgeHide,
+    enabled: behavior.edgeAutoHide || behavior.autoEdgeHide || behavior.autoEdgeSnapBack,
     dockAutoHide: behavior.edgeAutoHide,
     hideDelayMs: behavior.edgeHideDelaySeconds <= 0.05 ? 0 : Math.round(behavior.edgeHideDelaySeconds * 1000),
-    paused: edgeDockPauseActive || edgeDockInteractiveHold || settingsOpen || Boolean(contextMenu) || dropPaths.length > 0 || globalSearchOpen || transferStationOpen || imageBrowserOpen,
+    paused: edgeDockPauseActive || edgeDockInteractiveHold || settingsOpen || Boolean(contextMenu) || dropPaths.length > 0 || globalSearchOpen || transferStationActive || imageBrowserActive,
     stripSize: behavior.edgeStripSize ?? 10,
     edgeTolerance: 24,
     animationMs: behavior.edgeAnimationMs ?? 90,
     animationStyle: behavior.edgeAnimationStyle ?? 'animate-window',
-    autoEdgeHide: behavior.autoEdgeHide ?? true,
+    autoEdgeHide: (behavior.autoEdgeHide ?? true) || (behavior.autoEdgeSnapBack ?? false),
     autoEdgeBounce: behavior.autoEdgeBounce ?? true,
+    autoEdgeSnapBack: behavior.autoEdgeSnapBack ?? false,
+    autoEdgeSnapBackAnimation: behavior.autoEdgeSnapBackAnimation ?? true,
+    autoEdgeSnapBackAnimationMs: behavior.autoEdgeSnapBackAnimationMs ?? 220,
     autoEdgeHideDelay: behavior.autoEdgeHideDelay ?? 1000,
     edgeVisiblePixels: behavior.edgeVisiblePixels ?? 5,
     ghostFrameFix: behavior.edgeGhostFrameFix ?? true,
@@ -237,14 +171,205 @@ function App() {
   useEffect(() => {
     void invoke('set_close_behavior', { closeToTray: behavior.closeAction !== 'exit' }).catch(() => undefined);
   }, [behavior.closeAction]);
-  useWindowBoundsGuard(true);
+  useWindowBoundsGuard(behavior.autoEdgeSnapBack === true, behavior.autoEdgeSnapBackAnimation !== false, behavior.autoEdgeSnapBackAnimationMs ?? 220);
   const startWindowDrag = useWindowDrag();
-  const handleDropPaths = useCallback((paths: string[]) => {
+  const handleDroppedWebLink = useCallback(async (link: { url: string; name?: string }, preferredTarget?: DropTargetSelection) => {
+    if (transferStationActive || imageBrowserActive) return;
+    const state = useAppStore.getState();
+    const activeGroup = state.getActiveGroup();
+    const activeDirectory = state.getActiveDirectory();
+    const resolvedTarget = (() => {
+      if (preferredTarget?.groupId && preferredTarget?.directoryId) return preferredTarget;
+      if (activeGroup && activeDirectory && (activeDirectory.kind ?? 'normal') === 'normal') {
+        return { groupId: activeGroup.id, directoryId: activeDirectory.id };
+      }
+      return findFirstNormalDirectory(activeGroup);
+    })();
+    if (!resolvedTarget) {
+      showLauncherNotice('当前没有可添加网址的普通子目录');
+      return;
+    }
+
+    const droppedName = cleanDroppedTitle(link.name || '', link.url);
+    const draft = createUrlShortcut(link.url, droppedName);
+    const shouldPromptRename = state.behavior.promptRenameDroppedWebsite !== false;
+    let finalName = draft.name;
+
+    const iconPromise = resolveDroppedWebsiteIcon(
+      link.url,
+      state.display.autoSaveWebsiteIcon !== false,
+      state.display.faviconProvider ?? 'auto',
+      state.display.faviconProviderFallback !== false,
+    );
+
+    if (shouldPromptRename) {
+      const requestedName = await uiPrompt('输入拖入网站的显示名称。取消会保留当前名称。', draft.name, '重命名网站');
+      if (requestedName?.trim()) finalName = requestedName.trim().slice(0, 120);
+    }
+
+    const item = { ...draft, name: finalName };
+    state.addItems(resolvedTarget.groupId, resolvedTarget.directoryId, [item]);
+    showLauncherNotice(`已添加网站：${item.name}`);
+
+    const [icon, fetchedTitle] = await Promise.all([
+      iconPromise,
+      shouldPromptRename || droppedName ? Promise.resolve('') : resolveDroppedWebsiteTitle(link.url),
+    ]);
+    const patch: Record<string, string> = {};
+    if (icon) patch.icon = icon;
+    if (fetchedTitle) patch.name = fetchedTitle;
+    if (Object.keys(patch).length) useAppStore.getState().updateItem(item.id, patch);
+  }, [transferStationActive, imageBrowserActive]);
+
+  const handleDropPaths = useCallback((paths: string[], preferredTarget?: DropTargetSelection) => {
     // 文件中转站/图片浏览器打开时，外部拖入只进入对应面板，不再同时弹出“添加快捷项目”。
-    if (transferStationOpen || imageBrowserOpen) return;
-    if (paths.length) setDropPaths(paths);
-  }, [transferStationOpen, imageBrowserOpen]);
-  const { dragHover } = useDragDrop(handleDropPaths, !transferStationOpen && !imageBrowserOpen);
+    if (transferStationActive || imageBrowserActive) return;
+    if (!paths.length) return;
+
+    void (async () => {
+      const filePaths: string[] = [];
+      for (const path of paths) {
+        if (/\.(url|website)$/i.test(path.trim())) {
+          const resolvedUrl = await invoke<string>('read_url_shortcut', { path }).catch(() => '');
+          const normalizedUrl = normalizeDroppedUrl(resolvedUrl || '');
+          if (normalizedUrl) {
+            await handleDroppedWebLink({ url: normalizedUrl, name: nameFromDroppedUrlFile(path, normalizedUrl) }, preferredTarget);
+            continue;
+          }
+        }
+        filePaths.push(path);
+      }
+      if (filePaths.length) {
+        setDropImportTarget(preferredTarget ?? null);
+        setDropPaths(filePaths);
+      }
+    })();
+  }, [transferStationActive, imageBrowserActive, handleDroppedWebLink]);
+
+  const { dragHover } = useDragDrop(handleDropPaths, !transferStationActive && !imageBrowserActive);
+
+  useEffect(() => {
+    function maybeAcceptExternalDrag(event: DragEvent) {
+      if (transferStationActive || imageBrowserActive) return false;
+      // Do not require a recognizable MIME type during dragover. Firefox/Floorp can keep
+      // external drag data protected until drop; refusing dragover here prevents WebView2
+      // from delivering drop at all. Validate the actual payload inside handleExternalDrop.
+      return shouldAcceptExternalDropCandidate(event.dataTransfer);
+    }
+
+    function resolvePreferredTarget(target: EventTarget | null): DropTargetSelection {
+      const groupId = findDropGroupId(target);
+      if (!groupId) return null;
+      const state = useAppStore.getState();
+      const group = state.groups.find((entry) => entry.id === groupId);
+      const existing = findFirstNormalDirectory(group);
+      if (existing) return existing;
+      if (!group) return null;
+      const directoryId = state.addDirectory(group.id, '常用', 'normal');
+      showLauncherNotice(`已为「${group.name}」新建普通子目录“常用”`);
+      return { groupId: group.id, directoryId };
+    }
+
+    function handleExternalDragEnter(event: DragEvent) {
+      if (!maybeAcceptExternalDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      setWebDragHover(true);
+      setExternalDropTargetGroupId(findDropGroupId(event.target));
+    }
+
+    function handleExternalDragOver(event: DragEvent) {
+      if (!maybeAcceptExternalDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      setWebDragHover(true);
+      setExternalDropTargetGroupId(findDropGroupId(event.target));
+    }
+
+    function handleExternalDragLeave(event: DragEvent) {
+      const related = event.relatedTarget as Node | null;
+      if (related && document.documentElement.contains(related)) return;
+      setWebDragHover(false);
+      setExternalDropTargetGroupId(null);
+    }
+
+    async function handleExternalDrop(event: DragEvent) {
+      const dataTransfer = event.dataTransfer;
+      if (!dataTransfer || !shouldAcceptExternalDropCandidate(dataTransfer)) {
+        setWebDragHover(false);
+        setExternalDropTargetGroupId(null);
+        return;
+      }
+
+      // preventDefault must happen synchronously. This is especially important for Gecko
+      // drags whose type list was empty/partial during dragover.
+      event.preventDefault();
+      event.stopPropagation();
+
+      const typeSummary = getDropTypeSummary(dataTransfer);
+      const urlShortcutFile = getDroppedUrlShortcutFile(dataTransfer);
+      const files = extractDroppedFilePaths(dataTransfer);
+      const target = event.target;
+      const link = await extractDroppedWebLinkAsync(dataTransfer);
+
+      setWebDragHover(false);
+      setExternalDropTargetGroupId(null);
+
+      if (!link && !urlShortcutFile && !files.length) {
+        console.warn('[browser-drop] unrecognized external drop', { types: typeSummary });
+        if (/x-moz-tabbrowser-tab/i.test(typeSummary)) {
+          showLauncherNotice('检测到 Firefox/Floorp 标签页内部拖拽，但浏览器没有向外部应用提供网址。请从地址栏左侧站点图标、地址栏网址或网页链接拖入。');
+        } else {
+          showLauncherNotice(typeSummary
+            ? `浏览器拖拽已到达应用，但没有可读取的网址数据（${typeSummary}）`
+            : '浏览器拖拽已到达应用，但浏览器没有暴露可读取的网址数据');
+        }
+        return;
+      }
+
+      const preferredTarget = resolvePreferredTarget(target);
+      if (link) {
+        void handleDroppedWebLink(link, preferredTarget);
+        return;
+      }
+      if (urlShortcutFile) {
+        // Firefox / Floorp / Waterfox 等在 Windows 上有时会把网址作为虚拟
+        // Internet Shortcut 文件交给目标程序。优先直接读 File 内容；若 WebView
+        // 没有暴露虚拟文件内容，再回退到已有路径处理。
+        void readDroppedUrlShortcutFile(urlShortcutFile).then((fileLink) => {
+          if (fileLink) {
+            void handleDroppedWebLink(fileLink, preferredTarget);
+            return;
+          }
+          if (files.length) handleDropPaths(files, preferredTarget);
+        });
+        return;
+      }
+      if (files.length) handleDropPaths(files, preferredTarget);
+    }
+
+
+    window.addEventListener('dragenter', handleExternalDragEnter, { capture: true });
+    window.addEventListener('dragover', handleExternalDragOver, { capture: true });
+    window.addEventListener('dragleave', handleExternalDragLeave, { capture: true });
+    window.addEventListener('drop', handleExternalDrop, { capture: true });
+    document.addEventListener('dragenter', handleExternalDragEnter, { capture: true });
+    document.addEventListener('dragover', handleExternalDragOver, { capture: true });
+    document.addEventListener('dragleave', handleExternalDragLeave, { capture: true });
+    document.addEventListener('drop', handleExternalDrop, { capture: true });
+    return () => {
+      window.removeEventListener('dragenter', handleExternalDragEnter, { capture: true });
+      window.removeEventListener('dragover', handleExternalDragOver, { capture: true });
+      window.removeEventListener('dragleave', handleExternalDragLeave, { capture: true });
+      window.removeEventListener('drop', handleExternalDrop, { capture: true });
+      document.removeEventListener('dragenter', handleExternalDragEnter, { capture: true });
+      document.removeEventListener('dragover', handleExternalDragOver, { capture: true });
+      document.removeEventListener('dragleave', handleExternalDragLeave, { capture: true });
+      document.removeEventListener('drop', handleExternalDrop, { capture: true });
+    };
+  }, [handleDroppedWebLink, handleDropPaths, transferStationActive, imageBrowserActive]);
 
   useEffect(() => {
     function preventBrowserContextMenu(event: MouseEvent) {
@@ -277,28 +402,64 @@ function App() {
     }
 
     async function handleKeyDown(event: KeyboardEvent) {
-      if (isEditableTarget(event.target)) return;
+      const state = useAppStore.getState();
+      const shortcuts = state.shortcuts;
 
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setGlobalSearchOpen(true);
-        return;
+      if (shortcutMatchesEvent(shortcuts.closeOverlay, event)) {
+        if (globalSearchOpen || transferStationActive || imageBrowserActive || settingsOpen) {
+          event.preventDefault();
+          if (globalSearchOpen) setGlobalSearchOpen(false);
+          else if (transferStationActive) setTransferStationOpen(false);
+          else if (imageBrowserActive) setImageBrowserOpen(false);
+          else if (settingsOpen) setSettingsOpen(false);
+          pauseEdgeDockAfterOverlayClose(900);
+          return;
+        }
       }
 
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+      if (isEditableTarget(event.target)) return;
+
+      if (shortcutMatchesEvent(shortcuts.openSettings, event)) {
+        event.preventDefault();
+        setSettingsOpen(true);
+        return;
+      }
+      if (shortcutMatchesEvent(shortcuts.openGlobalSearch, event)) {
+        event.preventDefault();
+        if (state.globalSearch.enabled) setGlobalSearchOpen(true);
+        else showLauncherNotice('全局搜索已在“设置 → 搜索”中关闭');
+        return;
+      }
+      if (shortcutMatchesEvent(shortcuts.openTransferStation, event)) {
+        event.preventDefault();
+        if (state.transferStation.enabled !== false) setTransferStationOpen(true);
+        else showLauncherNotice('文件中转站已在“设置 → 文件中转”中关闭');
+        return;
+      }
+      if (shortcutMatchesEvent(shortcuts.openImageBrowser, event)) {
+        event.preventDefault();
+        if (state.imageBrowser.enabled !== false) setImageBrowserOpen(true);
+        else showLauncherNotice('图片浏览器已在“设置 → 图片预览”中关闭');
+        return;
+      }
+      if (shortcutMatchesEvent(shortcuts.toggleAlwaysOnTop, event)) {
+        event.preventDefault();
+        state.updateBehavior({ alwaysOnTop: !state.behavior.alwaysOnTop });
+        return;
+      }
+      if (shortcutMatchesEvent(shortcuts.selectAllItems, event)) {
         const ids = visibleItemIds();
         if (ids.length) {
           event.preventDefault();
-          useAppStore.getState().selectItems(ids);
+          state.selectItems(ids);
         }
         return;
       }
+      if (!shortcutMatchesEvent(shortcuts.deleteSelection, event)) return;
 
-      if (event.key !== 'Delete') return;
-      const state = useAppStore.getState();
       if (state.selectedItemIds.length > 0) {
         event.preventDefault();
-        if (await uiConfirm(`确定删除选中的 ${state.selectedItemIds.length} 个项目吗？`)) {
+        if (!state.experience.confirmDeleteItems || await uiConfirm(`确定删除选中的 ${state.selectedItemIds.length} 个项目吗？`)) {
           state.deleteSelectedItems();
         }
         return;
@@ -309,7 +470,7 @@ function App() {
         const group = state.groups.find((entry) => entry.id === selectedNavTarget.id);
         if (group && state.groups.length > 1) {
           event.preventDefault();
-          if (await uiConfirm(`确定删除父目录「${group.name}」及其中所有子目录吗？`)) {
+          if (!state.experience.confirmDeleteNavigation || await uiConfirm(`确定删除父目录「${group.name}」及其中所有子目录吗？`)) {
             state.deleteGroup(group.id);
           }
         }
@@ -321,7 +482,7 @@ function App() {
         const directory = parentGroup?.directories.find((dir) => dir.id === selectedNavTarget.id);
         if (directory && parentGroup && parentGroup.directories.length > 1) {
           event.preventDefault();
-          if (await uiConfirm(`确定删除子目录「${directory.name}」吗？`)) {
+          if (!state.experience.confirmDeleteNavigation || await uiConfirm(`确定删除子目录「${directory.name}」吗？`)) {
             state.deleteDirectory(directory.id);
           }
         }
@@ -330,13 +491,27 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [globalSearchOpen, transferStationActive, imageBrowserActive, settingsOpen, setSettingsOpen]);
+
+  const customFontFamily = display.fontFamily?.trim() || 'var(--font-family)';
+  const fontApplyAreas = new Set(display.fontApplyAreas ?? []);
+  const externalDropTargetGroupName = groups.find((group) => group.id === externalDropTargetGroupId)?.name;
 
   const shellStyle = {
+    '--main-font-family': fontApplyAreas.has('main') ? customFontFamily : 'var(--font-family)',
+    '--settings-font-family': fontApplyAreas.has('settings') ? customFontFamily : 'var(--font-family)',
+    '--menu-font-family': fontApplyAreas.has('menus') ? customFontFamily : 'var(--font-family)',
+    '--note-font-family': fontApplyAreas.has('notes') ? customFontFamily : 'var(--font-family)',
     '--menu-font-size': `${display.menuFontSize}px`,
     '--menu-item-height': `${display.menuItemHeight}px`,
     '--menu-min-width': `${display.menuMinWidth}px`,
     '--top-tab-width': `${display.topTabWidth}px`,
+    '--top-tab-height': `${display.topTabHeight ?? 32}px`,
+    '--top-tab-gap': `${display.topTabGap ?? 8}px`,
+    '--top-tab-font-size': `${display.topTabFontSize ?? 14}px`,
+    '--top-tab-border-width': `${display.topTabBorderWidth ?? 1}px`,
+    '--top-tab-color-strength': `${Math.round((display.topTabColorStrength ?? 0.17) * 100)}%`,
+    '--top-tab-hover-color-strength': `${Math.min(70, Math.round((display.topTabColorStrength ?? 0.17) * 100) + 8)}%`,
     '--top-tab-radius': display.topTabShape === 'square' ? '8px' : '999px',
     '--sidebar-width': `${display.sidebarWidth}px`,
     '--sidebar-item-height': `${display.sidebarItemHeight}px`,
@@ -356,24 +531,19 @@ function App() {
     '--edge-strip-size': `${behavior.edgeStripSize ?? 10}px`,
     '--edge-strip-opacity': String(behavior.edgeStripOpacity ?? 0.88),
     '--edge-strip-color': behavior.edgeStripUseThemeColor ? 'var(--accent)' : (behavior.edgeStripColor || 'var(--accent)'),
-    '--launcher-bg-image': backgroundImageCss,
-    '--launcher-bg-opacity': String(display.backgroundEnabled ? (display.backgroundOpacity ?? 0.42) : 0),
-    '--launcher-bg-dim': String(display.backgroundDim ?? 0.18),
-    '--launcher-bg-blur': `${display.backgroundBlur ?? 0}px`,
-    '--launcher-bg-size': backgroundSize(display.backgroundFit),
-    '--launcher-bg-repeat': backgroundRepeat(display.backgroundFit),
-    '--launcher-bg-position': display.backgroundPosition ?? 'center',
     '--launcher-panel-alpha': `${Math.round((display.backgroundPanelOpacity ?? 0.86) * 100)}%`,
-    '--rainbow-border-speed': `${behavior.rainbowBorderSpeedSeconds ?? 18}s`,
-    '--rainbow-border-gradient': cssConicRainbow(rainbowBorderColors),
-    '--rainbow-text-gradient': cssLinearRainbow(rainbowTextColors),
-    '--rainbow-cursor-gradient': cssConicRainbow(rainbowMouseColors),
-    '--rainbow-cursor-linear-gradient': cssLinearRainbow(rainbowMouseColors),
-    '--rainbow-border-glow': String(behavior.rainbowBorderGlow ?? 0.58),
-    '--rainbow-border-width': `${behavior.rainbowBorderWidth ?? 2}px`,
-    '--rainbow-text-speed': `${behavior.rainbowTextSpeedSeconds ?? 22}s`,
-    '--rainbow-trail-size': `${behavior.rainbowMouseTrailSize ?? 16}px`,
-    '--rainbow-trail-brightness': String(behavior.rainbowMouseTrailBrightness ?? 0.72)
+    '--settings-panel-alpha': `${Math.round((display.settingsBackgroundPanelOpacity ?? 0.9) * 100)}%`,
+    '--settings-glass-blur': `${display.settingsBackgroundGlassBlur ?? 22}px`,
+    '--settings-glass-saturation': String(display.settingsBackgroundGlassSaturation ?? 1.32),
+    '--settings-glass-highlight-alpha': String(display.settingsBackgroundGlassHighlight ?? 0.72),
+    '--rainbow-border-colors': rainbow.borderColors.join(', '),
+    '--rainbow-text-colors': rainbow.textColors.join(', '),
+    '--rainbow-border-gradient': `linear-gradient(90deg, ${rainbow.borderColors.join(', ')})`,
+    '--rainbow-text-gradient': `linear-gradient(90deg, ${rainbow.textColors.join(', ')})`,
+    '--rainbow-border-speed': `${rainbow.borderSpeedSeconds}s`,
+    '--rainbow-text-speed': `${rainbow.textSpeedSeconds}s`,
+    '--rainbow-border-width': `${rainbow.borderWidth}px`,
+    '--rainbow-border-brightness': String(rainbow.borderBrightness)
   } as CSSProperties;
 
   function handleShellContextMenu(event: ReactMouseEvent<HTMLDivElement>) {
@@ -395,8 +565,33 @@ function App() {
     setContextMenu({ kind: 'area', x: event.clientX, y: event.clientY });
   }
 
+  const openGlobalSearch = useCallback(() => {
+    if (globalSearchSettings.enabled) setGlobalSearchOpen(true);
+    else showLauncherNotice('全局搜索已在“设置 → 搜索”中关闭');
+  }, [globalSearchSettings.enabled]);
+  const openTransferStation = useCallback(() => {
+    if (transferStationSettings.enabled !== false) setTransferStationOpen(true);
+    else showLauncherNotice('文件中转站已在“设置 → 文件中转”中关闭');
+  }, [transferStationSettings.enabled]);
+  const openImageBrowser = useCallback(() => {
+    if (imageBrowserSettings.enabled !== false) setImageBrowserOpen(true);
+    else showLauncherNotice('图片浏览器已在“设置 → 图片预览”中关闭');
+  }, [imageBrowserSettings.enabled]);
+  const openGroupContextMenu = useCallback((groupId: string, x: number, y: number) => {
+    setContextMenu({ kind: 'group', groupId, x, y });
+  }, []);
+  const openDirectoryContextMenu = useCallback((directoryId: string, x: number, y: number) => {
+    setContextMenu({ kind: 'directory', directoryId, x, y });
+  }, []);
+  const openItemContextMenu = useCallback((itemId: string, x: number, y: number) => {
+    setContextMenu({ kind: 'item', itemId, x, y });
+  }, []);
+  const openAreaContextMenu = useCallback((x: number, y: number) => {
+    setContextMenu({ kind: 'area', x, y });
+  }, []);
+
   function closeFloatingPanelsFromMainClick(target: HTMLElement) {
-    if (!globalSearchOpen && !transferStationOpen && !imageBrowserOpen && !settingsOpen) return false;
+    if (!globalSearchOpen && !transferStationActive && !imageBrowserActive && !settingsOpen) return false;
 
     // 点击浮层自身、菜单、弹窗、输入控件时不关闭；只有点击主界面空白/内容区域才关闭。
     if (target.closest('.global-search-modal, .transfer-station-panel, .image-browser-panel, .floating-settings-panel, .modal-card, .menu-surface, .edit-dialog, input, textarea, select')) {
@@ -404,8 +599,8 @@ function App() {
     }
 
     if (globalSearchOpen) setGlobalSearchOpen(false);
-    if (transferStationOpen) setTransferStationOpen(false);
-    if (imageBrowserOpen) setImageBrowserOpen(false);
+    if (transferStationActive) setTransferStationOpen(false);
+    if (imageBrowserActive) setImageBrowserOpen(false);
     if (settingsOpen) setSettingsOpen(false);
     pauseEdgeDockAfterOverlayClose(900);
     return true;
@@ -413,7 +608,7 @@ function App() {
 
   return (
     <div
-      className={`app-shell ${display.backgroundEnabled && display.backgroundImage ? 'app-background-enabled' : ''} ${rainbowBorderActive ? 'rainbow-border-enabled' : ''} ${behavior.rainbowBorderMode === 'fixed' ? 'rainbow-border-fixed' : ''} ${rainbowTextActive ? 'rainbow-text-enabled' : ''} ${rainbowTextActive && behavior.rainbowTextParentEnabled !== false ? 'rainbow-text-parent-enabled' : ''} ${rainbowTextActive && behavior.rainbowTextChildEnabled !== false ? 'rainbow-text-child-enabled' : ''} ${rainbowTextActive && behavior.rainbowTextSettingsEnabled !== false ? 'rainbow-text-settings-enabled' : ''} ${rainbowCursorActive ? 'rainbow-cursor-custom-enabled' : ''} ${rainbowCursorActive && rainbowCursor.visible ? 'rainbow-cursor-inside' : ''}`}
+      className={`app-shell ${display.backgroundEnabled && display.backgroundImage ? 'app-background-enabled' : ''} ${display.settingsBackgroundEnabled && display.settingsBackgroundImage ? 'settings-background-enabled' : ''} ${display.settingsBackgroundGlassEffect ? 'settings-glass-enabled' : ''} ${experience.reduceMotion ? 'reduce-motion' : ''} ${experience.itemHoverAnimation ? '' : 'no-item-hover'} ${rainbow.enabled ? 'rainbow-enabled' : ''} ${rainbow.enabled && rainbow.borderEnabled ? `rainbow-border rainbow-border-${rainbow.borderMode}` : ''} ${rainbow.enabled && rainbow.textEnabled && rainbow.textOnGroups ? 'rainbow-text-groups' : ''} ${rainbow.enabled && rainbow.textEnabled && rainbow.textOnDirectories ? 'rainbow-text-directories' : ''} ${rainbow.enabled && rainbow.textEnabled && rainbow.textOnSettings ? 'rainbow-text-settings' : ''} ${rainbow.enabled && rainbow.cursorEnabled ? 'rainbow-cursor-enabled' : ''} ${experience.compactContextMenus ? 'compact-context-menus' : ''} ${experience.showContextMenuIcons ? '' : 'hide-context-menu-icons'}` }
       style={shellStyle}
       onMouseDown={(event) => {
         setContextMenu(null);
@@ -432,85 +627,81 @@ function App() {
       }}
       onContextMenu={handleShellContextMenu}
     >
-      <div className="app-background-layer" aria-hidden="true" />
-      {rainbowBorderActive && <div className="rainbow-border-layer" aria-hidden="true" />}
-      {rainbowMouseTrailActive && rainbowTrail.length > 0 && (
-        <div className="rainbow-trail-layer" aria-hidden="true">
-          {rainbowTrail.map((point, index) => (
-            <span
-              key={point.id}
-              className="rainbow-trail-dot"
-              style={{
-                left: point.x,
-                top: point.y,
-                '--rainbow-trail-index': index,
-                '--rainbow-trail-total': Math.max(1, rainbowTrail.length),
-                '--rainbow-trail-progress': Math.max(0, Math.min(1, (index + 1) / Math.max(1, rainbowTrail.length))),
-                '--rainbow-trail-hue': `${point.hue}deg`,
-                '--rainbow-trail-color': point.color,
-                '--rainbow-trail-dot-size': `${point.size}px`
-              } as CSSProperties}
-            />
-          ))}
-        </div>
-      )}
-      {rainbowCursorActive && (
-        <div
-          className={`rainbow-custom-cursor rainbow-cursor-${behavior.rainbowCursorStyle ?? 'dot'} ${rainbowCursor.visible ? 'visible' : ''}`}
-          style={{ left: rainbowCursor.x, top: rainbowCursor.y } as CSSProperties}
-          aria-hidden="true"
-        >
-          {(behavior.rainbowCursorStyle ?? 'dot') === 'macos-wheel' ? (
-            <span className="rainbow-cursor-wheel" />
-          ) : (behavior.rainbowCursorStyle ?? 'dot') === 'dot' ? (
-            <span className="rainbow-cursor-dot" />
-          ) : (
-            <svg className="rainbow-cursor-arrow" viewBox="0 0 32 32" focusable="false">
-              <defs>
-                <linearGradient id="rainbowCursorGradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-                  {rainbowMouseColors.map((color, index) => (
-                    <stop
-                      key={`${color}-${index}`}
-                      offset={`${rainbowMouseColors.length <= 1 ? 0 : Math.round((index / (rainbowMouseColors.length - 1)) * 100)}%`}
-                      stopColor={color}
-                    />
-                  ))}
-                </linearGradient>
-              </defs>
-              <path className="rainbow-cursor-arrow-main" d="M4 2 L4 25 L10.2 19.4 L14.2 29 L18.8 27.1 L14.7 17.8 L23.7 17.8 Z" />
-            </svg>
-          )}
-        </div>
-      )}
+      <BackgroundMediaLayer
+        className="app-background-layer"
+        enabled={display.backgroundEnabled}
+        source={display.backgroundImage}
+        mediaKind={display.backgroundMediaKind}
+        fit={display.backgroundFit}
+        positionX={display.backgroundPositionX ?? 50}
+        positionY={display.backgroundPositionY ?? 50}
+        opacity={display.backgroundOpacity ?? 0.62}
+        dim={display.backgroundDim ?? 0.18}
+        blur={display.backgroundBlur ?? 0}
+        motionEnabled={display.backgroundMotionEnabled !== false && !settingsOpen}
+        playbackRate={display.backgroundPlaybackRate ?? 1}
+        pauseWhenHidden={display.backgroundPauseWhenHidden !== false}
+        containAmbient={display.backgroundContainAmbient !== false}
+        reduceMotion={experience.reduceMotion}
+      />
       <div className="app-main-layer">
         <TopBar
-          onContextMenuGroup={(groupId, x, y) => setContextMenu({ kind: 'group', groupId, x, y })}
-          onOpenGlobalSearch={() => setGlobalSearchOpen(true)}
-          onOpenTransferStation={() => setTransferStationOpen(true)}
-          onOpenImageBrowser={() => setImageBrowserOpen(true)}
+          onContextMenuGroup={openGroupContextMenu}
+          onOpenGlobalSearch={openGlobalSearch}
+          onOpenTransferStation={openTransferStation}
+          onOpenImageBrowser={openImageBrowser}
+          externalDropTargetGroupId={externalDropTargetGroupId}
         />
         <div className="main-layout">
           <Sidebar
-            onContextMenuDirectory={(directoryId, x, y) => setContextMenu({ kind: 'directory', directoryId, x, y })}
-            onContextMenuArea={(x, y) => setContextMenu({ kind: 'area', x, y })}
+            onContextMenuDirectory={openDirectoryContextMenu}
+            onContextMenuArea={openAreaContextMenu}
           />
           <ContentArea
-            onContextMenuItem={(itemId, x, y) => setContextMenu({ kind: 'item', itemId, x, y })}
-            onContextMenuArea={(x, y) => setContextMenu({ kind: 'area', x, y })}
+            onContextMenuItem={openItemContextMenu}
+            onContextMenuArea={openAreaContextMenu}
           />
         </div>
-        {dragHover && <div className="drag-overlay">松开鼠标添加到启动器</div>}
-        {launcherNotice && <div className="special-tag-notice">{launcherNotice}</div>}
+        {(dragHover || webDragHover) && (
+          <div className="drag-overlay">
+            {externalDropTargetGroupName ? `松开鼠标添加到「${externalDropTargetGroupName}」` : '松开鼠标添加到启动器'}
+          </div>
+        )}
+        {launcherNotice && (
+          <div
+            key={launcherNotice.id}
+            className="special-tag-notice"
+            role="status"
+            style={{ '--notice-duration': `${launcherNotice.durationMs}ms` } as CSSProperties}
+            title={launcherNotice.message}
+          >
+            <span className="special-tag-notice-text">{launcherNotice.message}</span>
+            <button type="button" aria-label="关闭提示" title="关闭提示" onClick={() => setLauncherNotice(null)}><X size={13} /></button>
+            <span className="special-tag-notice-progress" aria-hidden="true" />
+          </div>
+        )}
         {contextMenu?.kind === 'item' && <ItemContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />}
         {contextMenu?.kind === 'area' && <AreaContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />}
         {contextMenu?.kind === 'group' && <GroupContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />}
         {contextMenu?.kind === 'directory' && <DirectoryContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />}
-        {dropPaths.length > 0 && <DropImportDialog paths={dropPaths} onClose={() => setDropPaths([])} />}
-        <GlobalSearch open={globalSearchOpen} onClose={() => { pauseEdgeDockAfterOverlayClose(); setGlobalSearchOpen(false); }} />
-        <TransferStation open={transferStationOpen} onClose={() => { pauseEdgeDockAfterOverlayClose(); setTransferStationOpen(false); }} />
-        <ImageBrowser open={imageBrowserOpen} onClose={() => { pauseEdgeDockAfterOverlayClose(); setImageBrowserOpen(false); }} />
+        {dropPaths.length > 0 && (
+          <DropImportDialog
+            paths={dropPaths}
+            initialGroupId={dropImportTarget?.groupId}
+            initialDirectoryId={dropImportTarget?.directoryId}
+            onClose={() => {
+              setDropPaths([]);
+              setDropImportTarget(null);
+            }}
+          />
+        )}
+        {globalSearchOpen && <GlobalSearch open onClose={() => { pauseEdgeDockAfterOverlayClose(); setGlobalSearchOpen(false); }} />}
+        <TransferStation open={transferStationActive} onClose={() => { pauseEdgeDockAfterOverlayClose(); setTransferStationOpen(false); }} />
+        <ImageBrowser open={imageBrowserActive} onClose={() => { pauseEdgeDockAfterOverlayClose(); setImageBrowserOpen(false); }} />
       </div>
       <SettingsPanel />
+      <UiDialogHost />
+      <RainbowEffects rainbow={rainbow} />
     </div>
   );
 }

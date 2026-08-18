@@ -1,0 +1,14 @@
+Multi-config implementation verification
+Date: 2026-08-12
+
+PASS - TypeScript syntax parse: changed TS/TSX files parse successfully with TypeScript 5.8 transpileModule.
+PASS - Focused strict TypeScript check: configProfiles.ts + AppConfig/default/normalizer dependencies.
+PASS - Focused strict TypeScript check: importFile.ts + import adapters, using only a minimal declaration for the unavailable Tauri core package.
+PASS - Config profile helper runtime checks: normalizeProfileName / makeUniqueProfileName.
+PASS - Static review: full profile configs stored separately from lightweight profile metadata; list refresh does not load full configs.
+PASS - Static review: batch import is sequential to bound peak memory/I/O.
+PASS - Static review: switch saves active profile before loading target and flushes existing v104 app-store persistence after import.
+PASS - Added regression tests for profile name helpers and legacy window-control normalization.
+
+BLOCKED - Full npm run typecheck/test/build in this container.
+Reason: project node_modules were not provided; npm ci cannot complete because the environment has no registry access and the local npm cache is missing zustand-5.0.14.tgz (ENOTCACHED).

@@ -1,0 +1,47 @@
+Yue Launcher v0.1.117 validation results
+========================================
+
+[PASS] Persistent source-fix guard
+Command: node scripts/verify-source-fixes.mjs
+Result: Persistent Windows/Rust source fixes: OK
+
+[PASS] Version consistency
+package.json: 0.1.117
+src-tauri/Cargo.toml: 0.1.117
+src-tauri/tauri.conf.json: 0.1.117
+
+[PASS] Rust source regression scan
+No remaining `hwnd|hmon|cached_main|cached_strip == 0 / != 0` patterns in src-tauri/src.
+
+[PASS] Required Windows/Rust fixes present
+- appStore browserRouter non-null default
+- MARGINS from Win32::UI::Controls
+- Win32_UI_Controls windows-sys feature
+- null_mut() HWND initialization / SetWindowPos insert-after
+- AutoHidden edge binding
+- commands HWND is_null()
+
+[PASS] TypeScript/TSX syntax transpile
+166 source files checked
+0 syntax errors
+
+[PASS] browserDrop TypeScript semantic compile
+src/lib/browserDrop.ts compiled with global TypeScript 5.8.3 and DOM libs
+
+[PASS] Browser-drop runtime assertions
+8/8 passed:
+- protected-mode external drag accepted before MIME/data is readable
+- internal Yue Launcher drag remains excluded
+- Floorp/Firefox x-moz-url-data + x-moz-url-desc
+- Gecko file-promise URL
+- image file-promise is not misclassified as a website
+- async DataTransferItem.getAsString() Gecko fallback
+- Chromium text/uri-list path retained
+- Windows UniformResourceLocatorW alias retained
+
+[NOT RUN] cargo build --release
+Reason: cargo/rustc are not installed in this execution environment.
+Note: the five source fixes reported by the user have been incorporated and guarded by both scripts/verify-source-fixes.mjs and src-tauri/build.rs.
+
+[NOT RUN] Full npm/Vitest/Vite build
+Reason: npm dependency installation was blocked by DNS/registry EAI_AGAIN in this environment. Partial node_modules was removed before packaging.

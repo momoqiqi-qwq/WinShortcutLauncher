@@ -61,3 +61,38 @@
   gap: 8px;
   padding: 10px 0;
 }
+
+/* v53: more compact theme cards, denser information. */
+.theme-gallery {
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 7px;
+}
+.theme-card {
+  min-height: 76px;
+  padding: 7px;
+  border-radius: 10px;
+}
+.theme-preview {
+  height: 22px;
+  padding: 4px;
+  gap: 3px;
+  border-radius: 7px;
+  margin-bottom: 5px;
+}
+.theme-preview i {
+  width: 19px;
+  border-radius: 4px;
+}
+.theme-preview i:nth-child(1) { height: 14px; }
+.theme-preview i:nth-child(2) { height: 18px; }
+.theme-preview i:nth-child(3) { height: 10px; }
+.theme-card strong { font-size: 12px; line-height: 1.15; }
+.theme-card small {
+  margin-top: 2px;
+  font-size: 10.5px;
+  line-height: 1.18;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
