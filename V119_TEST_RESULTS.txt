@@ -1,0 +1,80 @@
+Yue Launcher v0.1.119 validation results
+=========================================
+
+PASS  Version fields
+      package.json = 0.1.119
+      package-lock.json = 0.1.119
+      src-tauri/Cargo.toml = 0.1.119
+      src-tauri/tauri.conf.json = 0.1.119
+
+PASS  Persistent source-fix verifier
+      node scripts/verify-source-fixes.mjs
+      Result: Persistent Windows/Rust source fixes: OK
+
+PASS  TypeScript / TSX syntax-only parse
+      168 TS/TSX files
+      0 syntax errors
+      Parser: TypeScript 5.8.3 transpileModule, isolatedModules mode
+
+PASS  JSON parse
+      package.json
+      package-lock.json
+      src-tauri/tauri.conf.json
+
+PASS  Windows custom manifest XML parse
+      requestedExecutionLevel = asInvoker
+      uiAccess = false
+      Common Controls v6 dependency retained
+
+PASS  Merge conflict marker scan
+      No <<<<<<< / >>>>>>> markers found
+
+PASS  Integrity policy source checks
+      TokenIntegrityLevel query present
+      Standard Medium band separated from Medium Plus
+      Above-Medium startup guard runs before Tauri/WebView2
+      GetShellWindow + GetWindowThreadProcessId shell-token path present
+      CreateProcessWithTokenW replacement path present
+      --yue-medium-relaunch loop guard present
+      Low/Untrusted path does not auto-elevate
+
+PASS  Per-item elevation preserved
+      commands.rs still uses ShellExecuteW verb "runas" when as_admin=true
+
+PASS  v118 native external-drop fallback retained
+      RegisterDragDrop
+      UniformResourceLocatorW
+      text/x-moz-url
+      DROPEFFECT_LINK
+      native-external-drop frontend bridge
+      CF_HDROP/file paths retained
+
+PASS  windows-sys 0.59 API source-level signature audit
+      GetTokenInformation / GetSidSubAuthority / GetSidSubAuthorityCount
+      OpenProcessToken / OpenProcess / PROCESS_QUERY_LIMITED_INFORMATION
+      CreateProcessWithTokenW
+      GetShellWindow / GetWindowThreadProcessId
+      Signatures/features match the imported windows-sys 0.59 modules used by v119.
+
+PASS  Tauri build-script API source-level audit
+      tauri-build WindowsAttributes::app_manifest
+      Attributes::windows_attributes
+      try_build
+      Verified against current tauri-build 2.x documentation.
+
+NOT RUN  Full npm dependency install / full tsc + Vite build
+         npm ci and project-wide tsc commands are rejected by the current container runtime.
+         The partial node_modules directory created by the failed install was removed before packaging.
+
+NOT RUN  cargo check / cargo build / tauri build
+         cargo and rustc are not installed in the current environment.
+         No claim is made that the Windows Rust release has compiled here.
+
+Required Windows acceptance test
+--------------------------------
+1. Build release on Windows.
+2. Launch normally and confirm Settings -> Diagnostics reports Medium / RID 0x2000.
+3. Drag Floorp site icon/link into Yue Launcher; red prohibited cursor should be gone.
+4. Regression-test Explorer file drops and Chromium browser URL drops.
+5. Launch an item configured as admin; UAC should elevate only that target.
+6. Intentionally launch Yue Launcher as administrator and verify it replaces itself with a Medium instance.

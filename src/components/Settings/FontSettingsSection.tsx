@@ -1,50 +1,6 @@
-import { Check, RotateCcw, Type } from 'lucide-react';
-import { useMemo } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import type { FontApplyArea } from '../../types';
-
-const FONT_PRESETS = [
-  {
-    label: '微软雅黑 UI',
-    value: '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
-    hint: 'Windows 中文界面清晰稳定',
-  },
-  {
-    label: 'Segoe UI',
-    value: '"Segoe UI", "Microsoft YaHei UI", sans-serif',
-    hint: '适合英文、数字和按钮界面',
-  },
-  {
-    label: 'HarmonyOS Sans',
-    value: '"HarmonyOS Sans SC", "HarmonyOS Sans", "Microsoft YaHei UI", sans-serif',
-    hint: '现代、紧凑的中文无衬线字体',
-  },
-  {
-    label: 'MiSans',
-    value: 'MiSans, "Microsoft YaHei UI", sans-serif',
-    hint: '小字号显示简洁，未安装时自动回退',
-  },
-  {
-    label: '思源黑体',
-    value: '"Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", sans-serif',
-    hint: '中英文覆盖完整，适合长时间阅读',
-  },
-  {
-    label: '苹方',
-    value: '"PingFang SC", "Microsoft YaHei UI", sans-serif',
-    hint: '安装或系统支持时使用，其他情况自动回退',
-  },
-  {
-    label: '霞鹜文楷',
-    value: '"LXGW WenKai Screen", "LXGW WenKai", "Microsoft YaHei UI", sans-serif',
-    hint: '适合便签和阅读区域',
-  },
-  {
-    label: 'Cascadia Mono',
-    value: '"Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace',
-    hint: '等宽字体，适合路径、命令和便签',
-  },
-] as const;
+import { SettingsSliderRow } from './SettingsSliderRow';
 
 const FONT_AREAS: Array<{ id: FontApplyArea; label: string; hint: string }> = [
   { id: 'main', label: '主界面', hint: '父目录、子目录、项目名称和浮层' },
@@ -60,17 +16,6 @@ export function FontSettingsSection() {
   const updateDisplay = useAppStore((state) => state.updateDisplay);
   const selectedAreas = display.fontApplyAreas ?? [];
   const fontFamily = display.fontFamily ?? '';
-  const selectedPreset = useMemo(
-    () => FONT_PRESETS.find((preset) => preset.value === fontFamily)?.label,
-    [fontFamily],
-  );
-
-  function choosePreset(value: string) {
-    updateDisplay({
-      fontFamily: value,
-      fontApplyAreas: selectedAreas.length ? selectedAreas : [...ALL_FONT_AREAS],
-    });
-  }
 
   function toggleArea(area: FontApplyArea) {
     const next = selectedAreas.includes(area)
@@ -79,43 +24,11 @@ export function FontSettingsSection() {
     updateDisplay({ fontApplyAreas: next });
   }
 
-  function resetToTheme() {
-    updateDisplay({ fontFamily: '', fontApplyAreas: [] });
-  }
-
   const previewFont = fontFamily || 'var(--font-family)';
   const customEnabled = Boolean(fontFamily && selectedAreas.length);
 
   return (
     <div className="settings-category-grid font-settings-grid">
-      <section className="settings-section font-preset-section">
-        <div className="settings-section-title-row">
-          <div>
-            <h3><Type size={17} /> 常用字体</h3>
-            <p className="settings-hint">使用电脑中已经安装的字体；字体不存在时会按后面的字体自动回退，不会影响启动。</p>
-          </div>
-          <button type="button" className="btn-secondary btn-compact" onClick={resetToTheme}>
-            <RotateCcw size={13} /> 跟随主题
-          </button>
-        </div>
-        <div className="font-preset-grid">
-          {FONT_PRESETS.map((preset) => (
-            <button
-              type="button"
-              key={preset.label}
-              className={`font-preset-card ${fontFamily === preset.value ? 'active' : ''}`}
-              style={{ fontFamily: preset.value }}
-              onClick={() => choosePreset(preset.value)}
-            >
-              <span className="font-preset-check" aria-hidden="true">{fontFamily === preset.value && <Check size={14} />}</span>
-              <strong>{preset.label}</strong>
-              <small>{preset.hint}</small>
-              <em>中文 Aa 123</em>
-            </button>
-          ))}
-        </div>
-      </section>
-
       <section className="settings-section narrow-section">
         <h3>自定义字体</h3>
         <label className="field-row font-family-input-row">
@@ -155,11 +68,62 @@ export function FontSettingsSection() {
         </div>
       </section>
 
+      <section className="settings-section narrow-section" id="settings-font-item-name-display">
+        <div className="settings-section-title-row">
+          <div>
+            <h3>项目名称显示</h3>
+            <p className="settings-hint">控制项目名称是否完整展示，以及每行大约显示多少个中文字符后换行。</p>
+          </div>
+        </div>
+        <label className="experience-toggle-card" id="font-show-full-item-name" data-settings-target="font-show-full-item-name">
+          <span className="experience-toggle-copy">
+            <strong>完整显示项目名称</strong>
+            <small>开启后不再受“全局显示行数”截断，长名称会继续向下换行显示完整。</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={display.showFullItemName === true}
+            onChange={(event) => updateDisplay({ showFullItemName: event.target.checked })}
+          />
+        </label>
+        <div id="font-chars-per-line" data-settings-target="font-chars-per-line">
+          <SettingsSliderRow
+            label="每行字数（换行）"
+            min={4}
+            max={20}
+            value={display.charsPerLine}
+            onChange={(value) => updateDisplay({ charsPerLine: value })}
+          />
+        </div>
+        <p className="settings-hint">关闭完整显示时，项目名称仍会按照“界面 → 文字与项目布局 → 全局显示行数”限制最大行数。</p>
+      </section>
+
+      <section className="settings-section narrow-section" id="settings-font-sidebar-name-display">
+        <div className="settings-section-title-row">
+          <div>
+            <h3>子目录名称显示</h3>
+            <p className="settings-hint">控制左侧子目录名称是否完整展示，不受“子目录名称行数”截断。</p>
+          </div>
+        </div>
+        <label className="experience-toggle-card" id="font-show-full-sidebar-names" data-settings-target="font-show-full-sidebar-names">
+          <span className="experience-toggle-copy">
+            <strong>完整显示子目录名称</strong>
+            <small>开启后子目录名称完整换行显示，不再省略；也可以在侧栏空白处右键菜单中切换。</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={display.sidebarShowFullNames === true}
+            onChange={(event) => updateDisplay({ sidebarShowFullNames: event.target.checked })}
+          />
+        </label>
+        <p className="settings-hint">关闭时子目录名称按照“界面 → 侧栏布局 → 子目录名称行数”限制最大行数。</p>
+      </section>
+
       <section className="settings-section font-preview-section">
         <div className="settings-section-title-row">
           <div>
             <h3>字体预览</h3>
-            <p className="settings-hint">当前选择：{selectedPreset ?? (fontFamily ? '自定义字体' : '主题字体')}</p>
+            <p className="settings-hint">当前选择：{fontFamily ? '自定义字体' : '主题字体'}</p>
           </div>
         </div>
         <div className="font-preview-card" style={{ fontFamily: previewFont }}>

@@ -6,6 +6,7 @@ import type {
   DisplaySettings,
   Group,
   NoteSettings,
+  MultiAccountSettings,
   RainbowSettings,
   WindowControlId,
   WindowState,
@@ -24,6 +25,7 @@ export const DEFAULT_WINDOW_CONTROL_ORDER: WindowControlId[] = [
   'transfer',
   'image',
   'profiles',
+  'multiAccount',
   'sortGroups',
   'add',
   'settingsQuick',
@@ -34,8 +36,10 @@ export const DEFAULT_WINDOW_CONTROL_ORDER: WindowControlId[] = [
 ];
 
 export const defaultDisplay: DisplaySettings = {
+  modernWinUI3Mode: false,
   fontFamily: '',
   fontApplyAreas: [],
+  showFullItemName: false,
   labelLines: 2,
   charsPerLine: 8,
   fontSize: 12,
@@ -67,6 +71,9 @@ export const defaultDisplay: DisplaySettings = {
   sidebarItemGap: 8,
   sidebarFontSize: 14,
   sidebarItemRadius: 12,
+  sidebarColumns: 1,
+  sidebarItemLines: 2,
+  sidebarShowFullNames: false,
   uiScale: 1,
   mainUiScale: 1,
   settingsUiScale: 1,
@@ -83,6 +90,7 @@ export const defaultDisplay: DisplaySettings = {
   windowControlGap: 8,
   windowControlOrder: DEFAULT_WINDOW_CONTROL_ORDER,
   windowControlHidden: [],
+  sortGroupsSavedOrder: null,
   backgroundEnabled: false,
   backgroundImage: '',
   backgroundMediaKind: 'auto',
@@ -119,8 +127,30 @@ export const defaultDisplay: DisplaySettings = {
   settingsBackgroundGlassHighlight: 0.72,
 };
 
+
+export const defaultMultiAccount: MultiAccountSettings = {
+  url: '',
+  urlsText: '',
+  batchName: '',
+  projectPrefix: '',
+  separator: ' ',
+  nameOrder: 'prefix-profile',
+  lettersOnlyProfileName: true,
+  includeBrowserName: false,
+  targetMode: 'current',
+  selectedDirectoryId: '',
+  newDirectoryName: '多账号',
+  selectedTargetKeys: [],
+  skipDuplicates: true,
+  autoFetchIcon: true,
+  pinGenerated: false,
+  activateTargetAfterCreate: true,
+  templates: [],
+};
+
 export const defaultBehavior: BehaviorSettings = {
   edgeAutoHide: true,
+  edgeIgnoreTaskbar: false,
   edgeHideDelaySeconds: 0,
   edgeAnimationMs: 90,
   edgeAnimationStyle: 'animate-window',
@@ -231,6 +261,7 @@ export function cloneConfig(): AppConfig {
     display: { ...defaultDisplay },
     behavior: { ...defaultBehavior },
     browserRouter: { ...defaultBrowserRouter, customBrowsers: [], profileOverrides: {} },
+    multiAccount: { ...defaultMultiAccount, selectedTargetKeys: [], templates: [] },
     windowState: { ...defaultWindowState },
     autoSave: { ...defaultAutoSave },
     transferItems: [],

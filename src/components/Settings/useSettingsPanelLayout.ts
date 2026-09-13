@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -114,7 +115,13 @@ export function useSettingsPanelLayout({
   const contentRef = useRef<HTMLDivElement>(null);
   const previousTabRef = useRef(activeTab);
   const scrollPositionsRef = useRef<Record<string, number>>(readScrollPositions());
-  const [panelRect, setPanelRect] = useState<SettingsPanelRect>(readSavedPanelRect);
+  // 首帧就使用与当前模式一致的 rect：自适应/默认尺寸模式若先渲染 localStorage 里的旧 rect
+  // 再在 effect 中纠正，会造成打开设置时可见的位置和尺寸跳动。
+  const [panelRect, setPanelRect] = useState<SettingsPanelRect>(() => {
+    if (adaptivePanel) return adaptivePanelRect(uiScale);
+    if (!rememberPanel) return defaultPanelRect();
+    return readSavedPanelRect();
+  });
   const [outerOverflowing, setOuterOverflowing] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
 
@@ -185,6 +192,12 @@ export function useSettingsPanelLayout({
     } catch {}
   }, [adaptivePanel, panelRect, rememberPanel, settingsOpen]);
 
+  // 打开/切换分类时先同步检测一次溢出，让“滚动保护”等类名在首帧前生效，避免打开后再跳动。
+  useLayoutEffect(() => {
+    if (!settingsOpen || !panelRef.current) return;
+    syncOuterOverflow();
+  }, [activeTab, settingsOpen, syncOuterOverflow, viewportState.needsHorizontalScroll, viewportState.needsVerticalScroll]);
+
   useEffect(() => {
     if (!settingsOpen || !panelRef.current) return;
     const element = panelRef.current;
@@ -215,11 +228,12 @@ export function useSettingsPanelLayout({
     return () => window.removeEventListener(RESET_SETTINGS_PANEL_LAYOUT_EVENT, resetLayout);
   }, [adaptivePanel, syncOuterOverflow, uiScale]);
 
-  useEffect(() => {
+  // 打开或切换分类时在首帧前同步恢复滚动位置，避免先显示顶部再跳到记忆位置。
+  useLayoutEffect(() => {
     if (!settingsOpen || !contentRef.current) return;
     const element = contentRef.current;
     const previousTab = previousTabRef.current;
-    if (rememberScrollPosition) {
+    if (previousTab !== activeTab && rememberScrollPosition) {
       scrollPositionsRef.current[previousTab] = element.scrollTop;
       try {
         localStorage.setItem(PANEL_SCROLL_STORAGE_KEY, JSON.stringify(scrollPositionsRef.current));
@@ -227,11 +241,8 @@ export function useSettingsPanelLayout({
     }
     previousTabRef.current = activeTab;
     const nextTop = rememberScrollPosition ? scrollPositionsRef.current[activeTab] ?? 0 : 0;
-    const frame = window.requestAnimationFrame(() => {
-      element.scrollTop = nextTop;
-      setShowBackToTop(nextTop > 240);
-    });
-    return () => window.cancelAnimationFrame(frame);
+    element.scrollTop = nextTop;
+    setShowBackToTop(nextTop > 240);
   }, [activeTab, rememberScrollPosition, settingsOpen]);
 
   useEffect(() => {

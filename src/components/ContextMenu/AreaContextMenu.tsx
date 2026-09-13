@@ -1,8 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, FilePlus2, FolderPlus, Globe, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, FilePlus2, FolderPlus, Globe, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
-import type { ContextMenuState, Directory, DirectoryKind, ShortcutItem, SortMode, ViewMode } from '../../types';
+import type { BrowserRouteOverride, ContextMenuState, Directory, DirectoryKind, ItemClickAction, ShortcutItem, SortMode, ViewMode } from '../../types';
 import { getEffectiveDisplay, useAppStore } from '../../stores/appStore';
 import { createShortcutItemsFromPaths, createUrlShortcut } from '../../lib/createShortcutItems';
 import { makeId } from '../../lib/id';
@@ -13,6 +13,9 @@ import { refreshShortcutIcon } from '../../lib/refreshShortcutIcon';
 import { getItemsNeedingPageIconRefresh } from '../../lib/pageIconPolicy';
 import { showLauncherNotice } from '../../lib/notify';
 import { useDirectoryCreator } from '../../hooks/useDirectoryCreator';
+import { BrowserRoutePicker } from '../Settings/BrowserRoutePicker';
+import { useBrowserCatalog } from '../../hooks/useBrowserCatalog';
+import { ItemClickActionPicker } from '../ItemInteraction/ItemClickActionPicker';
 
 interface AreaContextMenuProps {
   menu: Extract<ContextMenuState, { kind: 'area' }>;
@@ -44,23 +47,32 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   const activeDirectory = useAppStore((state) => state.getActiveDirectory());
   const globalDisplay = useAppStore((state) => state.display);
   const experience = useAppStore((state) => state.experience);
+  const browserRouter = useAppStore((state) => state.browserRouter);
+  const globalLaunchMode = useAppStore((state) => state.behavior.launchMode);
   const hiddenItems = new Set(experience.areaContextMenuHiddenItems ?? []);
   const show = (id: import('../../types').AreaContextMenuItemId) => !hiddenItems.has(id);
   const addItems = useAppStore((state) => state.addItems);
   const updateDisplay = useAppStore((state) => state.updateDisplay);
   const updateDirectoryDisplay = useAppStore((state) => state.updateDirectoryDisplay);
+  const setGroupSidebarColumns = useAppStore((state) => state.setGroupSidebarColumns);
   const updateItem = useAppStore((state) => state.updateItem);
   const sortDirectoryItems = useAppStore((state) => state.sortDirectoryItems);
   const clearSelection = useAppStore((state) => state.clearSelection);
+  const itemClipboard = useAppStore((state) => state.itemClipboard);
+  const pasteItemsToDirectory = useAppStore((state) => state.pasteItemsToDirectory);
   const createDirectory = useDirectoryCreator();
   const display = useMemo(() => getEffectiveDisplay(globalDisplay, activeDirectory), [globalDisplay, activeDirectory]);
-  type AreaSubmenu = 'directory' | 'system' | 'icon' | 'view' | 'sort' | 'globalIcon' | 'globalView' | 'globalSort' | null;
+  type AreaSubmenu = 'directory' | 'system' | 'icon' | 'view' | 'sort' | 'columns' | 'globalIcon' | 'globalView' | 'globalSort' | null;
   const [openSubmenu, setOpenSubmenu] = useState<AreaSubmenu>(null);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [urlDraft, setUrlDraft] = useState('');
   const [urlNameDraft, setUrlNameDraft] = useState('');
   const [urlAutoFetchIcon, setUrlAutoFetchIcon] = useState(true);
+  const [urlBrowserRoute, setUrlBrowserRoute] = useState<BrowserRouteOverride>({ mode: 'inherit' });
+  const [urlSingleClickAction, setUrlSingleClickAction] = useState<ItemClickAction>('inherit');
+  const [urlDoubleClickAction, setUrlDoubleClickAction] = useState<ItemClickAction>('inherit');
   const [urlError, setUrlError] = useState('');
+  const { catalog: browserCatalog } = useBrowserCatalog(browserRouter.customBrowsers, urlDialogOpen);
   const { ref, style, submenuClassName } = useSmartMenuPosition(menu.x, menu.y, 8, 300);
   const targetDirectoryId = activeDirectory?.kind === 'all' || activeDirectory?.kind === 'notes'
     ? firstNormalDirectory(activeGroup?.directories ?? [], activeDirectoryId)
@@ -91,6 +103,9 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     setUrlDraft('');
     setUrlNameDraft('');
     setUrlAutoFetchIcon(true);
+    setUrlBrowserRoute({ mode: 'inherit' });
+    setUrlSingleClickAction('inherit');
+    setUrlDoubleClickAction('inherit');
     setUrlError('');
     setUrlDialogOpen(true);
   }
@@ -111,6 +126,9 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
       return;
     }
     const item = createUrlShortcut(normalizedUrl, urlNameDraft.trim() || undefined);
+    item.browserRoute = urlBrowserRoute;
+    if (urlSingleClickAction !== 'inherit') item.singleClickAction = urlSingleClickAction;
+    if (urlDoubleClickAction !== 'inherit') item.doubleClickAction = urlDoubleClickAction;
     addItems(activeGroupId, targetDirectoryId, [item]);
     setUrlDialogOpen(false);
     onClose();
@@ -127,6 +145,12 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
 
   function addSystemTool(item: ShortcutItem) {
     addItems(activeGroupId, targetDirectoryId, [{ ...item, id: makeId('item'), order: 0 }]);
+    onClose();
+  }
+
+  function pasteItems() {
+    const count = pasteItemsToDirectory(targetDirectoryId);
+    if (count > 0) showLauncherNotice(`已粘贴 ${count} 个项目到当前子目录`);
     onClose();
   }
 
@@ -180,6 +204,30 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     onClose();
   }
 
+  function setDirectoryColumns(columns?: number) {
+    if (!activeGroup) return;
+    setGroupSidebarColumns(activeGroup.id, columns);
+    onClose();
+  }
+
+  function directoryColumnsMenu() {
+    const inherited = Math.max(1, Math.min(6, Math.round(globalDisplay.sidebarColumns ?? 1)));
+    const current = activeGroup?.sidebarColumns;
+    return (
+      <div className="menu-surface directory-submenu small-submenu directory-columns-submenu">
+        <div className="menu-item" onClick={() => setDirectoryColumns(undefined)}>
+          <span>跟随默认（{inherited} 列）</span>{current === undefined ? <span>✓</span> : null}
+        </div>
+        <div className="menu-separator" />
+        {[1, 2, 3, 4, 5, 6].map((columns) => (
+          <div className="menu-item" key={columns} onClick={() => setDirectoryColumns(columns)}>
+            <span>{columns} 列</span>{current === columns ? <span>✓</span> : null}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   function sizeMenu(scope: 'directory' | 'global') {
     const current = scope === 'global' ? globalDisplay.iconSize : display.iconSize;
     return (
@@ -220,11 +268,13 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     );
   }
 
+  const showPasteSection = show('paste');
+  const canPaste = itemClipboard.length > 0 && activeKind !== 'notes' && Boolean(targetDirectoryId);
   const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addUrl') || show('addSystem');
-  const showLocalDisplaySection = show('iconSize') || show('viewMode') || show('sortMode');
+  const showLocalDisplaySection = show('iconSize') || show('viewMode') || show('sortMode') || show('directoryColumns');
   const showGlobalDisplaySection = show('globalIconSize') || show('globalViewMode') || show('globalSortMode');
   const showMaintenanceSection = show('refreshIcons');
-  const hasAnyVisibleItem = showAddSection || showLocalDisplaySection || showGlobalDisplaySection || showMaintenanceSection;
+  const hasAnyVisibleItem = showPasteSection || showAddSection || showLocalDisplaySection || showGlobalDisplaySection || showMaintenanceSection;
 
   return (
     <>
@@ -241,6 +291,8 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
           <strong>{activeDirectory.name}</strong>
         </div>
       )}
+      {show('paste') && <div className={`menu-item ${canPaste ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canPaste && pasteItems()}><span>粘贴项目{itemClipboard.length ? `（${itemClipboard.length} 项）` : ''}</span><ClipboardPaste size={15} /></div>}
+      {showPasteSection && showAddSection && <div className="menu-separator" />}
       {show('createDirectory') && <div className={`menu-item with-submenu ${activeKind === 'all' ? 'disabled' : ''}`} onMouseEnter={() => activeKind !== 'all' && setOpenSubmenu('directory')} onClick={() => activeKind !== 'all' && setOpenSubmenu((value) => value === 'directory' ? null : 'directory')}>
         <span>新建子目录</span><ChevronRight size={14} />
         {openSubmenu === 'directory' && (
@@ -284,6 +336,13 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
         <span>排序方式</span><ChevronRight size={14} />
         {openSubmenu === 'sort' && sortMenu('directory')}
       </div>}
+      {show('directoryColumns') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('columns')} onClick={() => setOpenSubmenu((value) => value === 'columns' ? null : 'columns')}>
+        <span>子目录列数</span><ChevronRight size={14} />
+        {openSubmenu === 'columns' && directoryColumnsMenu()}
+      </div>}
+      {show('sidebarFullNames') && <div className="menu-item" title="开启后子目录名称完整换行显示，不再省略；也可在设置-字体中修改" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => updateDisplay({ sidebarShowFullNames: !(globalDisplay.sidebarShowFullNames === true) })}>
+        <span>完整子目录名称</span>{globalDisplay.sidebarShowFullNames ? <span>✓</span> : <Type size={13} />}
+      </div>}
       {(showAddSection || showLocalDisplaySection) && showGlobalDisplaySection && <div className="menu-separator" />}
       {show('globalIconSize') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('globalIcon')} onClick={() => setOpenSubmenu((value) => value === 'globalIcon' ? null : 'globalIcon')}>
         <span>统一-图标大小</span><ChevronRight size={14} />
@@ -326,6 +385,43 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
                 placeholder="https://example.com"
               />
             </label>
+          </div>
+          <div className="url-shortcut-options-card">
+            <div className="url-shortcut-option-heading">浏览器打开方式</div>
+            <BrowserRoutePicker
+              value={urlBrowserRoute}
+              onChange={setUrlBrowserRoute}
+              catalog={browserCatalog}
+              router={browserRouter}
+              compact
+            />
+            <p className="url-shortcut-hint">可选择继承父目录/全局、系统默认浏览器、当前前台浏览器，或指定浏览器与 Profile。</p>
+          </div>
+          <div className="url-shortcut-options-card">
+            <div className="url-shortcut-option-heading">项目点击动作</div>
+            <div className="url-shortcut-click-grid">
+              <label>
+                左键单击
+                <ItemClickActionPicker
+                  value={urlSingleClickAction}
+                  interaction="single"
+                  itemType="url"
+                  globalLaunchMode={globalLaunchMode}
+                  onChange={setUrlSingleClickAction}
+                />
+              </label>
+              <label>
+                左键双击
+                <ItemClickActionPicker
+                  value={urlDoubleClickAction}
+                  interaction="double"
+                  itemType="url"
+                  globalLaunchMode={globalLaunchMode}
+                  onChange={setUrlDoubleClickAction}
+                />
+              </label>
+            </div>
+            <p className="url-shortcut-hint">可分别设置为打开、复制名称、复制网址、复制“名称 + 网址”或无动作；之后也能在项目右键 → 编辑中修改。</p>
           </div>
           <label className="url-shortcut-check">
             <input

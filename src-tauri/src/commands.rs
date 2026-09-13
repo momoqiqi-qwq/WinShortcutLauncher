@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{env, fs, path::{Path, PathBuf}, process::Command, time::{SystemTime, UNIX_EPOCH}};
+use std::{env, fs, path::{Path, PathBuf}, process::Command};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -16,18 +16,6 @@ pub struct FileInfo {
   pub r#type: String,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FaviconTestResult {
-  pub provider_id: String,
-  pub provider_name: String,
-  pub group: String,
-  pub success: bool,
-  pub elapsed_ms: u128,
-  pub url: Option<String>,
-  pub error: Option<String>,
-}
-
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ForegroundBrowserInfo {
@@ -42,6 +30,9 @@ pub struct BrowserProfileInfo {
   pub name: String,
   pub path: String,
   pub profile_key: String,
+  /// 修复乱码前的原始名称；仅在名称被自动修复时返回。
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub name_raw: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -257,6 +248,28 @@ fn read_json_file(path: &Path) -> Option<serde_json::Value> {
   serde_json::from_str(&content).ok()
 }
 
+/// 修复被按 GBK 误解码的 UTF-8 名称，例如 Edge Local State 里可能出现的
+/// “鐢ㄦ埛閰嶇疆 1”（实为“用户配置 1”）。仅当字符串能以 GBK 无损编码回字节、
+/// 且这些字节恰好是合法 UTF-8、结果包含 CJK 时才修复，正常中文名不会命中。
+fn repair_double_encoded_name(name: &str) -> Option<String> {
+  use encoding_rs::GBK;
+  fn has_cjk(value: &str) -> bool {
+    value.chars().any(|ch| (0x4E00..=0x9FFF).contains(&(ch as u32)))
+  }
+  if !has_cjk(name) {
+    return None;
+  }
+  let (bytes, _, had_errors) = GBK.encode(name);
+  if had_errors {
+    return None;
+  }
+  let repaired = String::from_utf8(bytes.into_owned()).ok()?;
+  if repaired == name || !has_cjk(&repaired) {
+    return None;
+  }
+  Some(repaired)
+}
+
 fn scan_chromium_profiles(root: &Path) -> Vec<BrowserProfileInfo> {
   let mut profiles = Vec::new();
   if let Some(json) = read_json_file(&root.join("Local State")) {
@@ -267,11 +280,16 @@ fn scan_chromium_profiles(root: &Path) -> Vec<BrowserProfileInfo> {
           continue;
         }
         let name = value.get("name").and_then(|entry| entry.as_str()).unwrap_or(key).trim();
+        let (display_name, name_raw) = match repair_double_encoded_name(name) {
+          Some(repaired) => (repaired, Some(name.to_string())),
+          None => (name.to_string(), None),
+        };
         profiles.push(BrowserProfileInfo {
           id: key.clone(),
-          name: if name.is_empty() { key.clone() } else { name.to_string() },
+          name: if display_name.is_empty() { key.clone() } else { display_name },
           path: path.to_string_lossy().to_string(),
           profile_key: key.clone(),
+          name_raw,
         });
       }
     }
@@ -293,6 +311,7 @@ fn scan_chromium_profiles(root: &Path) -> Vec<BrowserProfileInfo> {
           name: key.clone(),
           path: path.to_string_lossy().to_string(),
           profile_key: key,
+          name_raw: None,
         });
       }
     }
@@ -336,6 +355,7 @@ fn parse_gecko_profiles_ini(root: &Path) -> Vec<BrowserProfileInfo> {
         name: display_name.clone(),
         path: path.to_string_lossy().to_string(),
         profile_key: display_name,
+        name_raw: None,
       });
     }
     name.clear();
@@ -384,6 +404,7 @@ fn scan_gecko_profiles(root: &Path) -> Vec<BrowserProfileInfo> {
         name: key.clone(),
         path: path.to_string_lossy().to_string(),
         profile_key: key,
+        name_raw: None,
       });
     }
   }
@@ -773,354 +794,6 @@ pub fn get_file_info(path: String) -> Result<FileInfo, String> {
 }
 
 
-fn launcher_cache_dir() -> PathBuf {
-  #[cfg(target_os = "windows")]
-  {
-    if let Ok(appdata) = env::var("APPDATA") {
-      return PathBuf::from(appdata).join("WinShortcutLauncher").join("favicons");
-    }
-  }
-  if let Ok(home) = env::var("HOME") {
-    return PathBuf::from(home).join(".win-shortcut-launcher").join("favicons");
-  }
-  env::temp_dir().join("win-shortcut-launcher").join("favicons")
-}
-
-fn safe_file_part(value: &str) -> String {
-  let mut out = String::new();
-  for ch in value.chars() {
-    if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' {
-      out.push(ch);
-    } else {
-      out.push('_');
-    }
-  }
-  if out.is_empty() { "site".to_string() } else { out }
-}
-
-fn host_from_url(value: &str) -> String {
-  let trimmed = value.trim();
-  let after_scheme = trimmed.split_once("://").map(|(_, rest)| rest).unwrap_or(trimmed);
-  let authority = after_scheme.split('/').next().unwrap_or(after_scheme);
-  let host_port = authority.rsplit('@').next().unwrap_or(authority);
-  host_port.split(':').next().unwrap_or(host_port).trim().to_ascii_lowercase()
-}
-
-fn favicon_cache_domain(host: &str) -> String {
-  const COMPOUND_SUFFIXES: [&str; 18] = [
-    "com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn",
-    "co.uk", "org.uk", "ac.uk",
-    "com.au", "net.au", "org.au",
-    "co.jp", "ne.jp", "or.jp",
-    "co.kr", "com.br", "com.sg", "com.hk",
-  ];
-
-  let normalized = host.trim().trim_end_matches('.').trim_start_matches("www.").to_ascii_lowercase();
-  if normalized.is_empty() || normalized == "localhost" || normalized.contains(':') {
-    return normalized;
-  }
-  if normalized.split('.').all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit())) {
-    return normalized;
-  }
-
-  let labels = normalized.split('.').filter(|part| !part.is_empty()).collect::<Vec<_>>();
-  if labels.len() <= 2 {
-    return normalized;
-  }
-  let last_two = format!("{}.{}", labels[labels.len() - 2], labels[labels.len() - 1]);
-  if COMPOUND_SUFFIXES.contains(&last_two.as_str()) && labels.len() >= 3 {
-    return format!("{}.{}", labels[labels.len() - 3], last_two);
-  }
-  last_two
-}
-
-fn is_favicon_file(path: &Path) -> bool {
-  path.extension()
-    .and_then(|ext| ext.to_str())
-    .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "png" | "svg" | "ico" | "webp" | "jpg" | "jpeg" | "gif"))
-    .unwrap_or(false)
-}
-
-fn cached_favicon_for_domain(dir: &Path, cache_domain: &str) -> Option<PathBuf> {
-  let canonical_prefix = format!("site_{}", safe_file_part(cache_domain));
-  let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
-  let entries = fs::read_dir(dir).ok()?;
-  for entry in entries.flatten() {
-    let path = entry.path();
-    if !path.is_file() || !is_favicon_file(&path) {
-      continue;
-    }
-    let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or_default();
-    let is_canonical = stem == canonical_prefix;
-    let legacy_host = stem.split('_').next().unwrap_or_default().to_ascii_lowercase();
-    let is_same_site_legacy = legacy_host == cache_domain || legacy_host.ends_with(&format!(".{}", cache_domain));
-    if !is_canonical && !is_same_site_legacy {
-      continue;
-    }
-    let modified = entry.metadata().and_then(|meta| meta.modified()).unwrap_or(std::time::UNIX_EPOCH);
-    candidates.push((modified, path));
-  }
-  candidates.sort_by(|left, right| right.0.cmp(&left.0));
-  candidates.into_iter().map(|(_, path)| path).next()
-}
-
-fn remove_canonical_favicon_variants(dir: &Path, cache_domain: &str, except: Option<&Path>) {
-  let canonical_prefix = format!("site_{}", safe_file_part(cache_domain));
-  let Ok(entries) = fs::read_dir(dir) else { return; };
-  for entry in entries.flatten() {
-    let path = entry.path();
-    if except.is_some_and(|keep| keep == path.as_path()) {
-      continue;
-    }
-    let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or_default();
-    if stem == canonical_prefix && is_favicon_file(&path) {
-      let _ = fs::remove_file(path);
-    }
-  }
-}
-
-
-fn favicon_provider_meta(id: &str) -> (&'static str, &'static str) {
-  match id {
-    "quicker" => ("Quicker", "国内"),
-    "faviconIm" => ("Favicon.im", "国内"),
-    "iowen" => ("Iowen", "国内"),
-    "google" => ("Google", "国外"),
-    "duckduckgo" => ("DuckDuckGo", "国外"),
-    "clearbit" => ("Clearbit", "国外"),
-    "iconHorse" => ("Icon Horse", "国外"),
-    "faviconKit" => ("FaviconKit", "国外"),
-    "yandex" => ("Yandex", "国外"),
-    "direct" => ("网站 /favicon.ico", "直连"),
-    _ => ("自动兜底", "国内"),
-  }
-}
-
-fn favicon_provider_order(provider_id: Option<&str>, fallback: bool) -> Vec<&'static str> {
-  const DEFAULTS: [&str; 10] = ["quicker", "faviconIm", "iowen", "google", "duckduckgo", "clearbit", "iconHorse", "faviconKit", "yandex", "direct"];
-  let selected = provider_id.unwrap_or("auto");
-  if selected == "auto" || selected.trim().is_empty() {
-    return DEFAULTS.to_vec();
-  }
-  if !fallback {
-    return vec![match selected {
-      "quicker" => "quicker",
-      "faviconIm" => "faviconIm",
-      "iowen" => "iowen",
-      "google" => "google",
-      "duckduckgo" => "duckduckgo",
-      "clearbit" => "clearbit",
-      "iconHorse" => "iconHorse",
-      "faviconKit" => "faviconKit",
-      "yandex" => "yandex",
-      "direct" => "direct",
-      _ => "quicker",
-    }];
-  }
-  let selected_static = match selected {
-    "quicker" => "quicker",
-    "faviconIm" => "faviconIm",
-    "iowen" => "iowen",
-    "google" => "google",
-    "duckduckgo" => "duckduckgo",
-    "clearbit" => "clearbit",
-    "iconHorse" => "iconHorse",
-    "faviconKit" => "faviconKit",
-    "yandex" => "yandex",
-    "direct" => "direct",
-    _ => "quicker",
-  };
-  let mut out = vec![selected_static];
-  for item in DEFAULTS {
-    if item != selected_static {
-      out.push(item);
-    }
-  }
-  out
-}
-
-fn favicon_candidate_url(provider: &str, host: &str, raw_url: &str) -> String {
-  match provider {
-    "quicker" => format!("https://helperservice.getquicker.cn/favicon/get/{}", host),
-    "faviconIm" => format!("https://favicon.im/{}", host),
-    "iowen" => format!("https://api.iowen.cn/favicon/{}.png", host),
-    "google" => format!("https://www.google.com/s2/favicons?domain={}&sz=128", host),
-    "duckduckgo" => format!("https://icons.duckduckgo.com/ip3/{}.ico", host),
-    "clearbit" => format!("https://logo.clearbit.com/{}", host),
-    "iconHorse" => format!("https://icon.horse/icon/{}", host),
-    "faviconKit" => format!("https://api.faviconkit.com/{}/128", host),
-    "yandex" => format!("https://favicon.yandex.net/favicon/{}", host),
-    "direct" => {
-      let scheme = if raw_url.starts_with("http://") { "http" } else { "https" };
-      format!("{}://{}/favicon.ico", scheme, host)
-    }
-    _ => format!("https://helperservice.getquicker.cn/favicon/get/{}", host),
-  }
-}
-
-fn append_refresh_token(url: String, refresh_token: Option<u128>) -> String {
-  let Some(token) = refresh_token else { return url; };
-  let separator = if url.contains('?') { "&" } else { "?" };
-  format!("{}{}yue_refresh={}", url, separator, token)
-}
-
-fn favicon_candidates_ps(host: &str, raw_url: &str, provider_id: Option<String>, fallback: Option<bool>, refresh_token: Option<u128>) -> String {
-  let providers = favicon_provider_order(provider_id.as_deref(), fallback.unwrap_or(true));
-  providers
-    .into_iter()
-    .map(|provider| favicon_candidate_url(provider, host, raw_url))
-    .map(|url| append_refresh_token(url, refresh_token))
-    .map(|url| format!("'{}'", ps_escape(&url)))
-    .collect::<Vec<_>>()
-    .join(",")
-}
-
-#[tauri::command]
-pub fn fetch_website_favicon(url: String, provider_id: Option<String>, fallback: Option<bool>, force_refresh: Option<bool>) -> Result<String, String> {
-  let trimmed = url.trim();
-  if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
-    return Err("只支持 http/https 网址".to_string());
-  }
-  let host = host_from_url(trimmed);
-  if host.is_empty() {
-    return Err("无法解析网址域名".to_string());
-  }
-
-  let dir = launcher_cache_dir();
-  fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-
-  let cache_domain = favicon_cache_domain(&host);
-  let force_refresh = force_refresh.unwrap_or(false);
-  if !force_refresh {
-    if let Some(cached) = cached_favicon_for_domain(&dir, &cache_domain) {
-      return Ok(cached.to_string_lossy().to_string());
-    }
-  }
-
-  let refresh_token = if force_refresh {
-    Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis())
-  } else {
-    None
-  };
-  let prefix = dir.join(format!("site_{}", safe_file_part(&cache_domain)));
-  let prefix_string = prefix.to_string_lossy().to_string();
-
-  let candidates = favicon_candidates_ps(&cache_domain, trimmed, provider_id, fallback, refresh_token);
-  let script_template = r#"
-$ErrorActionPreference = 'Stop'
-$rawUrl = '__URL__'
-$outPrefix = '__PREFIX__'
-$candidates = @(__CANDIDATES__)
-
-foreach ($candidate in $candidates) {
-  try {
-    $response = Invoke-WebRequest -Uri $candidate -UseBasicParsing -TimeoutSec 8 -MaximumRedirection 5
-    $bytes = $response.Content
-    if ($bytes -is [string]) { $bytes = [System.Text.Encoding]::UTF8.GetBytes($bytes) }
-    if ($null -eq $bytes -or $bytes.Length -lt 32) { continue }
-    $contentType = ''
-    try { $contentType = [string]$response.Headers['Content-Type'] } catch {}
-    $ext = 'png'
-    if ($contentType -match 'svg') { $ext = 'svg' }
-    elseif ($contentType -match 'x-icon|icon|ico') { $ext = 'ico' }
-    elseif ($contentType -match 'webp') { $ext = 'webp' }
-    elseif ($contentType -match 'jpeg|jpg') { $ext = 'jpg' }
-    elseif ($candidate -match '\.ico($|\?)') { $ext = 'ico' }
-    $out = $outPrefix + '.' + $ext
-    [System.IO.File]::WriteAllBytes($out, [byte[]]$bytes)
-    Write-Output $out
-    exit 0
-  } catch {
-    continue
-  }
-}
-exit 1
-"#;
-
-  let script = script_template
-    .replace("__URL__", &ps_escape(trimmed))
-    .replace("__PREFIX__", &ps_escape(&prefix_string))
-    .replace("__CANDIDATES__", &candidates);
-  let out = run_powershell(&script)?;
-  if out.trim().is_empty() {
-    return Err("未获取到网站图标".to_string());
-  }
-
-  let refreshed_path = PathBuf::from(out.lines().last().unwrap_or(out.trim()).trim());
-  remove_canonical_favicon_variants(&dir, &cache_domain, Some(&refreshed_path));
-  Ok(refreshed_path.to_string_lossy().to_string())
-}
-
-
-
-#[tauri::command]
-pub fn test_favicon_sources(domain: String) -> Result<Vec<FaviconTestResult>, String> {
-  let host = host_from_url(&domain);
-  let clean_host = if host.is_empty() { domain.trim().trim_start_matches("http://").trim_start_matches("https://").split('/').next().unwrap_or("").to_ascii_lowercase() } else { host };
-  if clean_host.is_empty() {
-    return Err("请输入要测试的域名".to_string());
-  }
-  let raw_url = format!("https://{}", clean_host);
-  let providers = favicon_provider_order(Some("auto"), true);
-  let mut results = Vec::new();
-  for provider in providers {
-    let candidate = favicon_candidate_url(provider, &clean_host, &raw_url);
-    let start = std::time::Instant::now();
-    let script = format!(
-      "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try {{ $r=Invoke-WebRequest -Uri '{}' -UseBasicParsing -TimeoutSec 6 -MaximumRedirection 3; $b=$r.Content; if ($b -is [string]) {{ $l=$b.Length }} else {{ $l=$b.Length }}; if ($l -gt 31) {{ Write-Output 'ok' }} else {{ throw 'too small' }} }} catch {{ Write-Output ('err:' + $_.Exception.Message) }}",
-      ps_escape(&candidate)
-    );
-    let out = run_powershell(&script).unwrap_or_else(|error| format!("err:{}", error));
-    let elapsed_ms = start.elapsed().as_millis();
-    let success = out.trim().lines().last().unwrap_or("").trim() == "ok";
-    let (name, group) = favicon_provider_meta(provider);
-    results.push(FaviconTestResult {
-      provider_id: provider.to_string(),
-      provider_name: name.to_string(),
-      group: group.to_string(),
-      success,
-      elapsed_ms,
-      url: Some(candidate),
-      error: if success { None } else { Some(out.trim().to_string()) },
-    });
-  }
-  results.sort_by(|a, b| b.success.cmp(&a.success).then(a.elapsed_ms.cmp(&b.elapsed_ms)));
-  Ok(results)
-}
-
-#[tauri::command]
-pub fn fetch_website_title(url: String) -> Result<String, String> {
-  let trimmed = url.trim();
-  if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
-    return Err("只支持 http/https 网址".to_string());
-  }
-
-  let script_template = r#"
-$ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'
-$url = '__URL__'
-$response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 8 -MaximumRedirection 5
-$html = [string]$response.Content
-$title = ''
-if ($html -match '(?is)<title[^>]*>(.*?)</title>') {
-  $title = $Matches[1]
-  $title = [System.Net.WebUtility]::HtmlDecode($title)
-  $title = ($title -replace '\s+', ' ').Trim()
-}
-if ($title.Length -gt 120) { $title = $title.Substring(0, 120) }
-Write-Output $title
-"#;
-  let script = script_template.replace("__URL__", &ps_escape(trimmed));
-  let out = run_powershell(&script)?;
-  let title = out.lines().last().unwrap_or(out.trim()).trim().to_string();
-  if title.is_empty() {
-    Err("未获取到网页标题".to_string())
-  } else {
-    Ok(title)
-  }
-}
-
-
 
 #[cfg(target_os = "windows")]
 fn startup_registry_value_name() -> &'static str {
@@ -1203,6 +876,18 @@ pub fn get_auto_start() -> Result<bool, String> {
 #[tauri::command]
 pub fn get_auto_start() -> Result<bool, String> {
   Ok(false)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn get_double_click_time_ms() -> u32 {
+  unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn get_double_click_time_ms() -> u32 {
+  420
 }
 
 #[cfg(target_os = "windows")]

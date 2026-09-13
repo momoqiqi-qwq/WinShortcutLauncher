@@ -10,6 +10,7 @@ import {
   defaultAutoSave,
   defaultBehavior,
   defaultDisplay,
+  defaultMultiAccount,
   defaultNotes,
   defaultRainbow,
   defaultWindowState,
@@ -19,6 +20,7 @@ import {
   normalizeBehavior,
   normalizeDisplay,
   normalizeImageBrowserSettings,
+  normalizeMultiAccountSettings,
   normalizeNoteSettings,
   normalizeRainbow,
 } from '../normalizers';
@@ -43,6 +45,9 @@ export const createSettingsSlice: AppSliceCreator<SettingsSlice> = (set) => ({
       behavior: normalizeBehavior({ ...state.behavior, urlOpenMode: browserRouter.mode }),
     };
   }),
+  updateMultiAccount: (settings) => set((state) => ({
+    multiAccount: normalizeMultiAccountSettings({ ...state.multiAccount, ...settings }),
+  })),
   updateWindowState: (settings) => set((state) => {
     const behavior = settings.edgeAutoHide === undefined
       ? state.behavior
@@ -113,6 +118,7 @@ export const createSettingsSlice: AppSliceCreator<SettingsSlice> = (set) => ({
     display: { ...defaultDisplay },
     behavior: { ...defaultBehavior },
     browserRouter: { ...defaultBrowserRouter, customBrowsers: [], profileOverrides: {} },
+    multiAccount: { ...defaultMultiAccount, selectedTargetKeys: [] },
     windowState: { ...defaultWindowState },
     autoSave: { ...defaultAutoSave },
     globalSearch: { ...DEFAULT_GLOBAL_SEARCH_SETTINGS },

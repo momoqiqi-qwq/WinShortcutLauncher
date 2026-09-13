@@ -8,6 +8,7 @@
   padding: clamp(28px, 7vh, 76px) 20px 20px;
   background: rgba(0, 0, 0, .24);
   backdrop-filter: blur(3px);
+  animation: global-search-backdrop-in 180ms ease-out backwards;
 }
 
 .global-search-modal {
@@ -23,6 +24,52 @@
   background: color-mix(in srgb, var(--panel, #222) 96%, transparent);
   box-shadow: 0 24px 70px rgba(0,0,0,.38);
   backdrop-filter: blur(var(--panel-blur, 16px));
+  transform-origin: 50% 14%;
+  will-change: transform, opacity;
+  animation: global-search-modal-in 260ms cubic-bezier(.16, 1, .3, 1) backwards;
+}
+
+@keyframes global-search-backdrop-in {
+  from { opacity: 0; backdrop-filter: blur(0); }
+  to { opacity: 1; backdrop-filter: blur(3px); }
+}
+
+@keyframes global-search-modal-in {
+  from { opacity: 0; transform: translate3d(0, -14px, 0) scale(.972); }
+  58% { opacity: 1; }
+  to { opacity: 1; transform: translateZ(0) scale(1); }
+}
+
+.global-search-modal > * {
+  animation: global-search-content-in 220ms 45ms cubic-bezier(.2, .82, .2, 1) backwards;
+}
+
+@keyframes global-search-content-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+
+.app-shell.reduce-motion .global-search-backdrop,
+.app-shell.reduce-motion .global-search-modal,
+.app-shell.reduce-motion .global-search-modal > * {
+  animation: none;
+}
+
+.global-search-backdrop.is-closing {
+  pointer-events: none;
+  animation: global-search-backdrop-out 220ms ease-in both;
+}
+
+.global-search-modal.is-closing {
+  animation: global-search-modal-out 220ms cubic-bezier(.4, 0, 1, 1) both;
+}
+
+@keyframes global-search-backdrop-out {
+  to { opacity: 0; backdrop-filter: blur(0); }
+}
+
+@keyframes global-search-modal-out {
+  to { opacity: 0; transform: translate3d(0, -9px, 0) scale(.978); }
 }
 
 .global-search-input-row {
@@ -405,4 +452,75 @@
 
 .global-search-error-content .btn-primary {
   justify-self: end;
+}
+
+/* v131: command/settings actions use a compact slider-style action control. */
+.global-search-row.has-jump-target {
+  cursor: pointer;
+}
+
+.global-search-row.has-jump-target .global-search-main::after {
+  content: "点击空白处定位";
+  display: block;
+  margin-top: 3px;
+  color: color-mix(in srgb, var(--muted) 88%, transparent);
+  font-size: 10px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 130ms ease, transform 130ms ease;
+}
+
+.global-search-row.has-jump-target:hover .global-search-main::after,
+.global-search-row.has-jump-target.active .global-search-main::after {
+  opacity: .72;
+  transform: none;
+}
+
+.global-search-action-switch {
+  position: relative;
+  width: 48px;
+  min-width: 48px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, var(--text) 16%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-2) 88%, var(--bg));
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 120ms ease;
+}
+
+.global-search-action-switch:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
+}
+
+.global-search-action-switch:active:not(:disabled) { transform: scale(.96); }
+.global-search-action-switch:disabled { opacity: .45; cursor: wait; }
+
+.global-search-action-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .24);
+  transition: transform 190ms cubic-bezier(.2, .88, .2, 1), width 120ms ease;
+}
+
+.global-search-action-switch:active:not(:disabled) .global-search-action-switch-thumb { width: 20px; }
+.global-search-action-switch.checked {
+  border-color: color-mix(in srgb, var(--accent) 82%, var(--border));
+  background: var(--accent);
+}
+.global-search-action-switch.checked .global-search-action-switch-thumb { transform: translateX(22px); }
+.global-search-row.dangerous .global-search-action-switch.checked {
+  border-color: color-mix(in srgb, var(--danger) 80%, var(--border));
+  background: var(--danger);
 }

@@ -1,7 +1,8 @@
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, ClipboardCopy, LocateFixed, RefreshCw, ScanSearch } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { analyzeAppConfig, formatConfigDiagnostics, type DiagnosticEntry } from '../../lib/configDiagnostics';
 import { showLauncherNotice } from '../../lib/notify';
+import { getProcessIntegrityStatus, type ProcessIntegrityStatus } from '../../lib/processIntegrity';
 import { useAppStore } from '../../stores/appStore';
 
 function issueClass(severity: 'error' | 'warning' | 'info') {
@@ -24,7 +25,23 @@ export function DiagnosticsSettingsSection() {
   const setSettingsOpen = useAppStore((state) => state.setSettingsOpen);
   const [refreshToken, setRefreshToken] = useState(0);
   const [expandedIssues, setExpandedIssues] = useState<Set<string>>(new Set());
+  const [integrityStatus, setIntegrityStatus] = useState<ProcessIntegrityStatus | null>(null);
+  const [integrityError, setIntegrityError] = useState('');
   const result = useMemo(() => analyzeAppConfig({ groups }), [groups, refreshToken]);
+
+  useEffect(() => {
+    let disposed = false;
+    void getProcessIntegrityStatus().then((status) => {
+      if (disposed) return;
+      setIntegrityStatus(status);
+      setIntegrityError('');
+    }).catch((error) => {
+      if (disposed) return;
+      setIntegrityStatus(null);
+      setIntegrityError(String(error));
+    });
+    return () => { disposed = true; };
+  }, [refreshToken]);
 
   async function copySummary() {
     const text = formatConfigDiagnostics(result);
@@ -64,6 +81,29 @@ export function DiagnosticsSettingsSection() {
 
   return (
     <div className="settings-category-grid diagnostics-settings-grid">
+      <section className="settings-section diagnostics-summary-section">
+        <div className="settings-section-title-row">
+          <div>
+            <h3>{integrityStatus?.isMedium ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />} Windows 权限 / 拖放兼容</h3>
+            <p className="settings-hint">主进程默认应为 Medium Integrity。管理员功能仍由单个快捷项目通过 runas 单独提权，不需要让整个 Launcher 长期处于 High。</p>
+          </div>
+          <span className={`diagnostic-result-badge ${integrityStatus?.isMedium ? 'healthy' : 'has-issues'}`}>
+            {integrityStatus ? `${integrityStatus.level} · RID 0x${integrityStatus.rid.toString(16)}` : '检测中'}
+          </span>
+        </div>
+        {integrityError ? (
+          <div className="diagnostic-issue diagnostic-warning">
+            <strong>无法读取当前 Integrity Level</strong>
+            <small>{integrityError}</small>
+          </div>
+        ) : integrityStatus ? (
+          <div className={integrityStatus.isMedium ? 'diagnostic-healthy-card' : 'diagnostic-issue diagnostic-warning'}>
+            {integrityStatus.isMedium ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}
+            <div><strong>{integrityStatus.isMedium ? '标准 Medium · 拖放权限匹配' : integrityStatus.isAboveMedium ? '权限高于 Medium · 拖放可能被 UIPI 阻止' : '权限低于 Medium · 部分功能可能受限'}</strong><small>{integrityStatus.message}</small></div>
+          </div>
+        ) : null}
+      </section>
+
       <section className="settings-section diagnostics-summary-section">
         <div className="settings-section-title-row">
           <div>

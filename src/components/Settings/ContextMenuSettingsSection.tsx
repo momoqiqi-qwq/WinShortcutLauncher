@@ -18,6 +18,10 @@ type MenuId = DirectoryContextMenuItemId | GroupContextMenuItemId | AreaContextM
 const CATEGORY_ORDER: MenuCategory[] = ['group', 'directory', 'area'];
 
 const DIRECTORY_LABELS: Record<DirectoryContextMenuItemId, { label: string; hint: string }> = {
+  copyDirectory: { label: '复制子目录', hint: '复制整个子目录及其中项目，可粘贴到其他父目录。' },
+  pasteDirectory: { label: '粘贴子目录', hint: '把复制的子目录粘贴到当前子目录所在父目录。' },
+  moveToGroup: { label: '移动到父目录', hint: '把当前子目录完整移动到其他父目录。' },
+  paste: { label: '粘贴项目', hint: '把内部项目剪贴板内容粘贴到此子目录。' },
   rename: { label: '重命名子目录', hint: '修改当前子目录名称。' },
   merge: { label: '合并到子目录', hint: '把当前子目录合并到同类型子目录。' },
   switchToNotes: { label: '空子目录切换为便签', hint: '仅空普通子目录可用。' },
@@ -27,6 +31,9 @@ const DIRECTORY_LABELS: Record<DirectoryContextMenuItemId, { label: string; hint
 };
 
 const GROUP_LABELS: Record<GroupContextMenuItemId, { label: string; hint: string }> = {
+  copyGroup: { label: '复制父目录', hint: '复制父目录及全部子目录，可跨多配置粘贴。' },
+  pasteGroup: { label: '粘贴父目录', hint: '把复制的父目录粘贴到当前配置。' },
+  pasteDirectory: { label: '粘贴子目录', hint: '把复制的子目录粘贴到此父目录。' },
   create: { label: '新建父目录', hint: '创建新的父目录。' },
   merge: { label: '合并到父目录', hint: '把当前父目录合并到另一个父目录。' },
   color: { label: '父目录背景色', hint: '给父目录标签设置不同的背景颜色。' },
@@ -34,6 +41,7 @@ const GROUP_LABELS: Record<GroupContextMenuItemId, { label: string; hint: string
 };
 
 const AREA_LABELS: Record<AreaContextMenuItemId, { label: string; hint: string }> = {
+  paste: { label: '粘贴项目', hint: '把内部项目剪贴板内容粘贴到当前子目录。' },
   createDirectory: { label: '新建子目录', hint: '在当前父目录中创建普通、全部或便签子目录。' },
   addFile: { label: '添加文件', hint: '选择一个或多个文件。' },
   addFolder: { label: '添加文件夹', hint: '选择文件夹并添加快捷项目。' },
@@ -42,6 +50,8 @@ const AREA_LABELS: Record<AreaContextMenuItemId, { label: string; hint: string }
   iconSize: { label: '当前子目录图标大小', hint: '只调整当前子目录。' },
   viewMode: { label: '当前子目录查看方式', hint: '只调整当前子目录。' },
   sortMode: { label: '当前子目录排序方式', hint: '只调整当前子目录。' },
+  directoryColumns: { label: '当前父目录子目录列数', hint: '设置左侧子目录列表在当前父目录下显示几列。' },
+  sidebarFullNames: { label: '完整子目录名称', hint: '开启后左侧子目录名称完整换行显示，不再按行数省略。' },
   globalIconSize: { label: '统一图标大小', hint: '调整所有子目录的默认图标大小。' },
   globalViewMode: { label: '统一查看方式', hint: '调整所有子目录的默认查看方式。' },
   globalSortMode: { label: '统一排序方式', hint: '调整所有子目录的默认排序方式。' },

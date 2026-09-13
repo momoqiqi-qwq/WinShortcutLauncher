@@ -1,4 +1,22 @@
-export type UiDialogType = 'alert' | 'confirm' | 'prompt';
+import type { BrowserRouteOverride, ItemClickAction } from '../types';
+export type UiDialogType = 'alert' | 'confirm' | 'prompt' | 'website-name-choice';
+
+export type WebsiteNameChoiceSource = 'title' | 'address';
+
+export type WebsiteNameChoiceResult = {
+  source: WebsiteNameChoiceSource;
+  name: string;
+  browserRoute: BrowserRouteOverride;
+  singleClickAction?: ItemClickAction;
+  doubleClickAction?: ItemClickAction;
+};
+
+export interface WebsiteNameChoiceOptions {
+  url?: string;
+  browserRoute?: BrowserRouteOverride;
+  singleClickAction?: ItemClickAction;
+  doubleClickAction?: ItemClickAction;
+}
 
 export interface UiDialogRequest {
   id: number;
@@ -9,13 +27,21 @@ export interface UiDialogRequest {
   placeholder?: string;
   confirmText?: string;
   cancelText?: string;
-  resolve: (value: string | boolean | null | undefined) => void;
+  websiteTitleName?: string;
+  websiteAddressName?: string;
+  websiteTitleLoader?: () => Promise<string>;
+  websiteDialogShown?: () => void;
+  websiteUrl?: string;
+  websiteBrowserRoute?: BrowserRouteOverride;
+  websiteSingleClickAction?: ItemClickAction;
+  websiteDoubleClickAction?: ItemClickAction;
+  resolve: (value: string | boolean | WebsiteNameChoiceResult | null | undefined) => void;
 }
 
 let nextDialogId = 1;
 
 function dispatchDialog(request: Omit<UiDialogRequest, 'id' | 'resolve'>) {
-  return new Promise<string | boolean | null | undefined>((resolve) => {
+  return new Promise<string | boolean | WebsiteNameChoiceResult | null | undefined>((resolve) => {
     const detail: UiDialogRequest = { ...request, id: nextDialogId++, resolve };
     window.dispatchEvent(new CustomEvent<UiDialogRequest>('launcher-ui-dialog', { detail }));
   });
@@ -51,4 +77,30 @@ export async function uiPrompt(message: unknown, defaultValue = '', title = '输
     cancelText: '取消',
   });
   return typeof result === 'string' ? result : null;
+}
+
+export async function uiWebsiteNameChoice(
+  websiteTitleName: string,
+  websiteAddressName: string,
+  websiteTitleLoader?: () => Promise<string>,
+  websiteDialogShown?: () => void,
+  options: WebsiteNameChoiceOptions = {},
+) {
+  const result = await dispatchDialog({
+    type: 'website-name-choice',
+    title: '新建网站项目',
+    message: '',
+    websiteTitleName,
+    websiteAddressName,
+    websiteTitleLoader,
+    websiteDialogShown,
+    websiteUrl: options.url,
+    websiteBrowserRoute: options.browserRoute ?? { mode: 'inherit' },
+    websiteSingleClickAction: options.singleClickAction ?? 'inherit',
+    websiteDoubleClickAction: options.doubleClickAction ?? 'inherit',
+    confirmText: '创建项目',
+    cancelText: '取消',
+  });
+  if (!result || typeof result !== 'object' || !('source' in result) || !('name' in result)) return null;
+  return result as WebsiteNameChoiceResult;
 }

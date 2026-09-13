@@ -13,7 +13,7 @@ export type EdgeAnimationStyle =
   | 'fade'
   | 'instant';
 export type WindowControlStyle = 'round' | 'square' | 'bar' | 'pad';
-export type WindowControlId = 'search' | 'transfer' | 'image' | 'profiles' | 'sortGroups' | 'add' | 'settingsQuick' | 'settings' | 'pin' | 'minimize' | 'close';
+export type WindowControlId = 'search' | 'transfer' | 'image' | 'profiles' | 'multiAccount' | 'sortGroups' | 'add' | 'settingsQuick' | 'settings' | 'pin' | 'minimize' | 'close';
 export type BackgroundFit = 'cover' | 'contain' | 'stretch' | 'tile';
 export type BackgroundPosition = 'center' | 'top' | 'bottom' | 'left' | 'right';
 export type BackgroundMediaKind = 'auto' | 'image' | 'video';
@@ -27,6 +27,7 @@ export type FontApplyArea = 'main' | 'settings' | 'menus' | 'notes';
 export type BrowserEngine = 'chromium' | 'gecko' | 'generic';
 export type BrowserRouteMode = 'default' | 'foreground-browser' | 'specified';
 export type BrowserRouteOverrideMode = 'inherit' | BrowserRouteMode;
+export type ItemClickAction = 'inherit' | 'open' | 'copy-name' | 'copy-path' | 'copy-name-path' | 'none';
 
 export interface BrowserRouteOverride {
   mode: BrowserRouteOverrideMode;
@@ -48,6 +49,61 @@ export interface BrowserProfileOverride {
   color?: string;
 }
 
+export type MultiAccountTargetMode = 'current' | 'selected' | 'new';
+export type MultiAccountNameOrder = 'prefix-profile' | 'profile-prefix' | 'profile-only';
+
+export interface MultiAccountTemplate {
+  id: string;
+  name: string;
+  urlsText: string;
+  batchName: string;
+  projectPrefix: string;
+  separator: string;
+  nameOrder: MultiAccountNameOrder;
+  lettersOnlyProfileName: boolean;
+  includeBrowserName: boolean;
+  targetMode: MultiAccountTargetMode;
+  selectedDirectoryId: string;
+  newDirectoryName: string;
+  selectedTargetKeys: string[];
+  skipDuplicates: boolean;
+  autoFetchIcon: boolean;
+  pinGenerated: boolean;
+  activateTargetAfterCreate: boolean;
+}
+
+export interface MultiAccountBatchMeta {
+  batchId: string;
+  batchName: string;
+  createdAt: number;
+  sourceUrl: string;
+  sourceLabel?: string;
+  targetKey: string;
+}
+
+export interface MultiAccountSettings {
+  /** v120 compatibility: mirrors the first parsed URL. */
+  url: string;
+  /** One URL per line. Optional syntax: Display name | https://example.com */
+  urlsText: string;
+  /** Human-readable name stored on all generated items in the same batch. */
+  batchName: string;
+  projectPrefix: string;
+  separator: string;
+  nameOrder: MultiAccountNameOrder;
+  lettersOnlyProfileName: boolean;
+  includeBrowserName: boolean;
+  targetMode: MultiAccountTargetMode;
+  selectedDirectoryId: string;
+  newDirectoryName: string;
+  selectedTargetKeys: string[];
+  skipDuplicates: boolean;
+  autoFetchIcon: boolean;
+  pinGenerated: boolean;
+  activateTargetAfterCreate: boolean;
+  templates: MultiAccountTemplate[];
+}
+
 export interface BrowserRouterSettings {
   mode: BrowserRouteMode;
   specifiedBrowserId: string;
@@ -63,6 +119,8 @@ export interface DetectedBrowserProfile {
   path: string;
   /** Chromium 的目录名（Default/Profile 1）；Gecko 通常等于 profiles.ini 中 Name。 */
   profileKey: string;
+  /** 自动修复乱码前的原始名称；仅在该 profile 名称被修复时返回。 */
+  nameRaw?: string | null;
 }
 
 export interface DetectedBrowser {
@@ -107,6 +165,12 @@ export interface ShortcutItem {
   lastLaunchedAt?: number;
   /** 仅网址项目使用。inherit 表示继承父目录，再继承全局浏览器路由。 */
   browserRoute?: BrowserRouteOverride;
+  /** 左键单击动作。inherit 表示继续使用全局启动方式。 */
+  singleClickAction?: ItemClickAction;
+  /** 左键双击动作。inherit 表示继续使用全局启动方式。 */
+  doubleClickAction?: ItemClickAction;
+  /** v121: metadata for multi-account batch management. */
+  multiAccountBatch?: MultiAccountBatchMeta;
 }
 
 export interface TransferItem {
@@ -119,10 +183,14 @@ export interface TransferItem {
 }
 
 export interface DisplaySettings {
+  /** 使用更接近 Windows 11 / WinUI 3 的现代控件与层级样式。 */
+  modernWinUI3Mode: boolean;
   /** 自定义字体名称或 CSS 字体栈；留空时跟随当前主题。 */
   fontFamily: string;
   /** 自定义字体生效区域。 */
   fontApplyAreas: FontApplyArea[];
+  /** 项目名称是否忽略最大显示行数并完整展示。 */
+  showFullItemName: boolean;
   labelLines: number;
   charsPerLine: number;
   fontSize: number;
@@ -158,6 +226,12 @@ export interface DisplaySettings {
   sidebarItemGap: number;
   sidebarFontSize: number;
   sidebarItemRadius: number;
+  /** 左侧子目录列表默认列数；父目录可单独覆盖。 */
+  sidebarColumns: number;
+  /** 左侧子目录名称最多显示的行数，超出部分省略。 */
+  sidebarItemLines: number;
+  /** 左侧子目录名称不截断，完整换行显示。 */
+  sidebarShowFullNames: boolean;
   /** 旧配置兼容字段：新版用 mainUiScale/settingsUiScale */
   uiScale: number;
   mainUiScale: number;
@@ -176,6 +250,8 @@ export interface DisplaySettings {
   windowControlOrder: WindowControlId[];
   /** 右上角功能按钮隐藏列表；不在列表内即显示。 */
   windowControlHidden: WindowControlId[];
+  /** 顶部父目录按字母排列前保存的原始顺序；null 表示当前不处于字母排序状态。 */
+  sortGroupsSavedOrder: string[] | null;
   backgroundEnabled: boolean;
   backgroundImage: string;
   backgroundMediaKind: BackgroundMediaKind;
@@ -239,11 +315,15 @@ export interface Group {
   color?: string;
   /** 父目录默认网址路由；子项目可继续覆盖。 */
   browserRoute?: BrowserRouteOverride;
+  /** 当前父目录下子目录列表的列数；未设置时继承 display.sidebarColumns。 */
+  sidebarColumns?: number;
   directories: Directory[];
 }
 
 export interface BehaviorSettings {
   edgeAutoHide: boolean;
+  /** 贴边检测时忽略 Windows 工作区/任务栏边界，只以物理屏幕边缘为准。 */
+  edgeIgnoreTaskbar: boolean;
   edgeHideDelaySeconds: number;
   edgeAnimationMs: number;
   edgeAnimationStyle: EdgeAnimationStyle;
@@ -344,6 +424,10 @@ export type ShortcutSettings = Record<ShortcutActionId, string>;
 export type DirectoryRightClickMode = 'content' | 'manage';
 
 export type DirectoryContextMenuItemId =
+  | 'copyDirectory'
+  | 'pasteDirectory'
+  | 'moveToGroup'
+  | 'paste'
   | 'rename'
   | 'merge'
   | 'switchToNotes'
@@ -351,9 +435,17 @@ export type DirectoryContextMenuItemId =
   | 'clear'
   | 'delete';
 
-export type GroupContextMenuItemId = 'create' | 'merge' | 'color' | 'delete';
+export type GroupContextMenuItemId =
+  | 'copyGroup'
+  | 'pasteGroup'
+  | 'pasteDirectory'
+  | 'create'
+  | 'merge'
+  | 'color'
+  | 'delete';
 
 export type AreaContextMenuItemId =
+  | 'paste'
   | 'createDirectory'
   | 'addFile'
   | 'addFolder'
@@ -362,6 +454,8 @@ export type AreaContextMenuItemId =
   | 'iconSize'
   | 'viewMode'
   | 'sortMode'
+  | 'directoryColumns'
+  | 'sidebarFullNames'
   | 'globalIconSize'
   | 'globalViewMode'
   | 'globalSortMode'
@@ -398,7 +492,7 @@ export interface CommandUsage {
 export interface ExperienceSettings {
   /** 重新打开程序时回到上次使用的父目录和子目录。 */
   rememberLastPage: boolean;
-  /** 再次打开设置时回到上次设置分类。 */
+  /** 开启后再次打开设置回到上次分类；默认关闭，打开设置时回到常规分类。 */
   rememberSettingsTab: boolean;
   /** 每个设置分类分别记住上次滚动位置。 */
   rememberSettingsScrollPosition: boolean;
@@ -422,6 +516,8 @@ export interface ExperienceSettings {
   compactSettingsNav: boolean;
   /** 在设置页显示辅助描述与解释文字。 */
   showSettingsDescriptions: boolean;
+  /** 切换设置分类时使用淡入和上滑过渡动画。 */
+  settingsTabAnimation: boolean;
   /** 使用方向键/Home/End 在当前项目之间移动，Enter 启动选中项目。 */
   keyboardNavigation: boolean;
   /** 在项目页面直接输入文字时自动聚焦当前页搜索框。 */
@@ -481,6 +577,7 @@ export interface AppConfig {
   display: DisplaySettings;
   behavior: BehaviorSettings;
   browserRouter?: BrowserRouterSettings;
+  multiAccount?: MultiAccountSettings;
   windowState: WindowState;
   autoSave: AutoSaveSettings;
   transferItems?: TransferItem[];

@@ -1,6 +1,6 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { forwardRef, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Check, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
+import { Check, ClipboardPaste, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { cloneConfig, useAppStore } from '../../stores/appStore';
 import { flushAppStorePersistence } from '../../stores/appStore/persistence';
 import {
@@ -19,6 +19,7 @@ import {
 import { fileNameFromPath, loadImportedConfigFromPath, profileNameFromPath } from '../../lib/importFile';
 import { showLauncherNotice } from '../../lib/notify';
 import { uiAlert, uiConfirm, uiPrompt } from '../../lib/uiDialog';
+import { appendCopiedGroupToConfig } from '../../lib/navigationClipboard';
 import './ConfigProfilesMenu.css';
 
 function errorMessage(error: unknown) {
@@ -26,12 +27,14 @@ function errorMessage(error: unknown) {
 }
 
 export const ConfigProfilesMenu = forwardRef<HTMLDivElement, {
-  left: number;
   onClose: (restoreFocus?: boolean) => void;
   reduceMotion?: boolean;
-}>(function ConfigProfilesMenu({ left, onClose, reduceMotion = false }, ref) {
+  closing?: boolean;
+}>(function ConfigProfilesMenu({ onClose, reduceMotion = false, closing = false }, ref) {
   const exportConfig = useAppStore((state) => state.exportConfig);
   const importConfig = useAppStore((state) => state.importConfig);
+  const navigationClipboard = useAppStore((state) => state.navigationClipboard);
+  const pasteGroupFromClipboard = useAppStore((state) => state.pasteGroupFromClipboard);
   const [profiles, setProfiles] = useState<ConfigProfileMeta[]>([]);
   const [activeId, setActiveId] = useState('');
   const [busy, setBusy] = useState(true);
@@ -40,6 +43,7 @@ export const ConfigProfilesMenu = forwardRef<HTMLDivElement, {
   const [loadError, setLoadError] = useState('');
 
   const activeProfile = useMemo(() => profiles.find((profile) => profile.id === activeId), [profiles, activeId]);
+  const copiedGroup = navigationClipboard?.kind === 'group' ? navigationClipboard.group : null;
 
   async function initialize() {
     setBusy(true);
@@ -206,6 +210,35 @@ export const ConfigProfilesMenu = forwardRef<HTMLDivElement, {
     }
   }
 
+  async function pasteCopiedGroup(profile: ConfigProfileMeta) {
+    if (busy || !copiedGroup) return;
+    setRowMenuId(null);
+    setBusy(true);
+    setStatus(`正在粘贴到 ${profile.name}…`);
+    try {
+      if (profile.id === activeId) {
+        const pastedId = pasteGroupFromClipboard();
+        if (!pastedId) throw new Error('复制的父目录已经失效，请重新复制。');
+        const pasted = useAppStore.getState().groups.find((entry) => entry.id === pastedId);
+        const updated = await saveConfigProfileConfig(profile.id, exportConfig());
+        setProfiles((current) => current.map((entry) => entry.id === profile.id ? updated : entry));
+        showLauncherNotice(`已粘贴到当前配置「${profile.name}」${pasted ? `：${pasted.name}` : ''}`);
+      } else {
+        const targetConfig = await getConfigProfileConfig(profile.id);
+        if (!targetConfig) throw new Error(`配置“${profile.name}”的数据不存在。`);
+        const appended = appendCopiedGroupToConfig(targetConfig, copiedGroup);
+        const updated = await saveConfigProfileConfig(profile.id, appended.config);
+        setProfiles((current) => current.map((entry) => entry.id === profile.id ? updated : entry));
+        showLauncherNotice(`已把父目录「${appended.group.name}」粘贴到配置「${profile.name}」`);
+      }
+    } catch (error) {
+      void uiAlert(`粘贴父目录失败：${errorMessage(error)}`);
+    } finally {
+      setBusy(false);
+      setStatus('');
+    }
+  }
+
   async function removeProfile(profile: ConfigProfileMeta) {
     if (busy) return;
     setRowMenuId(null);
@@ -245,8 +278,8 @@ export const ConfigProfilesMenu = forwardRef<HTMLDivElement, {
     <div
       id="topbar-config-profiles-menu"
       ref={ref}
-      className={`topbar-config-profiles-menu ${reduceMotion ? 'reduce-motion' : ''}`}
-      style={{ left }}
+      className={`topbar-config-profiles-menu ${reduceMotion ? 'reduce-motion' : ''} ${closing ? 'is-closing' : ''}`}
+      aria-hidden={closing || undefined}
       data-no-drag
       role="menu"
       aria-label="多配置"
@@ -265,6 +298,14 @@ export const ConfigProfilesMenu = forwardRef<HTMLDivElement, {
           <button type="button" title="保存当前配置并刷新列表" disabled={busy} onClick={() => void refreshProfiles(true)}><RefreshCw size={14} /><span>刷新</span></button>
         </div>
       </div>
+
+      {copiedGroup && (
+        <div className="config-profiles-clipboard" title={`已复制父目录：${copiedGroup.name}`}>
+          <ClipboardPaste size={12} />
+          <span>剪贴板：父目录「{copiedGroup.name}」</span>
+          <small>可直接点配置行“粘贴”，无需先切换配置</small>
+        </div>
+      )}
 
       {status && <div className="config-profiles-status"><RefreshCw size={12} className="spin" />{status}</div>}
       {loadError && (
@@ -292,11 +333,15 @@ export const ConfigProfilesMenu = forwardRef<HTMLDivElement, {
                   <span className="config-profile-name" title={profile.name}>{profile.name}</span>
                   {profile.sourceName && <small title={profile.sourceName}>来源：{profile.sourceName}</small>}
                 </button>
-                {current ? <span className="config-profile-current"><Check size={12} />当前</span> : <button type="button" className="config-profile-use" disabled={busy} onClick={() => void switchProfile(profile)}>使用</button>}
+                <div className="config-profile-actions">
+                  {copiedGroup && <button type="button" className="config-profile-paste" disabled={busy} title={`把父目录「${copiedGroup.name}」粘贴到 ${profile.name}`} onClick={() => void pasteCopiedGroup(profile)}><ClipboardPaste size={12} />粘贴</button>}
+                  {current ? <span className="config-profile-current"><Check size={12} />当前</span> : <button type="button" className="config-profile-use" disabled={busy} onClick={() => void switchProfile(profile)}>使用</button>}
+                </div>
                 <div className="config-profile-more-wrap">
                   <button type="button" className="config-profile-more" disabled={busy} aria-label={`管理 ${profile.name}`} aria-expanded={rowMenuOpen} onClick={() => setRowMenuId(rowMenuOpen ? null : profile.id)}><MoreHorizontal size={15} /></button>
                   {rowMenuOpen && (
                     <div className="config-profile-row-menu">
+                      {copiedGroup && <button type="button" disabled={busy} onClick={() => void pasteCopiedGroup(profile)}><ClipboardPaste size={12} />粘贴父目录「{copiedGroup.name}」</button>}
                       <button type="button" disabled={busy} onClick={() => void renameProfile(profile)}><Pencil size={12} />重命名</button>
                       <button type="button" className="danger" disabled={busy || current} onClick={() => void removeProfile(profile)}><Trash2 size={12} />删除</button>
                     </div>

@@ -15,6 +15,7 @@ import {
   normalizeDisplay,
   normalizeGroups,
   normalizeImageBrowserSettings,
+  normalizeMultiAccountSettings,
   normalizeNoteSettings,
   normalizeRainbow,
 } from './normalizers';
@@ -126,7 +127,7 @@ const bufferedPersistStorage: any = {
     }
   },
 };
-export const APP_STORE_VERSION = 21;
+export const APP_STORE_VERSION = 23;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -189,6 +190,7 @@ export function restorePersistedState(savedValue: unknown, current?: AppState) {
     display: normalizeDisplay((saved.display ?? current?.display) as never),
     behavior,
     browserRouter: normalizeBrowserRouter(browserRouterSource, asRecord(saved.behavior ?? current?.behavior).urlOpenMode),
+    multiAccount: normalizeMultiAccountSettings(saved.multiAccount ?? current?.multiAccount),
     windowState: { ...defaultWindowState, ...currentWindowState, ...savedWindowState, edgeAutoHide: behavior.edgeAutoHide },
     autoSave: { ...defaultAutoSave, ...currentAutoSave, ...savedAutoSave },
     transferItems: Array.isArray(saved.transferItems)
@@ -216,6 +218,7 @@ export function restorePersistedState(savedValue: unknown, current?: AppState) {
     activeGroupId: remembered.groupId,
     activeDirectoryId: remembered.directoryId,
     selectedItemIds: [],
+    multiSelectMode: false,
     selectedNavTarget: null,
     settingsOpen: false,
   };
@@ -234,6 +237,7 @@ export const appPersistOptions = {
     display: state.display,
     behavior: state.behavior,
     browserRouter: state.browserRouter,
+    multiAccount: state.multiAccount,
     windowState: state.windowState,
     autoSave: state.autoSave,
     transferItems: state.transferItems,

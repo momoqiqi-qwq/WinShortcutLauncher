@@ -1,0 +1,63 @@
+V130 TEST RESULTS
+=================
+Version: 0.1.130
+Project: tauri-shortcut-launcher-v130-multiselect-copy-optimization
+
+PASS - Version synchronization
+  package.json              0.1.130
+  package-lock.json         0.1.130
+  src-tauri/Cargo.toml      0.1.130
+  src-tauri/tauri.conf.json 0.1.130
+
+PASS - Persistent source guard
+  node scripts/verify-source-fixes.mjs
+  Result: Persistent Windows/Rust source fixes: OK
+
+PASS - Old menu removal
+  No occurrences under src/ of:
+    取消选择此项
+    清除多选
+    加入多选
+
+PASS - TypeScript/TSX syntax parse
+  Parsed all 180 TS/TSX files with TypeScript parser.
+  Result: 0 syntax diagnostics.
+
+PASS - Core copy runtime smoke
+  Tested actual src/lib/itemCopy.ts after TypeScript compilation:
+  - Clipboard snapshot does not alias browserRoute / multiAccountBatch.
+  - New copies receive fresh item IDs.
+  - Items from one source multi-account batch share one fresh batch ID.
+  - Separate paste/copy calls receive different fresh batch IDs.
+  - V129 single/double click actions are preserved.
+  - Launch statistics are reset on copied projects.
+  Result: itemCopy runtime smoke: OK
+
+PASS - Multi-select / store behavior smoke (performed during V130 implementation)
+  - Enter multi-select mode.
+  - Toggle multiple project selections.
+  - Finish mode clears transient selection.
+  - Clipboard copy + repeated paste keeps copies independent.
+  - Atomic copy-to-directory deduplicates repeated source IDs.
+
+PASS - Source regression tests added
+  src/stores/appStore/__tests__/appStoreSlices.test.ts includes coverage for:
+  - explicit multi-select lifecycle
+  - atomic multi-project copy
+  - clipboard snapshot and repeated paste batch remapping
+
+LIMITATION - Full npm test/build
+  npm ci --ignore-scripts --no-audit --no-fund was attempted but dependency
+  restoration timed out in this environment. Partial node_modules was removed
+  before packaging. Therefore full vitest / Vite build is not claimed here.
+
+LIMITATION - Rust/Tauri build
+  Rust/Cargo is not installed in this execution environment, so cargo check,
+  cargo test and a Windows Tauri release build could not be run here.
+
+Recommended final Windows verification:
+  npm ci
+  npm test
+  npm run build
+  cargo check --manifest-path src-tauri/Cargo.toml
+  npm run tauri build

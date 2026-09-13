@@ -4,8 +4,14 @@ mod edge_dock;
 mod edge_dock_native;
 mod icon;
 mod legacy_import;
+mod process_integrity;
+#[cfg(target_os = "windows")]
+mod native_browser_drop;
 mod transfer_station;
 mod window_persistence;
+mod website_metadata;
+
+pub use process_integrity::ensure_medium_integrity_before_run;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -301,6 +307,12 @@ fn hide_main_window_to_tray(app: tauri::AppHandle) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let app = tauri::Builder::default()
+    // Register this first: when the executable/shortcut is launched again, keep the existing
+    // process and route that activation into the same restore path used by the tray. This also
+    // reveals an edge-hidden window through the existing `edge-force-show` event.
+    .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+      show_main_window(app);
+    }))
     .plugin(
       tauri_plugin_window_state::Builder::default()
         .with_filename(window_persistence::AUTO_STATE_FILENAME)
@@ -362,6 +374,11 @@ pub fn run() {
 
       tray.build(app)?;
       window_persistence::show_main_window_after_restore(app.handle());
+      #[cfg(target_os = "windows")]
+      match native_browser_drop::install(app.handle()) {
+        Ok(count) => println!("[native-browser-drop] registered {count} Windows OLE drop targets"),
+        Err(error) => eprintln!("[native-browser-drop] install failed: {error}"),
+      }
       Ok(())
     })
     .on_window_event(|window, event| {
@@ -390,13 +407,15 @@ pub fn run() {
       commands::load_config,
       commands::get_file_info,
       commands::read_url_shortcut,
-      commands::fetch_website_favicon,
-      commands::test_favicon_sources,
-      commands::fetch_website_title,
+      website_metadata::fetch_website_favicon,
+      website_metadata::test_favicon_sources,
+      website_metadata::fetch_website_title,
       commands::set_auto_start,
       commands::get_auto_start,
+      process_integrity::get_process_integrity_status,
       commands::set_window_always_on_top,
       commands::open_windows_clipboard_history,
+      commands::get_double_click_time_ms,
       icon::get_file_icon,
       icon::read_icon_as_data_url,
       legacy_import::import_legacy_db_config,

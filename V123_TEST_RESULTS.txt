@@ -1,0 +1,15 @@
+V123 validation
+===============
+
+PASS: node scripts/verify-source-fixes.mjs
+      Persistent Windows/Rust source fixes: OK
+
+Reviewed source changes:
+- tauri-plugin-single-instance is registered before the other Tauri plugins.
+- A second executable/shortcut launch calls the existing show_main_window() path.
+- Existing tray restore and edge-force-show behavior is reused rather than duplicated.
+- package.json, package-lock.json, tauri.conf.json and Cargo.toml versions are 0.1.123.
+
+Environment limitations:
+- Rust/Cargo is not installed in this sandbox, so cargo check could not be executed here.
+- Frontend source was not changed; the archive does not include node_modules.

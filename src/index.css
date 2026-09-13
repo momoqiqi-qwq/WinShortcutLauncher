@@ -14,7 +14,6 @@
   --danger: #d64545;
   --shadow: 0 16px 40px rgba(44, 62, 80, 0.14);
   --window-opacity: 0.96;
-  --window-opacity-percent: 96%;
   --font-family: Inter, "Microsoft YaHei UI", "Segoe UI", sans-serif;
   --ui-scale: 1;
   --main-ui-scale: 1;
@@ -65,6 +64,7 @@ button {
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   overflow: hidden;
+  opacity: var(--window-opacity, 1);
   transition: transform 180ms ease, opacity 180ms ease;
 }
 
@@ -283,12 +283,6 @@ button {
   pointer-events: none;
 }
 
-
-@supports (background: color-mix(in srgb, white 80%, transparent)) {
-  .app-shell {
-    background: color-mix(in srgb, var(--bg) var(--window-opacity-percent, 96%), transparent);
-  }
-}
 
 .app-shell:has(.settings-floating-layer) {
   overflow: visible;
@@ -695,4 +689,87 @@ input[type="checkbox"]:checked {
   background-repeat: no-repeat;
   background-position: center;
   background-size: 14px 14px;
+}
+
+/* v131: opt-in Windows 11 / WinUI 3 inspired presentation mode. */
+.app-shell.winui3-modern-mode {
+  --winui3-control-radius: 7px;
+  --winui3-layer-radius: 10px;
+  --winui3-surface: color-mix(in srgb, var(--panel) 90%, transparent);
+  --winui3-surface-strong: color-mix(in srgb, var(--panel) 96%, var(--bg) 4%);
+  --winui3-stroke: color-mix(in srgb, var(--border) 78%, var(--text) 10%);
+  --winui3-hover: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.app-shell.winui3-modern-mode .topbar,
+.app-shell.winui3-modern-mode .sidebar,
+.app-shell.winui3-modern-mode .settings-panel,
+.app-shell.winui3-modern-mode .menu-surface,
+.app-shell.winui3-modern-mode .modal-card,
+.app-shell.winui3-modern-mode .global-search-modal {
+  border-color: var(--winui3-stroke);
+  background: var(--winui3-surface);
+  backdrop-filter: blur(24px) saturate(1.18);
+  -webkit-backdrop-filter: blur(24px) saturate(1.18);
+}
+
+.app-shell.winui3-modern-mode .settings-section,
+.app-shell.winui3-modern-mode .experience-toggle-card,
+.app-shell.winui3-modern-mode .settings-collapse-block,
+.app-shell.winui3-modern-mode .settings-layout-help-card,
+.app-shell.winui3-modern-mode .global-search-row,
+.app-shell.winui3-modern-mode .menu-item,
+.app-shell.winui3-modern-mode .item-card {
+  border-radius: var(--winui3-layer-radius);
+}
+
+.app-shell.winui3-modern-mode .icon-button,
+.app-shell.winui3-modern-mode .btn-primary,
+.app-shell.winui3-modern-mode .btn-secondary,
+.app-shell.winui3-modern-mode .btn-danger,
+.app-shell.winui3-modern-mode .soft-input,
+.app-shell.winui3-modern-mode input:not([type="range"]):not([type="color"]):not([type="checkbox"]):not([type="radio"]),
+.app-shell.winui3-modern-mode select,
+.app-shell.winui3-modern-mode textarea,
+.app-shell.winui3-modern-mode .top-tab,
+.app-shell.winui3-modern-mode .side-tab,
+.app-shell.winui3-modern-mode .settings-nav > button {
+  border-radius: var(--winui3-control-radius);
+}
+
+.app-shell.winui3-modern-mode .icon-button,
+.app-shell.winui3-modern-mode .btn-secondary,
+.app-shell.winui3-modern-mode .settings-nav > button,
+.app-shell.winui3-modern-mode .top-tab,
+.app-shell.winui3-modern-mode .side-tab {
+  background-color: color-mix(in srgb, var(--panel-2) 82%, transparent);
+  border-color: var(--winui3-stroke);
+}
+
+.app-shell.winui3-modern-mode .icon-button:hover,
+.app-shell.winui3-modern-mode .btn-secondary:hover,
+.app-shell.winui3-modern-mode .settings-nav > button:hover,
+.app-shell.winui3-modern-mode .top-tab:hover,
+.app-shell.winui3-modern-mode .side-tab:hover,
+.app-shell.winui3-modern-mode .menu-item:hover {
+  background-color: color-mix(in srgb, var(--panel-2) 86%, var(--text) 5%);
+}
+
+.app-shell.winui3-modern-mode .btn-primary,
+.app-shell.winui3-modern-mode .settings-nav > button.active,
+.app-shell.winui3-modern-mode .top-tab.active,
+.app-shell.winui3-modern-mode .side-tab.active {
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, #000 18%, transparent), 0 1px 2px rgba(0, 0, 0, .08);
+}
+
+.app-shell.winui3-modern-mode .app-main-layer,
+.app-shell.winui3-modern-mode .settings-content {
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.app-shell.winui3-modern-mode .settings-panel,
+.app-shell.winui3-modern-mode .global-search-modal,
+.app-shell.winui3-modern-mode .menu-surface,
+.app-shell.winui3-modern-mode .modal-card {
+  box-shadow: 0 18px 46px rgba(0, 0, 0, .24), inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent);
 }

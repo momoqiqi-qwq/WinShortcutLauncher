@@ -110,6 +110,37 @@
   width: var(--window-control-size, 34px);
   height: var(--window-control-size, 34px);
   min-width: var(--window-control-size, 34px);
+  position: relative;
+  overflow: hidden;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 180ms ease;
+}
+
+.window-control-button > svg {
+  transition: transform 180ms cubic-bezier(.16, 1, .3, 1), filter 180ms ease;
+}
+
+.window-control-button:hover > svg {
+  transform: translateY(-1px) scale(1.06);
+}
+
+.window-control-button:active > svg {
+  transform: translateY(1px) scale(.86);
+  filter: brightness(1.15);
+  transition-duration: 70ms;
+}
+
+.window-control-button[aria-expanded="true"] {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 82%);
+}
+
+.app-shell.reduce-motion .window-control-button,
+.app-shell.reduce-motion .window-control-button > svg {
+  transition: none;
+}
+
+.app-shell.reduce-motion .window-control-button:hover > svg,
+.app-shell.reduce-motion .window-control-button:active > svg {
+  transform: none;
 }
 
 .topbar-actions-round .window-control-button {
@@ -204,6 +235,16 @@
   position: relative;
   z-index: 12;
   overflow: visible;
+  /* 右上角三个下拉面板（常用设置 / 多配置 / 多账号中心）共用的尺寸契约：
+     统一宽高；left / top 由 TopBar.tsx 量出「触发它的那个按钮的右下角」后写进变量，
+     下面这两个值只是还没量到时的兜底。改这里三个面板一起变。 */
+  --topbar-panel-left: 12px;
+  --topbar-panel-top: calc(100% + 7px);
+  --topbar-panel-width: min(760px, calc(100vw - 28px));
+  --topbar-panel-height: min(720px, calc(100vh - 96px));
+  --topbar-panel-radius: 16px;
+  --topbar-panel-bg: color-mix(in srgb, var(--panel) 97%, transparent);
+  --topbar-panel-shadow: 0 18px 46px rgba(0, 0, 0, .36), inset 0 1px 0 rgba(255, 255, 255, .08);
 }
 
 .quick-settings-active {
@@ -212,6 +253,7 @@
   background: color-mix(in srgb, var(--accent), transparent 80%);
 }
 
+.multi-account-active,
 .config-profiles-active {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent), transparent 42%);
@@ -219,3 +261,4 @@
 }
 
 .topbar-actions-pad .window-control-button:nth-child(11) { order: 11; }
+.topbar-actions-pad .window-control-button:nth-child(12) { order: 12; }

@@ -19,3 +19,9 @@ Cargo.lock
 
 # Tauri generated schemas
 src-tauri/gen/
+
+# 本机工具生成的私有文件
+我的Claude项目.dat
+
+# 本地 AI 助手工作区
+.workbuddy/

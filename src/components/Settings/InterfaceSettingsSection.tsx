@@ -3,6 +3,7 @@ import { showLauncherNotice } from '../../lib/notify';
 import { useAppStore } from '../../stores/appStore';
 import { DisplaySettings, type InterfaceSectionId } from './DisplaySettings';
 import { RESET_SETTINGS_PANEL_LAYOUT_EVENT } from './useSettingsPanelLayout';
+import { ToggleCard } from './SettingsPrimitives';
 
 export function InterfaceSettingsSection({ requestedSection, onRequestedSectionHandled }: { requestedSection?: string | null; onRequestedSectionHandled?: () => void }) {
   const display = useAppStore((state) => state.display);
@@ -15,6 +16,15 @@ export function InterfaceSettingsSection({ requestedSection, onRequestedSectionH
 
   return (
     <div className="settings-category-grid">
+      <section className="settings-section narrow-section winui3-mode-settings" id="modern-winui3-mode" data-settings-focus="现代 WinUI 3 模式">
+        <div className="settings-section-title-row"><h3>现代界面模式</h3></div>
+        <ToggleCard
+          label="现代 WinUI 3 模式"
+          hint="切换为更接近 Windows 11 / WinUI 3 的圆角、层级、半透明表面与交互动效；只改变界面表现，不影响项目数据。"
+          checked={display.modernWinUI3Mode === true}
+          onChange={(modernWinUI3Mode) => updateDisplay({ modernWinUI3Mode })}
+        />
+      </section>
       <DisplaySettings requestedSection={requestedSection as InterfaceSectionId | null | undefined} onRequestedSectionHandled={onRequestedSectionHandled} />
       <section className="settings-section narrow-section">
         <div className="settings-section-title-row">

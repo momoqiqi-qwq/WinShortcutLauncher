@@ -19,6 +19,7 @@ export {
   defaultBehavior,
   defaultDisplay,
   defaultNotes,
+  defaultMultiAccount,
   defaultRainbow,
   defaultWindowState,
 } from './appStore/defaults';
@@ -30,6 +31,7 @@ export {
   normalizeDisplay,
   normalizeGroups,
   normalizeImageBrowserSettings,
+  normalizeMultiAccountSettings,
   normalizeNoteSettings,
   normalizeRainbow,
 } from './appStore/normalizers';
@@ -50,7 +52,10 @@ export const useAppStore = create<AppState>()(
         activeGroupId: first.groupId,
         activeDirectoryId: first.directoryId,
         selectedItemIds: [],
+        multiSelectMode: false,
+        itemClipboard: [],
         selectedNavTarget: null,
+        navigationClipboard: null,
         settingsOpen: false,
         transferItems: defaults.transferItems ?? [],
         imageBrowserItems: defaults.imageBrowserItems ?? [],
@@ -62,6 +67,7 @@ export const useAppStore = create<AppState>()(
         experience: defaults.experience!,
         shortcuts: defaults.shortcuts!,
         browserRouter: defaults.browserRouter!,
+        multiAccount: defaults.multiAccount!,
         commandUsage: defaults.commandUsage ?? {},
       };
     },

@@ -1,0 +1,28 @@
+Yue Launcher v0.1.118 validation results
+========================================
+
+PASS  Version fields: package.json / package-lock.json / Cargo.toml / tauri.conf.json = 0.1.118
+PASS  tauri.conf.json: dragDropEnabled remains false
+PASS  Persistent source-fix guard: scripts/verify-source-fixes.mjs
+PASS  Native source invariants: RegisterDragDrop / URL formats / CF_HDROP / LINK+COPY / event bridge / ReleaseStgMedium
+PASS  TypeScript/TSX syntax transpile: 167 files, 0 syntax errors
+PASS  JSON parse validation
+PASS  Merge-conflict marker scan
+PASS  Main app native drop bridge source check
+PASS  Transfer Station native file-drop bridge source check
+PASS  Image Browser native file-drop bridge source check
+PASS  Final source ZIP integrity (verified after packaging)
+
+NOT RUN  cargo check / cargo build --release
+Reason: Cargo/rustc are not installed in the current environment.
+
+NOT COMPLETED  full npm typecheck/Vite build
+Reason: npm dependency installation in the current container was incomplete; the resulting partial node_modules lacked multiple type packages. The partial node_modules is not included in the release source ZIP. This is not recorded as a source-code pass.
+
+Required final verification on Windows
+--------------------------------------
+1. Run the project's normal npm/Tauri release build in a complete development environment.
+2. Confirm console output contains a native-browser-drop registration count greater than zero.
+3. Floorp: drag address-bar site icon into Yue Launcher; cursor must not stay as the red forbidden symbol.
+4. Floorp: drag selected address URL and an ordinary page link.
+5. Explorer: verify normal file drop on main UI, Transfer Station, and Image Browser.

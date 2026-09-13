@@ -35,6 +35,19 @@ describe('settings keyword search', () => {
     expect(debounce).toMatchObject({ section: 'search', targetId: 'search-debounce' });
   });
 
+  it('exposes direct controls for project-name display search results', () => {
+    expect(searchSettingsItems('完整项目').find((item) => item.id === 'item-name-full')).toMatchObject({
+      tab: 'font',
+      targetId: 'font-show-full-item-name',
+      quickControl: { kind: 'toggle', setting: 'showFullItemName' },
+    });
+    expect(searchSettingsItems('换行字数').find((item) => item.id === 'item-name-wrap')).toMatchObject({
+      tab: 'font',
+      targetId: 'font-chars-per-line',
+      quickControl: { kind: 'range', setting: 'charsPerLine', min: 4, max: 20 },
+    });
+  });
+
   it('trims and normalizes the query', () => {
     expect(normalizeSettingsQuery('  FAVICON  ')).toBe('favicon');
   });

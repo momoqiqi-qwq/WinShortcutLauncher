@@ -1,0 +1,40 @@
+Yue Launcher v0.1.120 validation
+================================
+
+Version consistency
+- package.json: 0.1.120 PASS
+- package-lock.json root/package: 0.1.120 PASS
+- src-tauri/tauri.conf.json: 0.1.120 PASS
+- src-tauri/Cargo.toml: 0.1.120 PASS
+
+Frontend/source checks
+- TS/TSX AST syntax scan: 169 files, 0 parse errors PASS
+- JSON parse: package.json/package-lock.json/tauri.conf.json PASS
+- Merge conflict marker scan: none PASS
+- scripts/verify-source-fixes.mjs: PASS
+- v120 static integration assertions: PASS
+
+v120 feature assertions
+- Top-right WindowControlId contains multiAccount PASS
+- TopBar keeps multi-account action/dialog PASS
+- Chrome + Floorp recommended Profile selection exists PASS
+- Per-project specified browserId/profileId route binding exists PASS
+- Unicode numeric stripping for account names exists PASS
+- Name order options prefix-profile/profile-prefix/profile-only exist PASS
+- Current/selected/new child-directory target modes exist PASS
+- Duplicate skip/icon reuse/pin/activate options exist PASS
+- Multi-account settings are persisted PASS
+- Runtime project clipboard is NOT persisted PASS
+- Item menu exposes copy + paste PASS
+- Area menu exposes paste PASS
+- Directory menu exposes paste PASS
+- Ctrl+C / Ctrl+V copy/paste path exists PASS
+- build.rs watches v120 multi-account/item clipboard critical source PASS
+
+Build limitations
+- Full npm ci / tsc / vite build: NOT CLAIMED. Dependency installation is blocked by the current container runtime.
+- cargo/rustc release compile: NOT CLAIMED. Cargo/rustc are unavailable in this environment.
+- Windows browser Profile runtime scan/open behavior: requires real Windows Chrome/Floorp test.
+
+Final archive
+- ZIP integrity: checked after archive creation; see delivery message.

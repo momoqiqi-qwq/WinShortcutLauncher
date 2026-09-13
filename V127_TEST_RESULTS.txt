@@ -1,0 +1,41 @@
+Yue Launcher V127 verification
+Version: 0.1.127
+
+PASS  Persistent source regression guard
+      node scripts/verify-source-fixes.mjs
+      -> Persistent Windows/Rust source fixes: OK
+
+PASS  Version synchronization
+      package.json:             0.1.127
+      package-lock.json:        0.1.127
+      package-lock root package 0.1.127
+      src-tauri/tauri.conf.json 0.1.127
+      src-tauri/Cargo.toml      0.1.127
+
+PASS  Syntax transpile check for modified TypeScript/TSX
+      src/components/TopBar/MultiAccountDialog.tsx
+      src/components/Sidebar/Sidebar.tsx
+      src/stores/appStore/__tests__/appStoreSlices.test.ts
+      -> syntax OK via TypeScript transpileModule
+
+PASS  V127 source-level regression coverage added
+      - one live multi-account generated-name preview
+      - preview shares the actual generation naming helpers
+      - DragOverlay-backed child-directory vertical sorting
+      - upward and downward reorder unit-test case
+
+LIMIT  npm ci --ignore-scripts --no-audit --no-fund
+       -> timed out after 120 seconds in this environment.
+       The incomplete node_modules directory was removed before packaging.
+
+LIMIT  Full tsc/vitest/vite build
+       -> not run because npm dependency restoration did not finish.
+       A global tsc attempt was blocked by missing type packages from the incomplete install.
+
+LIMIT  Cargo / Tauri native build
+       -> cargo and rustc are not installed in this environment.
+
+Recommended final Windows validation:
+  npm ci
+  npm run verify
+  npm run tauri:build

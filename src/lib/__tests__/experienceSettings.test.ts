@@ -49,10 +49,10 @@ describe('experience settings migration', () => {
   });
 
   it('keeps parent, child and blank-area menu definitions independent', () => {
-    expect(GROUP_CONTEXT_MENU_IDS).toEqual(['create', 'merge', 'color', 'delete']);
-    expect(DIRECTORY_CONTEXT_MENU_IDS).toEqual(['rename', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete']);
-    expect(AREA_CONTEXT_MENU_IDS).toEqual(['createDirectory', 'addFile', 'addFolder', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons']);
-    expect(DIRECTORY_CONTEXT_MENU_IDS.filter((id) => AREA_CONTEXT_MENU_IDS.includes(id as never))).toEqual([]);
+    expect(GROUP_CONTEXT_MENU_IDS).toEqual(['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete']);
+    expect(DIRECTORY_CONTEXT_MENU_IDS).toEqual(['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'rename', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete']);
+    expect(AREA_CONTEXT_MENU_IDS).toEqual(['paste', 'createDirectory', 'addFile', 'addFolder', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons']);
+    expect(DIRECTORY_CONTEXT_MENU_IDS.filter((id) => AREA_CONTEXT_MENU_IDS.includes(id as never))).toEqual(['paste']);
   });
 
   it('keeps per-category settings scroll memory enabled by default and allows disabling it', () => {

@@ -1,8 +1,21 @@
 import { makeId } from '../../../lib/id';
 import { byOrder, reindex } from '../../../lib/sort';
+import {
+  canPasteDirectoryIntoGroup,
+  cloneDirectoryForPaste,
+  cloneGroupForPaste,
+  snapshotDirectory,
+  snapshotGroup,
+} from '../../../lib/navigationClipboard';
 import type { Directory } from '../../../types';
 import { getFirstDirectory, normalizeGroups } from '../normalizers';
 import type { AppSliceCreator, NavigationActions } from '../types';
+
+function withGroupSidebarColumns<T extends { sidebarColumns?: number }>(group: T, columns?: number): T {
+  if (columns !== undefined) return { ...group, sidebarColumns: Math.max(1, Math.min(6, Math.round(columns))) };
+  const { sidebarColumns: _removed, ...rest } = group;
+  return rest as T;
+}
 
 function withGroupColor<T extends { color?: string }>(group: T, color?: string): T {
   if (color) return { ...group, color };
@@ -18,12 +31,14 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
       activeGroupId: groupId,
       activeDirectoryId: group?.directories.slice().sort(byOrder)[0]?.id ?? state.activeDirectoryId,
       selectedItemIds: [],
+      multiSelectMode: false,
       selectedNavTarget: { kind: 'group', id: groupId },
     };
   }),
   setActiveDirectory: (directoryId) => set({
     activeDirectoryId: directoryId,
     selectedItemIds: [],
+    multiSelectMode: false,
     selectedNavTarget: { kind: 'directory', id: directoryId },
   }),
   renameGroup: (groupId, name) => set((state) => ({
@@ -42,6 +57,9 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
   setGroupBrowserRoute: (groupId, route) => set((state) => ({
     groups: state.groups.map((group) => group.id === groupId ? { ...group, browserRoute: route } : group),
   })),
+  setGroupSidebarColumns: (groupId, columns) => set((state) => ({
+    groups: state.groups.map((group) => group.id === groupId ? withGroupSidebarColumns(group, columns) : group),
+  })),
   renameDirectory: (directoryId, name) => set((state) => ({
     groups: state.groups.map((group) => ({
       ...group,
@@ -57,6 +75,7 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
       activeGroupId: state.activeGroupId === groupId ? firstNext.groupId : state.activeGroupId,
       activeDirectoryId: state.activeGroupId === groupId ? firstNext.directoryId : state.activeDirectoryId,
       selectedItemIds: [],
+      multiSelectMode: false,
       selectedNavTarget: null,
     };
   }),
@@ -80,6 +99,7 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
       activeGroupId: nextActiveGroupId,
       activeDirectoryId: nextActiveDirectoryId,
       selectedItemIds: [],
+      multiSelectMode: false,
       selectedNavTarget: null,
     };
   }),
@@ -105,7 +125,116 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
       };
     }),
   })),
-  setSelectedNavTarget: (selectedNavTarget) => set({ selectedNavTarget, selectedItemIds: [] }),
+  setSelectedNavTarget: (selectedNavTarget) => set({ selectedNavTarget, selectedItemIds: [], multiSelectMode: false }),
+  copyDirectoryToClipboard: (directoryId) => {
+    const state = get();
+    const group = state.groups.find((entry) => entry.directories.some((directory) => directory.id === directoryId));
+    const directory = group?.directories.find((entry) => entry.id === directoryId);
+    if (!group || !directory) return false;
+    set({
+      navigationClipboard: {
+        kind: 'directory',
+        copiedAt: Date.now(),
+        sourceGroupName: group.name,
+        directory: snapshotDirectory(directory),
+      },
+      itemClipboard: [],
+      selectedNavTarget: { kind: 'directory', id: directoryId },
+    });
+    return true;
+  },
+  copyGroupToClipboard: (groupId) => {
+    const group = get().groups.find((entry) => entry.id === groupId);
+    if (!group) return false;
+    set({
+      navigationClipboard: { kind: 'group', copiedAt: Date.now(), group: snapshotGroup(group) },
+      itemClipboard: [],
+      selectedNavTarget: { kind: 'group', id: groupId },
+    });
+    return true;
+  },
+  clearNavigationClipboard: () => set({ navigationClipboard: null }),
+  pasteDirectoryToGroup: (groupId) => {
+    const state = get();
+    const clipboard = state.navigationClipboard;
+    const targetGroup = state.groups.find((group) => group.id === groupId);
+    if (clipboard?.kind !== 'directory' || !targetGroup || !canPasteDirectoryIntoGroup(clipboard.directory, targetGroup)) return null;
+    const directory = cloneDirectoryForPaste(
+      clipboard.directory,
+      targetGroup.directories.length,
+      targetGroup.directories.map((entry) => entry.name),
+    );
+    set((current) => ({
+      groups: current.groups.map((group) => group.id === groupId
+        ? { ...group, directories: reindex([...group.directories.slice().sort(byOrder), directory]) }
+        : group),
+      activeGroupId: groupId,
+      activeDirectoryId: directory.id,
+      selectedItemIds: [],
+      multiSelectMode: false,
+      selectedNavTarget: { kind: 'directory', id: directory.id },
+    }));
+    return directory.id;
+  },
+  pasteGroupFromClipboard: () => {
+    const state = get();
+    const clipboard = state.navigationClipboard;
+    if (clipboard?.kind !== 'group') return null;
+    const group = cloneGroupForPaste(
+      clipboard.group,
+      state.groups.length,
+      state.groups.map((entry) => entry.name),
+    );
+    const firstDirectoryId = group.directories.slice().sort(byOrder)[0]?.id;
+    if (!firstDirectoryId) return null;
+    set((current) => ({
+      groups: reindex([...current.groups.slice().sort(byOrder), group]),
+      activeGroupId: group.id,
+      activeDirectoryId: firstDirectoryId,
+      selectedItemIds: [],
+      multiSelectMode: false,
+      selectedNavTarget: { kind: 'group', id: group.id },
+    }));
+    return group.id;
+  },
+  moveDirectoryToGroup: (directoryId, targetGroupId) => {
+    const state = get();
+    const sourceGroup = state.groups.find((group) => group.directories.some((directory) => directory.id === directoryId));
+    const targetGroup = state.groups.find((group) => group.id === targetGroupId);
+    const sourceDirectory = sourceGroup?.directories.find((directory) => directory.id === directoryId);
+    if (!sourceGroup || !targetGroup || !sourceDirectory || sourceGroup.id === targetGroup.id) return false;
+    if (!canPasteDirectoryIntoGroup(sourceDirectory, targetGroup)) return false;
+
+    set((current) => ({
+      groups: current.groups.map((group) => {
+        if (group.id === sourceGroup.id) {
+          const remaining = group.directories.filter((directory) => directory.id !== directoryId).slice().sort(byOrder);
+          const nextDirectories = remaining.length > 0
+            ? remaining
+            : [{ id: makeId('dir'), name: '常用', order: 0, kind: 'normal' as const, items: [] }];
+          return { ...group, directories: reindex(nextDirectories) };
+        }
+        if (group.id === targetGroup.id) {
+          return {
+            ...group,
+            directories: reindex([
+              ...group.directories.slice().sort(byOrder),
+              { ...sourceDirectory, order: group.directories.length },
+            ]),
+          };
+        }
+        return group;
+      }),
+      activeGroupId: current.activeDirectoryId === directoryId ? targetGroup.id : current.activeGroupId,
+      activeDirectoryId: current.activeDirectoryId,
+      selectedItemIds: [],
+      multiSelectMode: false,
+      selectedNavTarget: current.selectedNavTarget?.kind === 'directory' && current.selectedNavTarget.id === directoryId
+        ? { kind: 'directory' as const, id: directoryId }
+        : current.selectedNavTarget,
+    }));
+    return true;
+  },
   addDirectory: (groupId, name, kind = 'normal') => {
     const directoryId = makeId('dir');
     set((state) => ({
@@ -169,6 +298,7 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
         ? fallbackDir
         : state.activeDirectoryId,
       selectedItemIds: [],
+      multiSelectMode: false,
     };
   }),
   mergeDirectory: (sourceDirectoryId, targetDirectoryId) => set((state) => {
@@ -222,6 +352,7 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
       activeGroupId: state.activeDirectoryId === sourceDirectoryId ? targetGroupId : state.activeGroupId,
       activeDirectoryId: state.activeDirectoryId === sourceDirectoryId ? targetDirectoryId : state.activeDirectoryId,
       selectedItemIds: [],
+      multiSelectMode: false,
       selectedNavTarget: null,
     };
   }),

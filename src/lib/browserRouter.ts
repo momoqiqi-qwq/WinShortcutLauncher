@@ -113,7 +113,10 @@ export function getBrowserProfileDisplayName(
   browserId: string,
   profile: DetectedBrowserProfile,
 ) {
-  return router.profileOverrides[browserProfileOverrideKey(browserId, profile.id)]?.name || profile.name;
+  const override = router.profileOverrides[browserProfileOverrideKey(browserId, profile.id)]?.name;
+  // 别名只是从修复前的乱码原名自动复制而来时，改用修复后的名称；用户自定义别名仍然优先。
+  if (override && override !== profile.nameRaw) return override;
+  return profile.name;
 }
 
 export function getBrowserProfileColor(

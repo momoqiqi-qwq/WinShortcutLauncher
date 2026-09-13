@@ -11,9 +11,9 @@ export function DragSettingsSection() {
       <p className="settings-hint">调整项目拖动排序，以及从浏览器拖入网站后的行为。启用单击启动时，需长按后再拖动。</p>
       <label className="check-row">
         <input type="checkbox" checked={behavior.promptRenameDroppedWebsite !== false} onChange={(event) => updateBehavior({ promptRenameDroppedWebsite: event.target.checked })} />
-        拖入网站后显示重命名界面
+        拖入网站后显示命名选择界面
       </label>
-      <p className="settings-hint">默认开启。关闭后，拖入网页会直接使用浏览器提供的名称或域名，不再弹出重命名界面。</p>
+      <p className="settings-hint">默认开启。开启后可在“标签页标题命名”和“网站地址命名”之间选择，也可以先手动修改其中一个再确定；取消则不添加该网站。关闭后直接使用浏览器提供的名称或域名。</p>
       <SliderRow label="项目长按进入拖动" min={80} max={1200} step={10} value={behavior.itemDragLongPressMs ?? 220} unit=" ms" onChange={(value) => updateBehavior({ itemDragLongPressMs: value })} />
       <SliderRow label="拖动前允许抖动" min={2} max={28} step={1} value={behavior.itemDragTolerance ?? 10} unit=" px" onChange={(value) => updateBehavior({ itemDragTolerance: value })} />
       <div className="settings-subtitle settings-subtitle-spaced">拖动外观</div>

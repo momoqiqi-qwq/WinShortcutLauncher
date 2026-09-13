@@ -1,0 +1,75 @@
+Yue Launcher v0.1.128 verification
+==================================
+
+PASS  Persistent source regression guard
+      node scripts/verify-source-fixes.mjs
+      -> Persistent Windows/Rust source fixes: OK
+
+PASS  TypeScript / TSX syntax transpile
+      16 modified TS/TSX files checked with global TypeScript transpileModule
+      -> no syntax diagnostics
+
+PASS  navigationClipboard standalone typecheck
+      tsc --noEmit ... src/lib/navigationClipboard.ts
+      -> no TypeScript errors
+
+PASS  navigation clipboard runtime smoke
+      - copied child directory gets fresh directory ID
+      - copied child items get fresh item IDs
+      - duplicate child names are uniquified in target parent
+      - copied multi-account batch gets a fresh batchId
+      - copied parent gets fresh group/directory/item IDs
+      - one original batch spanning multiple copied directories maps to one new batchId
+      - appendCopiedGroupToConfig leaves source config unchanged and appends one group
+      - duplicate special 'all' child directory is rejected
+
+PASS  Version sync
+      package.json = 0.1.128
+      package-lock.json = 0.1.128
+      src-tauri/Cargo.toml = 0.1.128
+      src-tauri/tauri.conf.json = 0.1.128
+
+PASS  V128 store test source added
+      - copy child directory into another parent
+      - move child directory without leaving source parent empty
+      - keep copied parent across config import and paste it into the new config
+      - remap multi-account batch IDs on copied parent
+
+PASS  Floorp / Gecko format audit
+      Native OLE compatibility now includes:
+      UniformResourceLocatorW
+      UniformResourceLocator
+      text/x-moz-url
+      text/x-moz-url-data
+      text/x-moz-url-desc
+      text/x-moz-url-priv
+      application/x-moz-file-promise-url
+      text/uri-list
+      text/html
+      HTML Format
+      System.String
+      text/unicode
+      text/plain
+      text/x-moz-text-internal
+      application/x-moz-tabbrowser-tab
+      legacy text/x-moz-tabbrowser-tab alias
+      CF_UNICODETEXT / CF_TEXT / CF_HDROP
+
+LIMIT  Full npm/vitest/vite build not executed in this container
+      npm dependency restoration timed out earlier in the session; partial node_modules was removed before packaging.
+
+LIMIT  Cargo / Rust native build not executed in this container
+      cargo, rustc and rustfmt are not installed in the execution environment.
+
+RECOMMENDED WINDOWS ACCEPTANCE
+      1. npm ci
+      2. npm run test
+      3. npm run build
+      4. cargo check --manifest-path src-tauri/Cargo.toml
+      5. npm run tauri:build
+      6. Settings -> Diagnostics: confirm Yue Launcher is Medium integrity
+      7. Copy child -> paste into a different parent
+      8. Copy parent -> Multi-config -> paste directly into an inactive profile
+      9. Switch to that profile and verify nested children/items/routes are intact
+     10. Repeatedly drag child directories up/down, release outside/inside sidebar, press Esc mid-drag, and alt-tab mid-drag; no floating stuck item should remain
+     11. Floorp: test page link, selected address-bar URL, site icon, then tab drag separately

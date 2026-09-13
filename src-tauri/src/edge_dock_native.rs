@@ -34,6 +34,8 @@ pub struct NativeEdgeOptions {
   pub animation_style: String,
   #[serde(default = "default_true")]
   pub dock_auto_hide: bool,
+  #[serde(default)]
+  pub ignore_taskbar: bool,
   #[serde(default = "default_auto_edge_hide")]
   pub auto_edge_hide: bool,
   #[serde(default = "default_auto_edge_bounce")]
@@ -80,6 +82,7 @@ impl Default for NativeEdgeOptions {
       animation_ms: 90,
       animation_style: "animate-window".into(),
       dock_auto_hide: true,
+      ignore_taskbar: false,
       auto_edge_hide: true,
       auto_edge_bounce: true,
       auto_edge_snap_back: false,
@@ -127,6 +130,7 @@ static ANIMATION_RUNNING: AtomicBool = AtomicBool::new(false);
 static NATIVE_SUSPEND_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
 static TRAY_HIDDEN: AtomicBool = AtomicBool::new(false);
 static EXTERNAL_SHOW_RESET: AtomicBool = AtomicBool::new(false);
+static WAKE_REQUIRES_POINTER_VISIT: AtomicBool = AtomicBool::new(false);
 static CONFIG_VERSION: AtomicU64 = AtomicU64::new(1);
 static SETTINGS: OnceLock<Arc<Mutex<NativeEdgeOptions>>> = OnceLock::new();
 
@@ -223,6 +227,11 @@ fn monitor_full_rect_near(rect: SimpleRect) -> SimpleRect {
     }
   }
   SimpleRect { x: 0, y: 0, w: 1920, h: 1080 }
+}
+
+#[cfg(target_os = "windows")]
+fn edge_detection_monitor_rect(rect: SimpleRect, ignore_taskbar: bool) -> SimpleRect {
+  if ignore_taskbar { monitor_full_rect_near(rect) } else { monitor_rect_near(rect) }
 }
 
 #[cfg(target_os = "windows")]
@@ -380,7 +389,7 @@ fn keep_out_of_taskbar(hwnd: HWND) {
 }
 
 fn move_window(hwnd: HWND, rect: SimpleRect, topmost: bool, show: bool) {
-  let z: HWND = if topmost { HWND_TOPMOST } else { std::ptr::null_mut() };
+  let z = if topmost { HWND_TOPMOST } else { std::ptr::null_mut() };
   let mut flags = SWP_NOACTIVATE | SWP_NOOWNERZORDER;
   if !topmost { flags |= SWP_NOZORDER; }
   if show { flags |= SWP_SHOWWINDOW; }
@@ -764,6 +773,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
   let mut last_good_visible_rect: Option<SimpleRect> = None;
   let mut reveal_hold_until: Option<Instant> = None;
   let mut reveal_requires_cursor_exit = false;
+  let mut wake_requires_pointer_visit = false;
 
   loop {
     let cfg = config.lock().map(|g| g.clone()).unwrap_or_default();
@@ -786,8 +796,14 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
       auto_overflow_since = None;
       reveal_hold_until = None;
       reveal_requires_cursor_exit = false;
+      wake_requires_pointer_visit = false;
+      WAKE_REQUIRES_POINTER_VISIT.store(false, Ordering::SeqCst);
       thread::sleep(Duration::from_millis(80));
       continue;
+    }
+
+    if WAKE_REQUIRES_POINTER_VISIT.swap(false, Ordering::SeqCst) {
+      wake_requires_pointer_visit = true;
     }
 
     // A tray restore owns the window geometry. Clear any stale edge-hidden restore rect before
@@ -801,6 +817,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
       auto_overflow_since = None;
       reveal_hold_until = None;
       reveal_requires_cursor_exit = false;
+      wake_requires_pointer_visit = true;
     }
 
     if native_suspended() && !cached_main.is_null() {
@@ -828,6 +845,13 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
         auto_overflow_since = None;
         reveal_hold_until = None;
         reveal_requires_cursor_exit = false;
+      }
+      if wake_requires_pointer_visit {
+        if let (Some(rect), Some((cx, cy))) = (rect_from_hwnd(cached_main), cursor_pos()) {
+          if rect.contains(cx, cy) {
+            wake_requires_pointer_visit = false;
+          }
+        }
       }
       thread::sleep(Duration::from_millis(24));
       continue;
@@ -879,7 +903,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
             last_good_visible_rect = Some(restore_rect);
             reveal_hold_until = Some(Instant::now() + Duration::from_millis(1800));
             reveal_requires_cursor_exit = true;
-            mode = Mode::OpenedByStrip { edge, main_rect: restore_rect, shown_at: Instant::now(), entered_main: true };
+            mode = Mode::OpenedByStrip { edge, main_rect: restore_rect, shown_at: Instant::now(), entered_main: false };
           }
         }
         _ => unsafe { ShowWindow(cached_main, SW_SHOWNA); },
@@ -957,7 +981,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
       }
       Mode::OpenedByStrip { edge, main_rect, shown_at, mut entered_main } => {
         let current_rect = rect_from_hwnd(cached_main).unwrap_or(main_rect);
-        let mon = monitor_rect_near(current_rect);
+        let mon = edge_detection_monitor_rect(current_rect, cfg.ignore_taskbar);
         let current_edge = detect_edge(current_rect, mon, cfg.edge_tolerance);
 
         // 用户把主界面从边缘拖开后，退出贴边模式，不再自动吸回或自动隐藏。
@@ -983,6 +1007,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
         let inside_main = current_rect.contains(cx, cy);
         if inside_main {
           entered_main = true;
+          wake_requires_pointer_visit = false;
           last_good_visible_rect = Some(current_rect);
         }
 
@@ -1058,7 +1083,25 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
         } else {
           last_good_visible_rect = Some(main_rect);
         }
-        let mon = monitor_rect_near(main_rect);
+        let mon = edge_detection_monitor_rect(main_rect, cfg.ignore_taskbar);
+        let inside_main = main_rect.contains(cx, cy);
+
+        // Explicitly waking/restoring the launcher while the pointer is elsewhere must not
+        // immediately start an edge-hide countdown. Arm hiding only after the pointer has
+        // visited the main window once; the existing inside-window guard then requires a
+        // subsequent leave before the window can retract.
+        if wake_requires_pointer_visit {
+          hide_strip(cached_strip);
+          dock_since = None;
+          last_edge = None;
+          auto_overflow_edge = None;
+          auto_overflow_since = None;
+          if inside_main {
+            wake_requires_pointer_visit = false;
+          }
+          thread::sleep(Duration::from_millis(12));
+          continue;
+        }
 
         if let Some(until) = reveal_hold_until {
           let inside_main = main_rect.contains(cx, cy);
@@ -1269,14 +1312,17 @@ pub fn set_tray_hidden(hidden: bool) {
   TRAY_HIDDEN.store(hidden, Ordering::SeqCst);
   if hidden {
     FORCE_SHOW.store(false, Ordering::SeqCst);
+    WAKE_REQUIRES_POINTER_VISIT.store(false, Ordering::SeqCst);
   } else {
     EXTERNAL_SHOW_RESET.store(true, Ordering::SeqCst);
+    WAKE_REQUIRES_POINTER_VISIT.store(true, Ordering::SeqCst);
   }
 }
 
 pub fn prepare_tray_show(ms: u64) {
   TRAY_HIDDEN.store(false, Ordering::SeqCst);
   EXTERNAL_SHOW_RESET.store(true, Ordering::SeqCst);
+  WAKE_REQUIRES_POINTER_VISIT.store(true, Ordering::SeqCst);
   FORCE_SHOW.store(false, Ordering::SeqCst);
   let until = now_millis().saturating_add(ms.max(250));
   NATIVE_SUSPEND_UNTIL_MS.store(until, Ordering::SeqCst);
@@ -1284,6 +1330,7 @@ pub fn prepare_tray_show(ms: u64) {
 
 #[tauri::command]
 pub fn edge_native_force_show() -> Result<(), String> {
+  WAKE_REQUIRES_POINTER_VISIT.store(true, Ordering::SeqCst);
   FORCE_SHOW.store(true, Ordering::SeqCst);
   Ok(())
 }

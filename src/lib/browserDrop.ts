@@ -126,6 +126,18 @@ export function cleanDroppedTitle(value: string, url?: string) {
   return cleaned;
 }
 
+export function websiteAddressName(url: string) {
+  const normalized = normalizeDroppedUrl(url) || url.trim();
+  try {
+    const parsed = new URL(normalized);
+    const host = parsed.hostname.replace(/^www\./i, '');
+    const pathname = parsed.pathname === '/' ? '' : parsed.pathname.replace(/\/$/, '');
+    return `${host}${pathname}${parsed.search}${parsed.hash}`.slice(0, 120) || host;
+  } catch {
+    return normalized.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/\/$/, '').slice(0, 120);
+  }
+}
+
 function pushDroppedTitleCandidate(candidates: string[], value: string | undefined, url?: string) {
   const name = cleanDroppedTitle(value || '', url);
   if (!name) return;

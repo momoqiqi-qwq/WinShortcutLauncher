@@ -25,7 +25,7 @@ import { useAppStore } from '../../stores/appStore';
 import { filterSettingsEntries, normalizeSettingsQuery } from '../../lib/settingsSearch';
 import { searchSettingsItems, type SettingsSearchItem } from '../../lib/settingsSearchIndex';
 import { formatShortcut, shortcutMatchesEvent } from '../../lib/keyboardShortcuts';
-import { ThemePicker } from './ThemePicker';
+import { usePresenceTransition } from '../../hooks/usePresenceTransition';
 import { ThemeGallerySection } from './ThemeGallerySection';
 import { InterfaceSettingsSection } from './InterfaceSettingsSection';
 import { FontSettingsSection } from './FontSettingsSection';
@@ -243,6 +243,70 @@ export function SettingsPanel() {
     setSettingsFilter('');
   }
 
+  function renderSearchQuickControl(result: SettingsSearchItem) {
+    const control = result.quickControl;
+    if (!control) return null;
+    if (control.kind === 'toggle' && control.setting === 'showFullItemName') {
+      const checked = display.showFullItemName === true;
+      return (
+        <label className="settings-search-inline-toggle" title="可直接修改，无需进入设置分类">
+          <span>{checked ? '已开启' : '已关闭'}</span>
+          <input
+            type="checkbox"
+            checked={checked}
+            aria-label="完整显示项目名称"
+            onChange={(event) => updateDisplay({ showFullItemName: event.target.checked })}
+          />
+        </label>
+      );
+    }
+    if (control.kind === 'toggle' && control.setting === 'sidebarShowFullNames') {
+      const checked = display.sidebarShowFullNames === true;
+      return (
+        <label className="settings-search-inline-toggle" title="可直接修改，无需进入设置分类">
+          <span>{checked ? '已开启' : '已关闭'}</span>
+          <input
+            type="checkbox"
+            checked={checked}
+            aria-label="完整显示子目录名称"
+            onChange={(event) => updateDisplay({ sidebarShowFullNames: event.target.checked })}
+          />
+        </label>
+      );
+    }
+    if (control.kind === 'toggle' && control.setting === 'modernWinUI3Mode') {
+      const checked = display.modernWinUI3Mode === true;
+      return (
+        <label className="settings-search-inline-toggle" title="可直接修改，无需进入设置分类">
+          <span>{checked ? '已开启' : '已关闭'}</span>
+          <input
+            type="checkbox"
+            checked={checked}
+            aria-label="现代 WinUI 3 模式"
+            onChange={(event) => updateDisplay({ modernWinUI3Mode: event.target.checked })}
+          />
+        </label>
+      );
+    }
+    if (control.kind === 'range' && control.setting === 'charsPerLine') {
+      return (
+        <label className="settings-search-inline-range" title="可直接修改，无需进入设置分类">
+          <input
+            type="range"
+            min={control.min}
+            max={control.max}
+            step={control.step ?? 1}
+            value={display.charsPerLine}
+            aria-label="项目名称每行换行字数"
+            onChange={(event) => updateDisplay({ charsPerLine: Number(event.target.value) })}
+          />
+          <strong>{display.charsPerLine} 字</strong>
+        </label>
+      );
+    }
+    return null;
+  }
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (!settingsOpen) return;
@@ -264,15 +328,16 @@ export function SettingsPanel() {
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [setSettingsOpen, settingsFilter, settingsOpen, shortcuts]);
 
-  if (!settingsOpen) return null;
+  const presence = usePresenceTransition(settingsOpen, experience.reduceMotion ? 0 : 220);
+  if (!presence.rendered) return null;
 
   const scrollSafetyActive = adaptivePanel && (expectedOuterScrollbars || outerOverflowing);
 
   return (
-    <div className={`modal-backdrop settings-floating-layer ${scrollSafetyActive ? 'settings-floating-layer-scrollable' : ''}`}>
+    <div className={`modal-backdrop settings-floating-layer ${scrollSafetyActive ? 'settings-floating-layer-scrollable' : ''} ${presence.closing ? 'is-closing' : ''}`} aria-hidden={presence.closing || undefined}>
       <div
         ref={panelRef}
-        className={`modal-card settings-panel categorized-settings-panel floating-settings-panel ${adaptivePanel ? 'settings-panel-adaptive' : ''} ${constrained ? 'settings-panel-constrained' : ''} ${scrollSafetyActive ? 'settings-panel-needs-scroll' : ''} ${experience.showSettingsDescriptions === false ? 'settings-descriptions-hidden' : ''} ${experience.reduceMotion ? 'settings-reduce-motion' : ''}`}
+        className={`modal-card settings-panel categorized-settings-panel floating-settings-panel ${adaptivePanel ? 'settings-panel-adaptive' : ''} ${constrained ? 'settings-panel-constrained' : ''} ${scrollSafetyActive ? 'settings-panel-needs-scroll' : ''} ${experience.showSettingsDescriptions === false ? 'settings-descriptions-hidden' : ''} ${experience.reduceMotion ? 'settings-reduce-motion' : ''} ${presence.closing ? 'is-closing' : ''}`}
         style={panelStyle}
         onMouseDown={(event) => event.stopPropagation()}
       >
@@ -329,12 +394,21 @@ export function SettingsPanel() {
             {normalizedFilter ? (
               <section className="settings-detailed-search-page" aria-label="具体设置搜索结果">
                 <div className="settings-detailed-search-heading">
-                  <div><h3>搜索结果</h3><p>直接定位到具体设置，进入后会自动滚动并高亮。</p></div>
+                  <div><h3>搜索结果</h3><p>带开关或滑杆的结果可直接修改；其他结果点击后定位并高亮。</p></div>
                   <span>{detailedSearchResults.length} 项</span>
                  </div>
                 {detailedSearchResults.length > 0 ? (
                   <div className="settings-detailed-search-list">
-                    {detailedSearchResults.map((result) => (
+                    {detailedSearchResults.map((result) => result.quickControl ? (
+                      <div className="settings-detailed-search-result settings-detailed-search-result-quick" key={result.id}>
+                        <span className="settings-detailed-search-result-copy">
+                          <strong>{result.label}</strong>
+                          <small>{result.description}</small>
+                          <button type="button" className="settings-search-locate-button" onClick={() => openSearchResult(result)}>定位到“{tabs.find((tab) => tab.id === result.tab)?.label ?? result.tab}”</button>
+                        </span>
+                        <div className="settings-detailed-search-quick-control">{renderSearchQuickControl(result)}</div>
+                      </div>
+                    ) : (
                       <button type="button" className="settings-detailed-search-result" key={result.id} onClick={() => openSearchResult(result)}>
                         <span><strong>{result.label}</strong><small>{result.description}</small></span>
                         <span>{tabs.find((tab) => tab.id === result.tab)?.label ?? result.tab}</span>
@@ -346,8 +420,8 @@ export function SettingsPanel() {
                 )}
               </section>
             ) : (
-              <>
-            {activeTab === 'general' && <div className="settings-category-grid"><ThemePicker /><ThemeGallerySection currentTheme={currentTheme} onSelectTheme={(theme) => setTheme(theme.id)} /></div>}
+              <div key={activeTab} className={`settings-tab-pane ${experience.settingsTabAnimation !== false && !experience.reduceMotion ? 'animate' : ''}`}>
+            {activeTab === 'general' && <ThemeGallerySection currentTheme={currentTheme} onSelectTheme={(theme) => setTheme(theme.id)} />}
             {activeTab === 'interface' && <InterfaceSettingsSection requestedSection={requestedSection} onRequestedSectionHandled={() => setRequestedSection(null)} />}
             {activeTab === 'font' && <FontSettingsSection />}
             {activeTab === 'icons' && <IconSettingsSection />}
@@ -367,7 +441,7 @@ export function SettingsPanel() {
             {activeTab === 'about' && <AboutSettingsSection />}
             {activeTab === 'sponsor' && <SponsorSettingsSection />}
             {activeTab === 'data' && <DataSettingsSection onReset={() => setActiveTab('general')} />}
-              </>
+              </div>
             )}
           </div>
         </div>

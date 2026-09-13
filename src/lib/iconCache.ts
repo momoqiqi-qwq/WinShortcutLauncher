@@ -8,7 +8,7 @@ const STORAGE_INDEX_KEY = 'win-launcher-icon-cache-v3:index';
 const MAX_PERSISTED_ICONS = 180;
 const DEFAULT_PARALLEL_ICON_TASKS = 6;
 const SIZE_LIMIT = 2 * 1024 * 1024;
-const IMAGE_ICON_FILE_RE = /\.(png|jpe?g|webp|gif|svg|ico)$/i;
+const IMAGE_ICON_FILE_RE = /\.(png|apng|jpe?g|jfif|webp|gif|svg|ico|bmp|avif)$/i;
 
 const memoryCache = new Map<string, string>();
 const persistentMisses = new Set<string>();

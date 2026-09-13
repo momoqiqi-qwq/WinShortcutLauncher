@@ -63,7 +63,7 @@ export function ExperienceSettingsSection() {
         />
         <ToggleRow
           label="记住上次设置分类"
-          hint="下次打开设置回到当前分类。"
+          hint="开启后回到上次分类；默认每次打开设置都停在“常规”。"
           checked={experience.rememberSettingsTab}
           onChange={(rememberSettingsTab) => updateExperience({ rememberSettingsTab })}
         />
@@ -177,6 +177,14 @@ export function ExperienceSettingsSection() {
           checked={experience.itemHoverAnimation}
           onChange={(itemHoverAnimation) => updateExperience({ itemHoverAnimation })}
         />
+        <div data-settings-target="settings-tab-animation" id="settings-tab-animation">
+          <ToggleRow
+            label="设置分类切换动画"
+            hint="切换设置分类时使用淡入和上滑过渡，关闭后立即切换。"
+            checked={experience.settingsTabAnimation !== false}
+            onChange={(settingsTabAnimation) => updateExperience({ settingsTabAnimation })}
+          />
+        </div>
         <ToggleRow
           label="减少动画"
           hint="减少过渡和缩放动画。"

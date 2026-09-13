@@ -11,6 +11,7 @@ import type {
   ExperienceSettings,
   Group,
   NoteSettings,
+  MultiAccountSettings,
   RainbowSettings,
   ShortcutItem,
   ShortcutSettings,
@@ -25,11 +26,13 @@ import type {
   ImageBrowserSettings,
   TransferStationSettings,
 } from '../../utils/v16Types';
+import type { NavigationClipboard } from '../../lib/navigationClipboard';
 
 export interface NavigationSlice {
   activeGroupId: string;
   activeDirectoryId: string;
   selectedNavTarget: { kind: 'group' | 'directory'; id: string } | null;
+  navigationClipboard: NavigationClipboard;
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
   setActiveGroup: (groupId: string) => void;
@@ -38,12 +41,19 @@ export interface NavigationSlice {
   setGroupColor: (groupId: string, color?: string) => void;
   setGroupColors: (colors: Record<string, string | undefined>) => void;
   setGroupBrowserRoute: (groupId: string, route?: import('../../types').BrowserRouteOverride) => void;
+  setGroupSidebarColumns: (groupId: string, columns?: number) => void;
   renameDirectory: (directoryId: string, name: string) => void;
   deleteGroup: (groupId: string) => void;
   deleteDirectory: (directoryId: string) => void;
   reorderGroups: (groupIds: string[]) => void;
   reorderDirectories: (groupId: string, directoryIds: string[]) => void;
   setSelectedNavTarget: (target: { kind: 'group' | 'directory'; id: string } | null) => void;
+  copyDirectoryToClipboard: (directoryId: string) => boolean;
+  copyGroupToClipboard: (groupId: string) => boolean;
+  clearNavigationClipboard: () => void;
+  pasteDirectoryToGroup: (groupId: string) => string | null;
+  pasteGroupFromClipboard: () => string | null;
+  moveDirectoryToGroup: (directoryId: string, targetGroupId: string) => boolean;
   addDirectory: (groupId: string, name: string, kind?: DirectoryKind) => string;
   addGroup: (name: string) => void;
   mergeGroup: (sourceGroupId: string, targetGroupId: string) => void;
@@ -55,9 +65,13 @@ export interface NavigationSlice {
 
 export interface ItemSlice {
   selectedItemIds: string[];
+  multiSelectMode: boolean;
+  itemClipboard: ShortcutItem[];
   reorderItems: (directoryId: string, itemIds: string[]) => void;
   selectItem: (itemId: string, append?: boolean) => void;
   selectItems: (itemIds: string[], append?: boolean) => void;
+  beginMultiSelect: (itemId?: string) => void;
+  finishMultiSelect: () => void;
   clearSelection: () => void;
   setItemLabelLines: (itemId: string, lines?: number) => void;
   applyDisplayToAllItems: (lines?: number) => void;
@@ -65,10 +79,15 @@ export interface ItemSlice {
   clearDirectoryItems: (directoryId: string) => void;
   sortDirectoryItems: (directoryId: string, mode: SortMode) => void;
   deleteSelectedItems: () => void;
+  deleteItemsByIds: (itemIds: string[]) => number;
   updateItem: (itemId: string, patch: Partial<ShortcutItem>) => void;
   copyItemToDirectory: (itemId: string, directoryId: string) => void;
+  copyItemsToDirectory: (itemIds: string[], directoryId: string) => number;
   moveItemToDirectory: (itemId: string, directoryId: string) => void;
   duplicateItem: (itemId: string) => void;
+  copyItemsToClipboard: (itemIds: string[]) => number;
+  pasteItemsToDirectory: (directoryId: string) => number;
+  clearItemClipboard: () => void;
   recordItemLaunch: (itemId: string) => void;
   clearLaunchStats: () => void;
   getItemById: (itemId: string) => ShortcutItem | undefined;
@@ -79,6 +98,7 @@ export interface SettingsSlice {
   updateDisplay: (settings: Partial<DisplaySettings>) => void;
   updateBehavior: (settings: Partial<BehaviorSettings>) => void;
   updateBrowserRouter: (settings: Partial<BrowserRouterSettings>) => void;
+  updateMultiAccount: (settings: Partial<MultiAccountSettings>) => void;
   updateWindowState: (settings: Partial<WindowState>) => void;
   updateAutoSave: (settings: Partial<AutoSaveSettings>) => void;
   updateGlobalSearch: (settings: Partial<GlobalSearchSettings>) => void;
@@ -115,8 +135,8 @@ export interface MediaSlice {
   clearTransferItems: () => void;
 }
 
-export type NavigationActions = Omit<NavigationSlice, 'activeGroupId' | 'activeDirectoryId' | 'selectedNavTarget' | 'settingsOpen'>;
-export type ItemActions = Omit<ItemSlice, 'selectedItemIds'>;
+export type NavigationActions = Omit<NavigationSlice, 'activeGroupId' | 'activeDirectoryId' | 'selectedNavTarget' | 'navigationClipboard' | 'settingsOpen'>;
+export type ItemActions = Omit<ItemSlice, 'selectedItemIds' | 'multiSelectMode' | 'itemClipboard'>;
 export type MediaActions = Omit<MediaSlice, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts'>;
 
 
@@ -132,7 +152,7 @@ export interface ConfigSlice {
   resetAll: () => void;
 }
 
-export type RequiredAppConfig = Omit<AppConfig, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts' | 'browserRouter'> & Required<Pick<AppConfig, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts' | 'browserRouter'>>;
+export type RequiredAppConfig = Omit<AppConfig, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts' | 'browserRouter' | 'multiAccount'> & Required<Pick<AppConfig, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts' | 'browserRouter' | 'multiAccount'>>;
 
 export type AppState = RequiredAppConfig & NavigationSlice & ItemSlice & SettingsSlice & MediaSlice & CommandUsageSlice & ConfigSlice & {
   editItemId?: string;

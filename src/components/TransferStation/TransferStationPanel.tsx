@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { DEFAULT_TRANSFER_STATION_SETTINGS, type TransferStationItem, type TransferStationSettings } from '../../utils/v16Types';
 import { resolveItemIcon } from '../../utils/iconResolver';
 import './TransferStationPanel.css';
 import { uiConfirm } from '../../lib/uiDialog';
+import { NATIVE_EXTERNAL_DRAG_STATE_EVENT, NATIVE_EXTERNAL_DROP_EVENT, type NativeExternalDragStatePayload, type NativeExternalDropPayload } from '../../lib/nativeExternalDrop';
+import { usePresenceTransition } from '../../hooks/usePresenceTransition';
+import { useAppStore } from '../../stores/appStore';
 
 export interface TransferStationPanelProps {
   openPanel: boolean;
@@ -65,6 +69,8 @@ function StationIcon({ item, size }: { item: TransferStationItem; size: number }
 
 export function TransferStationPanel({ openPanel, items, settings: settingsPatch, onClose, onChange, onAddToCurrentDirectory }: TransferStationPanelProps) {
   const settings = { ...DEFAULT_TRANSFER_STATION_SETTINGS, ...settingsPatch };
+  const reduceMotion = useAppStore((state) => state.experience.reduceMotion);
+  const presence = usePresenceTransition(openPanel && settings.enabled, reduceMotion ? 0 : 220);
   const [dragOver, setDragOver] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -72,7 +78,11 @@ export function TransferStationPanel({ openPanel, items, settings: settingsPatch
 
   useEffect(() => {
     if (!openPanel || !settings.acceptExternalDrops) return;
-    let unlisten: undefined | (() => void);
+    let disposed = false;
+    let unlistenWebview: undefined | (() => void);
+    let unlistenNativeDrop: undefined | (() => void);
+    let unlistenNativeState: undefined | (() => void);
+
     getCurrentWebview().onDragDropEvent((event) => {
       const payload: any = event.payload;
       if (payload.type === 'enter' || payload.type === 'over') setDragOver(true);
@@ -82,11 +92,36 @@ export function TransferStationPanel({ openPanel, items, settings: settingsPatch
         const droppedPaths: string[] = payload.paths || [];
         if (droppedPaths.length) onChange(mergeItems(items, droppedPaths));
       }
-    }).then((fn) => { unlisten = fn; });
-    return () => { unlisten?.(); };
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlistenWebview = fn;
+    });
+
+    void listen<NativeExternalDragStatePayload>(NATIVE_EXTERNAL_DRAG_STATE_EVENT, ({ payload }) => {
+      setDragOver(Boolean(payload.hovering));
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlistenNativeState = fn;
+    });
+
+    void listen<NativeExternalDropPayload>(NATIVE_EXTERNAL_DROP_EVENT, ({ payload }) => {
+      setDragOver(false);
+      const droppedPaths = (payload.paths || []).filter(Boolean);
+      if (droppedPaths.length) onChange(mergeItems(items, droppedPaths));
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlistenNativeDrop = fn;
+    });
+
+    return () => {
+      disposed = true;
+      unlistenWebview?.();
+      unlistenNativeDrop?.();
+      unlistenNativeState?.();
+    };
   }, [openPanel, settings.acceptExternalDrops, items, onChange]);
 
-  if (!openPanel || !settings.enabled) return null;
+  if (!presence.rendered) return null;
 
   async function addFiles() {
     const selected = await open({ multiple: true, directory: false });
@@ -119,7 +154,8 @@ export function TransferStationPanel({ openPanel, items, settings: settingsPatch
     <aside
       ref={panelRef}
       data-no-drag
-      className={`transfer-station-panel ${dragOver ? 'drag-over' : ''}`}
+      className={`transfer-station-panel ${dragOver ? 'drag-over' : ''} ${presence.closing ? 'is-closing' : ''}`}
+      aria-hidden={presence.closing || undefined}
       style={{ width: settings.panelWidth }}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}

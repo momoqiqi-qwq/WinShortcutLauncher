@@ -15,13 +15,17 @@ function makeKey(customBrowsers: CustomBrowserConfig[]) {
   })));
 }
 
-export function useBrowserCatalog(customBrowsers: CustomBrowserConfig[]) {
+export function useBrowserCatalog(customBrowsers: CustomBrowserConfig[], enabled = true) {
   const key = useMemo(() => makeKey(customBrowsers), [customBrowsers]);
   const [catalog, setCatalog] = useState<DetectedBrowser[]>(() => key === cachedKey ? cachedCatalog : []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   const refresh = useCallback(async (force = true) => {
+    if (!enabled) {
+      if (key === cachedKey) setCatalog(cachedCatalog);
+      return key === cachedKey ? cachedCatalog : [];
+    }
     if (!force && key === cachedKey && cachedCatalog.length) {
       setCatalog(cachedCatalog);
       return cachedCatalog;
@@ -41,11 +45,16 @@ export function useBrowserCatalog(customBrowsers: CustomBrowserConfig[]) {
     } finally {
       setBusy(false);
     }
-  }, [customBrowsers, key]);
+  }, [customBrowsers, enabled, key]);
 
   useEffect(() => {
+    if (!enabled) {
+      setCatalog(key === cachedKey ? cachedCatalog : []);
+      setBusy(false);
+      return;
+    }
     void refresh(false);
-  }, [refresh]);
+  }, [enabled, key, refresh]);
 
   return { catalog, busy, error, refresh };
 }

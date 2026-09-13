@@ -16,7 +16,9 @@ export function useThemeInstaller() {
     const themeBackground = theme.variables['--bg'] || '#ffffff';
     document.documentElement.style.setProperty('--panel-solid', toOpaqueThemeSurface(theme.variables['--panel'] || themeBackground, themeBackground));
     document.documentElement.style.setProperty('--panel-2-solid', toOpaqueThemeSurface(theme.variables['--panel-2'] || theme.variables['--panel'] || themeBackground, themeBackground));
+  }, [themeId]);
+
+  useEffect(() => {
     document.documentElement.style.setProperty('--window-opacity', String(opacity));
-    document.documentElement.style.setProperty('--window-opacity-percent', `${Math.round(opacity * 100)}%`);
-  }, [themeId, opacity]);
+  }, [opacity]);
 }

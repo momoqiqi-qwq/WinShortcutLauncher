@@ -1,0 +1,79 @@
+Yue Launcher v0.1.122 validation report
+========================================
+
+Version alignment
+-----------------
+package.json:              0.1.122
+src-tauri/tauri.conf.json: 0.1.122
+src-tauri/Cargo.toml:      0.1.122
+package-lock root package: 0.1.122
+Result: PASS
+
+Persistent regression guard
+---------------------------
+Command: node scripts/verify-source-fixes.mjs
+Result: PASS
+Output: Persistent Windows/Rust source fixes: OK
+
+TypeScript / TSX syntax
+-----------------------
+Files parsed: 169 TS/TSX source files (excluding .d.ts)
+Parser: TypeScript transpileModule using the globally available TypeScript runtime
+Syntax errors: 0
+Result: PASS
+
+Modified-file TypeScript diagnostics
+------------------------------------
+Command: tsc --noEmit --pretty false
+The source archive has no node_modules directory, so expected dependency/type-resolution
+cascade diagnostics are present for React, Tauri APIs, Zustand, Lucide, Vitest, JSX, etc.
+After excluding those known missing-dependency cascade codes, the files modified for v122
+had 0 additional diagnostics.
+Result: PASS for source-level/static checking; not a dependency-complete build.
+
+Website address naming helper
+-----------------------------
+Executed the transpiled browserDrop.ts helper directly under Node.
+3/3 checks passed:
+1. https://www.github.com/anthropics/claude-code/ -> github.com/anthropics/claude-code
+2. https://example.com/path?q=1#section -> example.com/path?q=1#section
+3. https://www.example.com/ -> example.com
+Result: PASS
+
+Website naming dialog contract
+------------------------------
+Executed the transpiled uiDialog.ts dispatcher with a synthetic launcher-ui-dialog event.
+Verified:
+- dialog type is website-name-choice
+- title option is passed separately
+- address option is passed separately
+- choosing the address row resolves source=address with the edited name
+Result: PASS
+
+v122 source integration assertions
+----------------------------------
+Static regression guard verifies:
+1. uiWebsiteNameChoice exists
+2. title naming row is above address naming row
+3. each row has its own confirm action
+4. browser drop handler invokes uiWebsiteNameChoice(titleName, addressName)
+5. websiteAddressName formatter remains present
+6. WAKE_REQUIRES_POINTER_VISIT remains present
+7. wake protection clears only after a pointer visit
+8. UI dialog open state pauses native edge docking
+Result: PASS
+
+Configuration / manifest checks
+-------------------------------
+package.json JSON: PASS
+package-lock.json JSON: PASS
+src-tauri/tauri.conf.json JSON: PASS
+src-tauri/windows-app-manifest.xml XML: PASS
+Result: PASS
+
+Not executed in this environment
+--------------------------------
+- npm test / npm run build: NOT EXECUTED because the supplied source archive contains no node_modules.
+- cargo / rustc Windows build: NOT EXECUTED because cargo and rustc are not installed in this environment.
+
+No claim is made that a Windows release executable was compiled here.

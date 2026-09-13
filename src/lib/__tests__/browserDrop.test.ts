@@ -6,6 +6,7 @@ import {
   normalizeDroppedUrl,
   readDroppedUrlShortcutFile,
   shouldAcceptExternalDropCandidate,
+  websiteAddressName,
 } from '../browserDrop';
 
 function fakeTransfer(data: Record<string, string>, files: File[] = []) {
@@ -156,6 +157,11 @@ describe('browser drag compatibility', () => {
       url: 'https://floorp.app/',
       name: 'Floorp',
     });
+  });
+
+  it('formats website-address naming without the protocol, matching the drop naming dialog', () => {
+    expect(websiteAddressName('https://www.github.com/anthropics/claude-code/')).toBe('github.com/anthropics/claude-code');
+    expect(websiteAddressName('https://example.com/path?q=1#section')).toBe('example.com/path?q=1#section');
   });
 
   it('normalizes URL= and UTF-16-like NUL padded text', () => {

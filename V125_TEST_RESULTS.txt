@@ -1,0 +1,61 @@
+V125 TEST RESULTS
+=================
+
+PASS  persistent source regression guard
+      node scripts/verify-source-fixes.mjs
+      -> Persistent Windows/Rust source fixes: OK
+
+PASS  changed TS/TSX syntax diagnostics
+      TypeScript transpileModule syntax pass:
+      - src/lib/faviconProviders.ts
+      - src/lib/iconCache.ts
+      - src/components/ContentArea/ItemCard.tsx
+      - src/components/ContextMenu/AreaContextMenu.tsx
+      - src/components/TopBar/MultiAccountDialog.tsx
+      - src/components/Settings/IconSettingsSection.tsx
+      - src/hooks/useWebsiteDropController.ts
+      - src/lib/__tests__/iconCacheFormats.test.ts
+      - src/lib/__tests__/faviconProviders.test.ts
+
+PASS  favicon provider behavior smoke test
+      - www.github.com -> github.com
+      - gist.github.com remains gist.github.com
+      - online provider URL keeps the meaningful subdomain
+
+PASS  frontend image format routing smoke test
+      raw image reader selected for:
+      PNG / APNG / JPG / JPEG / JFIF / WebP / GIF / SVG / ICO / BMP / AVIF
+
+PASS  supplied bad-placeholder fingerprint regression
+      supplied site_hiwiki.png:
+      - PNG 32x32 RGBA
+      - 962 bytes
+      - FNV-1a 64 = 0x34c6611ea7ad2169
+      - fingerprint is rejected in both favicon download and local render paths
+
+PASS  Rust source audit
+      - payload format sniffer present
+      - bounded parallel favicon racing present
+      - direct root candidates present
+      - HTML link rel=icon discovery present
+      - Web App Manifest icon fallback present
+      - data:image favicon decoding present
+      - invalid cached favicon removal present
+      - placeholder rejection present
+      - same-path frontend cache invalidation/self-repair present
+      - no new Rust dependency required
+
+NOT RUN  cargo test / cargo check / rustfmt
+         Rust toolchain is not installed in this execution environment.
+
+NOT RUN  full npm typecheck / vitest / build
+         npm dependency restoration timed out in this environment; global TypeScript was used for syntax-only diagnostics instead.
+
+REQUIRED ON WINDOWS
+      1. npm ci && npm run verify
+      2. cargo test && cargo check
+      3. tauri build
+      4. Drop/add sites using SVG, ICO, PNG, WebP, AVIF and data:image favicons
+      5. Verify an existing cached copy of the supplied generic globe icon falls back and repairs automatically
+      6. Verify docs/app/gist-style subdomains no longer reuse the apex-domain favicon incorrectly
+      7. Compare cold/warm website-drop timing logs and multi-account generation responsiveness

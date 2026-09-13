@@ -241,10 +241,10 @@ export function buildPaletteEntries(
   if (settings.includeCommands) {
     const builtIns: PaletteEntry[] = [
       { id: 'command:open-settings', kind: 'command', title: '打开设置', subtitle: '打开常规设置', keywords: ['设置', '偏好'], usageKey: 'command:open-settings', settingTab: 'general' },
-      { id: 'command:export-config', kind: 'command', title: '导出配置备份', subtitle: '选择位置保存 JSON 配置', keywords: ['导出', '备份', '配置', '数据'], usageKey: 'command:export-config' },
-      { id: 'command:toggle-pin', kind: 'command', title: '切换窗口置顶', subtitle: '在置顶与普通窗口之间切换', keywords: ['置顶', '取消置顶', '窗口'], usageKey: 'command:toggle-pin' },
-      { id: 'command:clear-stats', kind: 'command', title: '清除启动统计', subtitle: '清除最近启动时间和启动次数', keywords: ['清除', '统计', '最近使用'], dangerous: true, usageKey: 'command:clear-stats' },
-      { id: 'command:reset-settings', kind: 'command', title: '恢复默认设置', subtitle: '保留项目和便签，仅恢复设置', keywords: ['重置', '恢复默认', '设置'], dangerous: true, usageKey: 'command:reset-settings' },
+      { id: 'command:export-config', kind: 'command', title: '导出配置备份', subtitle: '选择位置保存 JSON 配置', keywords: ['导出', '备份', '配置', '数据'], usageKey: 'command:export-config', settingTab: 'data' },
+      { id: 'command:toggle-pin', kind: 'command', title: '切换窗口置顶', subtitle: '在置顶与普通窗口之间切换', keywords: ['置顶', '取消置顶', '窗口'], usageKey: 'command:toggle-pin', settingTab: 'window' },
+      { id: 'command:clear-stats', kind: 'command', title: '清除启动统计', subtitle: '清除最近启动时间和启动次数', keywords: ['清除', '统计', '最近使用'], dangerous: true, usageKey: 'command:clear-stats', settingTab: 'data' },
+      { id: 'command:reset-settings', kind: 'command', title: '恢复默认设置', subtitle: '保留项目和便签，仅恢复设置', keywords: ['重置', '恢复默认', '设置'], dangerous: true, usageKey: 'command:reset-settings', settingTab: 'data' },
     ];
     entries.push(...builtIns);
 

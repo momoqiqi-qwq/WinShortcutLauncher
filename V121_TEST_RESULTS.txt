@@ -1,0 +1,75 @@
+Yue Launcher v0.1.121 validation report
+========================================
+
+Version alignment
+-----------------
+package.json:              0.1.121
+src-tauri/tauri.conf.json: 0.1.121
+src-tauri/Cargo.toml:      0.1.121
+Result: PASS
+
+Persistent regression guard
+---------------------------
+Command: node scripts/verify-source-fixes.mjs
+Result: PASS
+Output: Persistent Windows/Rust source fixes: OK
+
+TypeScript / TSX syntax
+-----------------------
+Files parsed: 169 TS/TSX source files (excluding .d.ts)
+Parser: TypeScript transpileModule using the globally available TypeScript runtime
+Syntax errors: 0
+Result: PASS
+
+Modified-file TypeScript diagnostics
+------------------------------------
+A full `tsc --noEmit` was attempted. This container does not have the project's node_modules,
+so TypeScript reports expected dependency-resolution errors for React, Zustand, Tauri APIs,
+Lucide, Vitest, etc. After excluding those missing-dependency cascade diagnostics
+(TS2307 / TS7006 / TS7026 / TS2875), the files modified for v121 had 0 additional diagnostics.
+Result: PASS for source-level/static checking; NOT a replacement for a dependency-complete build.
+
+v121 integration assertions
+---------------------------
+9/9 source integration assertions passed:
+1. multi-line URL matrix parser present
+2. template apply present
+3. template overwrite present
+4. account alias editor reuses Browser Router profileOverrides
+5. batch URL replacement present
+6. batch Profile reassignment present
+7. whole-batch deletion present
+8. multiAccountBatch persistence normalization present
+9. bulk item deletion action present
+Result: PASS
+
+Batch safety assertions
+-----------------------
+Manual project copy / duplicate / Ctrl+V-created items explicitly clear multiAccountBatch,
+while moving the original item preserves the batch relationship.
+Result: PASS
+
+Configuration / manifest checks
+-------------------------------
+package.json JSON: PASS
+package-lock.json JSON: PASS
+src-tauri/tauri.conf.json JSON: PASS
+src-tauri/windows-app-manifest.xml XML: PASS
+Merge conflict markers under src/src-tauri/scripts: 0
+Result: PASS
+
+Temporary dependency cleanup
+----------------------------
+A failed npm ci attempt created an incomplete node_modules directory.
+That directory was removed before packaging.
+Final source tree contains no node_modules directory.
+Result: PASS
+
+Not executed in this environment
+--------------------------------
+- npm ci / dependency-complete Vite production build: NOT COMPLETED.
+  The container command failed before dependencies could be installed.
+- cargo / rustc Windows release build: NOT EXECUTED.
+  cargo and rustc are not installed in this environment.
+
+No claim is made that a Windows release binary was compiled here.

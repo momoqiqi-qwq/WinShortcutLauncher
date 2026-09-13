@@ -18,6 +18,7 @@ import {
   normalizeDisplay,
   normalizeGroups,
   normalizeImageBrowserSettings,
+  normalizeMultiAccountSettings,
   normalizeNoteSettings,
   normalizeRainbow,
 } from '../normalizers';
@@ -42,6 +43,7 @@ export const createConfigSlice: AppSliceCreator<ConfigSlice> = (set, get) => ({
       display: normalizeDisplay(config.display as never),
       behavior: normalizeBehavior(config.behavior as never),
       browserRouter: normalizeBrowserRouter(config.browserRouter, asRecord(config.behavior).urlOpenMode),
+      multiAccount: normalizeMultiAccountSettings(config.multiAccount),
       windowState: { ...defaultWindowState, ...asRecord(config.windowState) },
       autoSave: { ...defaultAutoSave, ...asRecord(config.autoSave) },
       transferItems: Array.isArray(config.transferItems) ? config.transferItems : [],
@@ -57,6 +59,8 @@ export const createConfigSlice: AppSliceCreator<ConfigSlice> = (set, get) => ({
       activeGroupId: first.groupId,
       activeDirectoryId: first.directoryId,
       selectedItemIds: [],
+      multiSelectMode: false,
+      itemClipboard: [],
       selectedNavTarget: null,
       settingsOpen: get().settingsOpen,
     };
@@ -69,6 +73,7 @@ export const createConfigSlice: AppSliceCreator<ConfigSlice> = (set, get) => ({
       display: state.display,
       behavior: state.behavior,
       browserRouter: state.browserRouter,
+      multiAccount: state.multiAccount,
       windowState: state.windowState,
       autoSave: state.autoSave,
       transferItems: state.transferItems,
@@ -91,6 +96,9 @@ export const createConfigSlice: AppSliceCreator<ConfigSlice> = (set, get) => ({
       activeGroupId: firstFresh.groupId,
       activeDirectoryId: firstFresh.directoryId,
       selectedItemIds: [],
+      multiSelectMode: false,
+      itemClipboard: [],
+      navigationClipboard: null,
       selectedNavTarget: null,
       settingsOpen: false,
     });

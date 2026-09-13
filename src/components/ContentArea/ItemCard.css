@@ -29,6 +29,37 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 78%);
 }
 
+
+/* v130: explicit multi-select mode. Project actions and sorting are paused while active. */
+.item-card.multi-select-item {
+  cursor: default;
+}
+
+.item-card.multi-select-item::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 7px;
+  z-index: 3;
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.item-card.multi-select-item.selected::before {
+  content: '✓';
+  background: color-mix(in srgb, var(--accent), transparent 82%);
+}
+
 .item-card.dragging {
   opacity: 0.88;
   border-color: color-mix(in srgb, var(--item-drag-glow, var(--accent)) calc(var(--item-drag-glow-brightness, 0.72) * 100%), transparent);
@@ -80,6 +111,12 @@
   line-height: 1.4;
   font-size: calc(var(--label-font-size, 12) * 1px);
   color: var(--text);
+}
+
+.item-card.full-item-name .item-label {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
 }
 
 /* v72: project pin badge and optional hover animation */

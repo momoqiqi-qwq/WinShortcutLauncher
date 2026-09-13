@@ -86,6 +86,15 @@ describe('command palette search', () => {
     expect(withoutSystem.some((entry) => entry.groupId === 'group_system_tools' || entry.id.startsWith('item:sys_'))).toBe(false);
   });
 
+  it('links built-in command switches to relevant settings pages', () => {
+    const entries = buildPaletteEntries(groups, DEFAULT_GLOBAL_SEARCH_SETTINGS);
+    const byId = new Map(entries.map((entry) => [entry.id, entry]));
+    expect(byId.get('command:export-config')?.settingTab).toBe('data');
+    expect(byId.get('command:toggle-pin')?.settingTab).toBe('window');
+    expect(byId.get('command:clear-stats')?.settingTab).toBe('data');
+    expect(byId.get('command:reset-settings')?.settingTab).toBe('data');
+  });
+
   it('stops usage/recent ranking when recent-priority is disabled', () => {
     const entries = buildPaletteEntries(groups, DEFAULT_GLOBAL_SEARCH_SETTINGS);
     const settings = { ...DEFAULT_GLOBAL_SEARCH_SETTINGS, preferRecent: false };

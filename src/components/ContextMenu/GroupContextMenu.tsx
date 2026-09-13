@@ -1,10 +1,12 @@
-import { ChevronRight, FolderPlus, Merge, Palette, Trash2 } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Copy, FolderPlus, Merge, Palette, Trash2 } from 'lucide-react';
 import { useMemo, useState, type MouseEvent } from 'react';
 import type { ContextMenuState } from '../../types';
 import { useAppStore } from '../../stores/appStore';
 import { useSmartMenuPosition } from './useSmartMenuPosition';
 import { byOrder } from '../../lib/sort';
 import { uiAlert, uiConfirm, uiPrompt } from '../../lib/uiDialog';
+import { showLauncherNotice } from '../../lib/notify';
+import { canPasteDirectoryIntoGroup } from '../../lib/navigationClipboard';
 
 const GROUP_COLOR_PRESETS = [
   { label: '默认', value: '' },
@@ -30,6 +32,10 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
   const deleteGroup = useAppStore((state) => state.deleteGroup);
   const mergeGroup = useAppStore((state) => state.mergeGroup);
   const setGroupColor = useAppStore((state) => state.setGroupColor);
+  const navigationClipboard = useAppStore((state) => state.navigationClipboard);
+  const copyGroupToClipboard = useAppStore((state) => state.copyGroupToClipboard);
+  const pasteGroupFromClipboard = useAppStore((state) => state.pasteGroupFromClipboard);
+  const pasteDirectoryToGroup = useAppStore((state) => state.pasteDirectoryToGroup);
   const experience = useAppStore((state) => state.experience);
   const hiddenItems = new Set(experience.groupContextMenuHiddenItems ?? []);
   const show = (id: import('../../types').GroupContextMenuItemId) => !hiddenItems.has(id);
@@ -39,9 +45,43 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
   if (!group) return null;
   const currentGroup = group;
   const targetGroups = groups.filter((entry) => entry.id !== currentGroup.id);
+  const copiedDirectory = navigationClipboard?.kind === 'directory' ? navigationClipboard.directory : null;
+  const copiedGroup = navigationClipboard?.kind === 'group' ? navigationClipboard.group : null;
+  const canPasteDirectory = Boolean(copiedDirectory && canPasteDirectoryIntoGroup(copiedDirectory, currentGroup));
 
   function createGroup() {
     addGroup('新父目录');
+    onClose();
+  }
+
+  function copyGroup() {
+    if (copyGroupToClipboard(currentGroup.id)) {
+      showLauncherNotice(`已复制父目录「${currentGroup.name}」；可切换多配置后继续粘贴`);
+    }
+    onClose();
+  }
+
+  function pasteGroup() {
+    if (!copiedGroup) return;
+    const pastedId = pasteGroupFromClipboard();
+    if (pastedId) {
+      const pasted = useAppStore.getState().groups.find((entry) => entry.id === pastedId);
+      showLauncherNotice(`已粘贴父目录${pasted ? `「${pasted.name}」` : ''}`);
+    }
+    onClose();
+  }
+
+  function pasteDirectory() {
+    if (!copiedDirectory) return;
+    const pastedId = pasteDirectoryToGroup(currentGroup.id);
+    if (pastedId) {
+      const pasted = useAppStore.getState().groups
+        .find((entry) => entry.id === currentGroup.id)
+        ?.directories.find((entry) => entry.id === pastedId);
+      showLauncherNotice(`已粘贴子目录到「${currentGroup.name}」${pasted ? `：${pasted.name}` : ''}`);
+    } else if ((copiedDirectory.kind ?? 'normal') === 'all') {
+      showLauncherNotice(`「${currentGroup.name}」已经有“全部”子目录，不能重复粘贴`);
+    }
     onClose();
   }
 
@@ -88,6 +128,10 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
       onMouseDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
+      {show('copyGroup') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={copyGroup}><span>复制父目录</span><Copy size={15} /></div>}
+      {show('pasteGroup') && <div className={`menu-item ${copiedGroup ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => copiedGroup && pasteGroup()}><span>粘贴父目录{copiedGroup ? `「${copiedGroup.name}」` : ''}</span><ClipboardPaste size={15} /></div>}
+      {show('pasteDirectory') && <div className={`menu-item ${canPasteDirectory ? '' : 'disabled'}`} title={copiedDirectory && !canPasteDirectory ? '目标父目录已经存在“全部”子目录' : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canPasteDirectory && pasteDirectory()}><span>粘贴子目录{copiedDirectory ? `「${copiedDirectory.name}」` : ''}</span><ClipboardPaste size={15} /></div>}
+      {(show('copyGroup') || show('pasteGroup') || show('pasteDirectory')) && (show('create') || show('merge') || show('color') || show('delete')) && <div className="menu-separator" />}
       {show('create') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={createGroup}><span>新建父目录</span><FolderPlus size={15} /></div>}
       {show('merge') && <div className={`menu-item with-submenu ${targetGroups.length === 0 ? 'disabled' : ''}`} onMouseEnter={() => setOpenSubmenu('merge')} onClick={() => targetGroups.length > 0 && setOpenSubmenu((value) => value === 'merge' ? null : 'merge')}>
         <span>合并到父目录</span><ChevronRight size={14} />
@@ -144,7 +188,7 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
         )}
       </div>}
       {show('delete') && <div className={`menu-item danger ${groups.length <= 1 ? 'disabled' : ''}`} title={groups.length <= 1 ? '至少保留一个父目录' : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void remove()}><span>删除父目录</span><Trash2 size={15} /></div>}
-      {!show('create') && !show('merge') && !show('color') && !show('delete') && <div className="menu-empty-hint">此菜单项目已全部隐藏，可在设置中恢复</div>}
+      {!show('copyGroup') && !show('pasteGroup') && !show('pasteDirectory') && !show('create') && !show('merge') && !show('color') && !show('delete') && <div className="menu-empty-hint">此菜单项目已全部隐藏，可在设置中恢复</div>}
     </div>
   );
 }

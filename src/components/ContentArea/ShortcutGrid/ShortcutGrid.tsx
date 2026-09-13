@@ -14,7 +14,7 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
-import { Inbox, Search, X } from 'lucide-react';
+import { CheckSquare, Inbox, Search, X } from 'lucide-react';
 import type { Directory, DisplaySettings, Group, ShortcutItem } from '../../../types';
 import { useAppStore } from '../../../stores/appStore';
 import { sortShortcutItemsForDisplay } from '../../../lib/sort';
@@ -43,6 +43,8 @@ export function ShortcutGrid({
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement | null>(null);
   const selectedItemIds = useAppStore((state) => state.selectedItemIds);
+  const multiSelectMode = useAppStore((state) => state.multiSelectMode);
+  const finishMultiSelect = useAppStore((state) => state.finishMultiSelect);
   const behavior = useAppStore((state) => state.behavior);
   const experience = useAppStore((state) => state.experience);
   const shortcuts = useAppStore((state) => state.shortcuts);
@@ -232,7 +234,7 @@ export function ShortcutGrid({
   return (
     <>
       {items.length > 0 && (
-        <div className="content-toolbar" onMouseDown={(event) => event.stopPropagation()}>
+        <div className={`content-toolbar ${multiSelectMode ? 'multi-select-toolbar' : ''}`} onMouseDown={(event) => event.stopPropagation()}>
           <Search size={15} />
           <input
             ref={searchRef}
@@ -246,6 +248,18 @@ export function ShortcutGrid({
             </button>
           )}
           <span>{filteredItems.length}/{items.length}</span>
+          {multiSelectMode && (
+            <button
+              type="button"
+              className="multi-select-finish"
+              onClick={finishMultiSelect}
+              title="完成多选并恢复项目原本的点击动作"
+            >
+              <CheckSquare size={13} />
+              <strong>已选 {selectedItemIds.length}</strong>
+              <em>完成</em>
+            </button>
+          )}
         </div>
       )}
       {renderGrid()}

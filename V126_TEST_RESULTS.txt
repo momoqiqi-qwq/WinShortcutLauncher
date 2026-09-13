@@ -1,0 +1,50 @@
+Yue Launcher V126 validation report
+Version: 0.1.126
+
+PASS  scripts/verify-source-fixes.mjs
+      Persistent Windows/Rust source fixes: OK
+
+PASS  TypeScript syntax transpile on 20 changed TS/TSX files
+      No syntax diagnostics.
+
+PASS  Version synchronization
+      package.json:             0.1.126
+      package-lock.json:        0.1.126
+      package-lock root package 0.1.126
+      src-tauri/tauri.conf.json 0.1.126
+      src-tauri/Cargo.toml      0.1.126
+
+PASS  Settings search index uniqueness
+      93 IDs; no duplicates.
+
+PASS  Pinyin initials spot checks
+      清除使用统计 -> qcsytj
+      复制项目地址 -> fzxmdz
+      移动到父目录 -> yddfml
+      复制父目录   -> fzfml
+
+SOURCE TESTS ADDED
+      appStoreSlices.test.ts:
+      - copy/paste complete parent directory with fresh nested IDs
+      - copy child directory to another parent with fresh item IDs
+      - move child directory to another parent while preserving child ID
+
+      commandPalette.test.ts:
+      - qcsytj finds 清除使用统计
+      - fzxmdz finds 复制项目地址
+
+FAVICON REVIEW/FIXES
+      - fixed legacy favicon cache subdomain leakage
+      - interleaved site-owned and provider candidates in first parallel wave
+      - deduplicated candidate URLs before requests
+      - fast timeout applied to first provider wave
+
+NOT RUN IN THIS ENVIRONMENT
+      npm ci timed out while restoring dependencies. Do not treat partial node_modules as valid.
+      Full tsc/vitest/vite build was therefore not executed.
+      Rust/cargo/rustc are not installed, so cargo test/check and native Tauri build were not executed.
+
+Recommended Windows verification:
+      npm ci
+      npm run verify
+      npm run tauri:build

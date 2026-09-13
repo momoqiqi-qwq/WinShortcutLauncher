@@ -17,7 +17,8 @@ const WINDOW_CONTROL_LABELS: Array<{ id: WindowControlId; label: string; hint?: 
   { id: 'transfer', label: '文件中转站' },
   { id: 'image', label: '图片预览' },
   { id: 'profiles', label: '多配置', hint: '管理多个独立配置并切换当前配置' },
-  { id: 'sortGroups', label: '父目录 A-Z 排列', hint: '点击后把顶部父目录按名称排序' },
+  { id: 'multiAccount', label: '多账号', hint: '把同一网址批量分配到 Chrome / Floorp 等浏览器 Profile' },
+  { id: 'sortGroups', label: '父目录 A-Z 排列', hint: '点击先保存当前顺序并按字母排列，再点一次还原之前的顺序' },
   { id: 'add', label: '新增父目录' },
   { id: 'settingsQuick', label: '设置快捷入口', hint: '打开常用子设置菜单' },
   { id: 'settings', label: '设置' },
@@ -355,7 +356,7 @@ export function DisplaySettings({ requestedSection, onRequestedSectionHandled }:
   }
 
   function hideNonEssentialWindowControls() {
-    setGlobal({ windowControlHidden: ['search', 'transfer', 'image', 'profiles', 'sortGroups', 'add', 'settingsQuick', 'pin'] } as Partial<DisplaySettings>);
+    setGlobal({ windowControlHidden: ['search', 'transfer', 'image', 'profiles', 'multiAccount', 'sortGroups', 'add', 'settingsQuick', 'pin'] } as Partial<DisplaySettings>);
   }
 
   function setLocal(patch: Partial<DisplaySettings>) {
@@ -535,7 +536,6 @@ export function DisplaySettings({ requestedSection, onRequestedSectionHandled }:
             ))}
           </div>
         </div>
-        <SliderRow label="换行字数" min={4} max={20} value={globalDisplay.charsPerLine} onChange={(value) => setGlobal({ charsPerLine: value })} />
         <SliderRow label="字体大小" min={10} max={16} value={globalDisplay.fontSize} unit="px" onChange={(value) => setGlobal({ fontSize: value })} />
         <SliderRow label="图标大小" min={32} max={128} step={4} value={globalDisplay.iconSize} unit="px" onChange={(value) => setGlobal({ iconSize: value })} />
         <SliderRow label="项目占位宽度" min={72} max={260} step={4} value={globalDisplay.itemWidth} unit="px" onChange={(value) => setGlobal({ itemWidth: value })} />
@@ -634,6 +634,10 @@ export function DisplaySettings({ requestedSection, onRequestedSectionHandled }:
         onToggle={toggleSection}
       >
         <SliderRow label="左侧栏宽度" min={120} max={360} step={4} value={globalDisplay.sidebarWidth} unit="px" onChange={(value) => setGlobal({ sidebarWidth: value })} />
+        <SliderRow label="子目录默认列数" min={1} max={6} step={1} value={globalDisplay.sidebarColumns ?? 1} unit=" 列" onChange={(value) => setGlobal({ sidebarColumns: value })} />
+        <p className="settings-hint">每列平均分配侧栏宽度。每个父目录都可以在主界面空白处右键 → “子目录列数”单独覆盖。</p>
+        <SliderRow label="子目录名称行数" min={1} max={4} step={1} value={globalDisplay.sidebarItemLines ?? 2} unit=" 行" onChange={(value) => setGlobal({ sidebarItemLines: value })} />
+        <p className="settings-hint">名称超过侧栏宽度时最多换行显示设置的行数，超出部分显示省略号；选中项同样受行数限制。</p>
         <SliderRow label="子目录文字大小" min={11} max={22} step={1} value={globalDisplay.sidebarFontSize} unit="px" onChange={(value) => setGlobal({ sidebarFontSize: value })} />
         <SliderRow label="子目录项高度" min={28} max={72} step={2} value={globalDisplay.sidebarItemHeight} unit="px" onChange={(value) => setGlobal({ sidebarItemHeight: value })} />
         <SliderRow label="子目录项间距" min={0} max={24} step={1} value={globalDisplay.sidebarItemGap} unit="px" onChange={(value) => setGlobal({ sidebarItemGap: value })} />

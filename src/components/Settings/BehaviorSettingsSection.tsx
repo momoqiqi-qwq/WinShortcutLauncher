@@ -135,6 +135,15 @@ export function BehaviorSettingsSection() {
                     自动贴边隐藏
                   </label>
                   <p className="settings-hint">鼠标停留在主界面内或正在点击操作时保持展开；鼠标真正移出主界面后，才开始计算贴边隐藏延迟。</p>
+                  <label className="check-row">
+                    <input
+                      type="checkbox"
+                      checked={behavior.edgeIgnoreTaskbar ?? false}
+                      onChange={(event) => updateBehavior({ edgeIgnoreTaskbar: event.target.checked })}
+                    />
+                    隐藏时忽视任务栏
+                  </label>
+                  <p className="settings-hint">开启后贴边隐藏只认物理屏幕边缘；底部必须碰到屏幕最下方才会触发，触碰任务栏上沿不会触发隐藏。</p>
                   <div className="field-row">
                     <label>贴边隐藏延迟：{behavior.edgeHideDelaySeconds === 0 ? '立即' : `${behavior.edgeHideDelaySeconds.toFixed(1)} 秒`}</label>
                     <div className="delay-row">
@@ -339,7 +348,7 @@ export function BehaviorSettingsSection() {
                       <option value="double">双击启动</option>
                     </select>
                   </div>
-                  <p className="settings-hint">左键不再用于选中：{behavior.launchMode === 'single' ? '单击立即启动，长按后拖动排序' : '单击无动作，双击启动；直接拖动可排序'}。右键用于管理，Ctrl + 右键用于多选。</p>
+                  <p className="settings-hint">这是项目未单独设置时的全局默认。每个项目都可在“右键 → 编辑 → 点击动作”中，把单击和双击分别改成打开、复制名称、复制路径/网址、复制名称 + 内容或无动作。右键用于管理，Ctrl + 右键用于多选。</p>
                   <BrowserRouterSettingsSection />
                   <div className="field-row">
                     <label>关闭按钮行为</label>
@@ -362,7 +371,7 @@ export function BehaviorSettingsSection() {
                     开机自启动
                   </label>
                   <p className="settings-hint">开启后会写入 Windows 当前用户启动项，电脑开机登录后自动启动 Yue launcher；关闭会从启动项移除。</p>
-                  <p className="settings-hint">多选：Ctrl + 右键；{formatShortcut(shortcuts.selectAllItems) || '未设置快捷键'} 选中当前页；{formatShortcut(shortcuts.deleteSelection) || '未设置快捷键'} 删除选中项目或当前目录。</p>
+                  <p className="settings-hint">多选：右键项目 → 使用多选，然后直接左键连续选择；Ctrl + 右键仍可快速追加选择；{formatShortcut(shortcuts.selectAllItems) || '未设置快捷键'} 选中当前页；{formatShortcut(shortcuts.deleteSelection) || '未设置快捷键'} 删除选中项目或当前目录。</p>
                 </CollapseBlock>
               </section>
   );

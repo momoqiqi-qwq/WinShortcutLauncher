@@ -41,10 +41,10 @@ function SortableEditorRow({
 }
 
 export const QuickSettingsMenu = forwardRef<HTMLDivElement, {
-  left: number;
   onClose: (restoreFocus: boolean) => void;
   reduceMotion?: boolean;
-}>(function QuickSettingsMenu({ left, onClose, reduceMotion = false }, ref) {
+  closing?: boolean;
+}>(function QuickSettingsMenu({ onClose, reduceMotion = false, closing = false }, ref) {
   const [preferences, setPreferences] = useState<QuickSettingsPreferences>(() => loadQuickSettingsPreferences());
   const [editing, setEditing] = useState(false);
   const sensors = useSensors(
@@ -114,7 +114,7 @@ export const QuickSettingsMenu = forwardRef<HTMLDivElement, {
   }
 
   return (
-    <div id="topbar-quick-settings-menu" ref={ref} className={`topbar-quick-settings-menu ${editing ? 'is-editing' : ''} ${reduceMotion ? 'reduce-motion' : ''}`} style={{ left }} data-no-drag role="menu" aria-label="常用设置快捷入口" onKeyDown={handleKeyDown} onPointerDown={(event) => event.stopPropagation()}>
+    <div id="topbar-quick-settings-menu" ref={ref} className={`topbar-quick-settings-menu ${editing ? 'is-editing' : ''} ${reduceMotion ? 'reduce-motion' : ''} ${closing ? 'is-closing' : ''}`} aria-hidden={closing || undefined} data-no-drag role="menu" aria-label="常用设置快捷入口" onKeyDown={handleKeyDown} onPointerDown={(event) => event.stopPropagation()}>
       <div className="topbar-quick-settings-head">
         <div><strong>{editing ? '自定义快捷设置' : '快速进入设置'}</strong><small>{editing ? '拖动排序 · 收藏 · 隐藏' : `${visibleEntries.length} 个入口 · 收藏项优先`}</small></div>
         <button type="button" className="quick-settings-customize" title={editing ? '完成自定义' : '自定义快捷设置'} onClick={() => setEditing((value) => !value)}>{editing ? <Check size={14} /> : <Settings2 size={14} />}</button>

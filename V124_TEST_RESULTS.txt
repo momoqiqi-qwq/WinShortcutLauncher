@@ -1,0 +1,38 @@
+V124 TEST RESULTS
+=================
+
+PASS  source regression guard
+      node scripts/verify-source-fixes.mjs
+      -> Persistent Windows/Rust source fixes: OK
+
+PASS  changed TS/TSX syntax diagnostics
+      App.tsx
+      useWebsiteDropController.ts
+      useGlobalShortcutRouter.ts
+      useOverlayRouter.ts
+      uiDialog.ts
+      UiDialogHost.tsx
+      nativeExternalDrop.ts
+
+PASS  website metadata source audit
+      - no Invoke-WebRequest / powershell.exe in website_metadata.rs
+      - reusable Rust HTTP client is present
+      - title cache is present
+      - title/favicon in-flight dedupe is present
+
+PASS  drag target source audit
+      - native drop payload x/y consumed by frontend
+      - data-directory-id has priority over data-group-id
+      - HTML/native website drops converge on the same handler
+
+NOT RUN  cargo check / rustfmt
+         cargo and rustc are not installed in this execution environment.
+
+NOT RUN  full npm typecheck / vitest / build
+         npm dependencies could not be fully restored; offline cache is missing zustand-5.0.14.tgz and online npm install timed out.
+
+REQUIRED ON WINDOWS
+      1. cargo check / tauri build
+      2. npm ci && npm run verify
+      3. Firefox/Floorp native OLE: drop on multiple explicit child directories at 100%, 125%, 150%, 200% DPI
+      4. Confirm timing logs and immediate dialog rendering on cold/warm title/favicon cache cases

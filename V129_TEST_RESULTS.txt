@@ -1,0 +1,65 @@
+V129 validation results
+=======================
+Version: 0.1.129
+
+PASSED
+------
+1. Persistent source regression guard
+   command: node scripts/verify-source-fixes.mjs
+   result: Persistent Windows/Rust source fixes: OK
+
+2. TypeScript / TSX parser syntax sweep
+   result: Parsed 179 TS/TSX files; syntax errors: 0
+   parser: TypeScript compiler API from globally installed TypeScript
+
+3. Item click-action pure logic smoke test
+   verified:
+   - single click can resolve to copy URL/path
+   - double click can independently resolve to copy name
+   - copy-name
+   - copy-path
+   - copy-name-path
+   result: itemClickActions smoke: OK
+
+4. Version consistency
+   package.json:       0.1.129
+   package-lock.json:  0.1.129
+   Cargo.toml:         0.1.129
+   tauri.conf.json:    0.1.129
+
+5. Windows native API dependency check
+   Cargo.toml already enables windows-sys feature:
+   Win32_UI_WindowsAndMessaging
+   which is required by GetDoubleClickTime().
+
+6. Source guards cover V129 critical paths
+   - ShortcutItem single/double click fields
+   - item click action resolver
+   - Windows double-click timing command
+   - item editor click-action UI
+   - manual Add Website browser route + click actions
+   - dropped website naming browser route + click actions
+   - dropped website persistence
+   - native command registration
+
+NOT FULLY RUN IN THIS ENVIRONMENT
+---------------------------------
+1. npm run typecheck / npm run test / npm run build
+   Full npm dependencies are not available locally. npm install/ci attempts could not complete in the execution environment, and offline cache is incomplete.
+
+2. cargo check / cargo test / tauri build
+   Rust/Cargo toolchain is not installed in the execution environment.
+
+Recommended final Windows verification
+--------------------------------------
+1. npm ci
+2. npm run typecheck
+3. npm run test
+4. npm run build
+5. npm run tauri:build
+6. Manual behavior checks:
+   A. Add website -> choose specified browser/Profile -> create -> open uses selected route.
+   B. Single click = copy URL; double click = copy name -> verify a double click does NOT first leave URL in clipboard.
+   C. Single click = copy name; double click = copy URL -> verify reverse combination.
+   D. Existing legacy project with both actions inherit -> still follows global launch mode.
+   E. Custom-sort project with click action -> quick click copies; long press still enters drag sorting.

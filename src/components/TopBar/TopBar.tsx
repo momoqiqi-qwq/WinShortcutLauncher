@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { DndContext, DragEndEvent, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Archive, ArrowDownAZ, Files, Images, Minus, Pin, PinOff, Plus, Search, Settings, SlidersHorizontal, X } from 'lucide-react';
+import { Archive, ArrowDownAZ, Files, Images, Minus, Pin, PinOff, Plus, RotateCcw, Search, Settings, SlidersHorizontal, UsersRound, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../../stores/appStore';
@@ -11,6 +11,8 @@ import { byOrder } from '../../lib/sort';
 import type { Group, WindowControlId } from '../../types';
 import { QuickSettingsMenu } from './QuickSettingsMenu';
 import { ConfigProfilesMenu } from './ConfigProfilesMenu';
+import { MultiAccountDialog } from './MultiAccountDialog';
+import { usePresenceTransition } from '../../hooks/usePresenceTransition';
 
 function normalizeControlOrder(order?: WindowControlId[]): WindowControlId[] {
   const next: WindowControlId[] = [];
@@ -18,7 +20,11 @@ function normalizeControlOrder(order?: WindowControlId[]): WindowControlId[] {
     if (DEFAULT_WINDOW_CONTROL_ORDER.includes(id) && !next.includes(id)) next.push(id);
   }
   for (const id of DEFAULT_WINDOW_CONTROL_ORDER) {
-    if (!next.includes(id)) next.push(id);
+    if (next.includes(id)) continue;
+    const defaultIndex = DEFAULT_WINDOW_CONTROL_ORDER.indexOf(id);
+    const previous = DEFAULT_WINDOW_CONTROL_ORDER.slice(0, defaultIndex).reverse().find((candidate) => next.includes(candidate));
+    if (previous) next.splice(next.indexOf(previous) + 1, 0, id);
+    else next.push(id);
   }
   return next;
 }
@@ -183,12 +189,16 @@ export function TopBar({
   const quickSettingsMenuRef = useRef<HTMLDivElement | null>(null);
   const configProfilesButtonRef = useRef<HTMLButtonElement | null>(null);
   const configProfilesMenuRef = useRef<HTMLDivElement | null>(null);
+  const multiAccountButtonRef = useRef<HTMLButtonElement | null>(null);
+  const multiAccountPanelRef = useRef<HTMLFormElement | null>(null);
   const [visibleRows, setVisibleRows] = useState(1);
   const [overflowRows, setOverflowRows] = useState(false);
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
-  const [quickSettingsMenuLeft, setQuickSettingsMenuLeft] = useState(12);
   const [configProfilesOpen, setConfigProfilesOpen] = useState(false);
-  const [configProfilesMenuLeft, setConfigProfilesMenuLeft] = useState(12);
+  const [multiAccountOpen, setMultiAccountOpen] = useState(false);
+  const quickSettingsPresence = usePresenceTransition(quickSettingsOpen, experience.reduceMotion ? 0 : 170);
+  const configProfilesPresence = usePresenceTransition(configProfilesOpen, experience.reduceMotion ? 0 : 170);
+  const multiAccountPresence = usePresenceTransition(multiAccountOpen, experience.reduceMotion ? 0 : 220);
 
   useLayoutEffect(() => {
     const node = tabsRef.current;
@@ -220,55 +230,88 @@ export function TopBar({
   }, [groups.length, display.topTabEqualWidth, display.topTabWidth, display.topTabShape]);
 
 
+  // 三个下拉面板统一锚定到「触发它的那个按钮」的右下角：
+  // 面板右上角 = 按钮右下角（间隙 6px），因此会盖住按钮组下面几行。
+  // 位置算好后写进 CSS 变量，CSS 里的 left/top 只作为没量到时的兜底值。
+  // 宽度必须用 offsetWidth 量：进场动画带 scale，getBoundingClientRect 会量偏小。
   useLayoutEffect(() => {
-    if (!quickSettingsOpen) return;
-    const measure = () => {
-      const topbar = topbarRef.current;
-      const button = quickSettingsButtonRef.current;
-      const menu = quickSettingsMenuRef.current;
-      if (!topbar || !button || !menu) return;
-      const topbarRect = topbar.getBoundingClientRect();
+    const bar = topbarRef.current;
+    if (!bar) return;
+    // 面板真正的挂载由 usePresenceTransition 的 rendered 决定，它比 open 晚一帧，
+    // 所以依赖里必须带上 rendered，否则面板挂载的那次提交不会再触发这里。
+    const anchors = [
+      { open: multiAccountOpen, rendered: multiAccountPresence.rendered, button: multiAccountButtonRef.current, panel: multiAccountPanelRef.current },
+      { open: configProfilesOpen, rendered: configProfilesPresence.rendered, button: configProfilesButtonRef.current, panel: configProfilesMenuRef.current },
+      { open: quickSettingsOpen, rendered: quickSettingsPresence.rendered, button: quickSettingsButtonRef.current, panel: quickSettingsMenuRef.current },
+    ];
+    const active =
+      anchors.find((item) => item.open && item.button && item.panel) ??
+      anchors.find((item) => item.rendered && item.button && item.panel);
+    if (!active) return;
+    const button = active.button;
+    const panel = active.panel;
+    if (!button || !panel) return;
+
+    function place() {
+      if (!bar || !button || !panel) return;
+      const topbarRect = bar.getBoundingClientRect();
       const buttonRect = button.getBoundingClientRect();
-      const menuWidth = Math.min(340, Math.max(200, menu.getBoundingClientRect().width || 340));
-      const preferred = buttonRect.right - topbarRect.left - menuWidth;
-      setQuickSettingsMenuLeft(Math.max(8, Math.min(preferred, topbarRect.width - menuWidth - 8)));
-    };
-    measure();
-    const frame = window.requestAnimationFrame(() => {
-      measure();
-      quickSettingsMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
-    });
-    window.addEventListener('resize', measure);
+      const panelWidth = panel.offsetWidth;
+      if (!panelWidth) return;
+      // .app-main-layer 带 zoom（UI 缩放），getBoundingClientRect 给的是视口 CSS 像素，
+      // 而 offsetWidth / CSS 的 left 用的是子树的布局像素，差一个 zoom 系数，必须换算，
+      // 否则 UI 缩放不是 1 时面板会整体偏移（zoom 越小偏得越多）。
+      const zoom = bar.clientWidth ? topbarRect.width / bar.clientWidth : 1;
+      const buttonRight = (buttonRect.right - topbarRect.left) / zoom;
+      const buttonBottom = (buttonRect.bottom - topbarRect.top) / zoom;
+      const topbarWidth = topbarRect.width / zoom;
+      const edge = 8;
+      const gap = 6;
+      const rawLeft = buttonRight - panelWidth;
+      const maxLeft = Math.max(edge, topbarWidth - panelWidth - edge);
+      const left = Math.max(edge, Math.min(rawLeft, maxLeft));
+      const top = Math.max(0, buttonBottom + gap);
+      const height = Math.max(260, Math.min(720, (window.innerHeight - topbarRect.top) / zoom - top - 10));
+      bar.style.setProperty('--topbar-panel-left', `${Math.round(left)}px`);
+      bar.style.setProperty('--topbar-panel-top', `${Math.round(top)}px`);
+      bar.style.setProperty('--topbar-panel-height', `${Math.round(height)}px`);
+    }
+
+    place();
+    const frame = window.requestAnimationFrame(place);
+    window.addEventListener('resize', place);
     return () => {
       window.cancelAnimationFrame(frame);
-      window.removeEventListener('resize', measure);
+      window.removeEventListener('resize', place);
+      bar.style.removeProperty('--topbar-panel-left');
+      bar.style.removeProperty('--topbar-panel-top');
+      bar.style.removeProperty('--topbar-panel-height');
     };
-  }, [quickSettingsOpen, visibleActionOrder]);
+  }, [
+    quickSettingsOpen,
+    configProfilesOpen,
+    multiAccountOpen,
+    quickSettingsPresence.rendered,
+    configProfilesPresence.rendered,
+    multiAccountPresence.rendered,
+    visibleActionOrder,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!quickSettingsOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      quickSettingsMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [quickSettingsOpen]);
 
   useLayoutEffect(() => {
     if (!configProfilesOpen) return;
-    const measure = () => {
-      const topbar = topbarRef.current;
-      const button = configProfilesButtonRef.current;
-      const menu = configProfilesMenuRef.current;
-      if (!topbar || !button || !menu) return;
-      const topbarRect = topbar.getBoundingClientRect();
-      const buttonRect = button.getBoundingClientRect();
-      const menuWidth = Math.min(430, Math.max(260, menu.getBoundingClientRect().width || 430));
-      const preferred = buttonRect.right - topbarRect.left - menuWidth;
-      setConfigProfilesMenuLeft(Math.max(8, Math.min(preferred, topbarRect.width - menuWidth - 8)));
-    };
-    measure();
     const frame = window.requestAnimationFrame(() => {
-      measure();
       configProfilesMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
     });
-    window.addEventListener('resize', measure);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener('resize', measure);
-    };
-  }, [configProfilesOpen, visibleActionOrder]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [configProfilesOpen]);
 
   function closeQuickSettings(restoreFocus = false) {
     setQuickSettingsOpen(false);
@@ -315,6 +358,18 @@ export function TopBar({
       window.removeEventListener('keydown', closeFromKeyboard, true);
     };
   }, [configProfilesOpen]);
+
+  // 多账号中心改成下拉面板后不再有全屏遮罩，点面板外面要能关掉
+  useEffect(() => {
+    if (!multiAccountOpen) return;
+    function closeFromOutside(event: globalThis.PointerEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.multi-account-dialog, [data-window-control-id="multiAccount"], [data-window-control-id="settingsQuick"], [data-window-control-id="profiles"], .ui-dialog-backdrop')) return;
+      setMultiAccountOpen(false);
+    }
+    window.addEventListener('pointerdown', closeFromOutside, true);
+    return () => window.removeEventListener('pointerdown', closeFromOutside, true);
+  }, [multiAccountOpen]);
 
   useEffect(() => {
     const alwaysOnTop = Boolean(behavior.alwaysOnTop);
@@ -363,6 +418,19 @@ export function TopBar({
   function sortGroupsByName(event?: MouseEvent<HTMLButtonElement>) {
     event?.preventDefault();
     event?.stopPropagation();
+    const savedOrder = display.sortGroupsSavedOrder;
+    if (savedOrder) {
+      // 还原：按保存的顺序排（跳过已删除的父目录），保存之后新增的父目录接在后面
+      const savedSet = new Set(savedOrder);
+      reorderGroups([
+        ...savedOrder.filter((id) => ids.includes(id)),
+        ...ids.filter((id) => !savedSet.has(id)),
+      ]);
+      updateDisplay({ sortGroupsSavedOrder: null });
+      return;
+    }
+    // 按字母排列：先把当前顺序存起来，再排序
+    updateDisplay({ sortGroupsSavedOrder: ids });
     const sortedIds = groups
       .slice()
       .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }))
@@ -382,10 +450,11 @@ export function TopBar({
     search: { id: 'search', title: '全局命令面板（Ctrl+K）', icon: <Search size={16} />, onClick: onOpenGlobalSearch },
     transfer: { id: 'transfer', title: '文件中转站', icon: <Archive size={16} />, onClick: onOpenTransferStation },
     image: { id: 'image', title: '图片浏览', icon: <Images size={16} />, onClick: onOpenImageBrowser },
-    profiles: { id: 'profiles', title: '多配置', icon: <Files size={16} />, className: configProfilesOpen ? 'config-profiles-active' : '', buttonRef: (node) => { configProfilesButtonRef.current = node; }, ariaExpanded: configProfilesOpen, ariaHaspopup: 'menu', ariaControls: 'topbar-config-profiles-menu', onClick: () => { setQuickSettingsOpen(false); setConfigProfilesOpen((open) => !open); } },
-    sortGroups: { id: 'sortGroups', title: '父目录按字母排列', icon: <ArrowDownAZ size={16} />, onClick: sortGroupsByName },
+    profiles: { id: 'profiles', title: '多配置', icon: <Files size={16} />, className: configProfilesOpen ? 'config-profiles-active' : '', buttonRef: (node) => { configProfilesButtonRef.current = node; }, ariaExpanded: configProfilesOpen, ariaHaspopup: 'menu', ariaControls: 'topbar-config-profiles-menu', onClick: () => { setMultiAccountOpen(false); setQuickSettingsOpen(false); setConfigProfilesOpen((open) => !open); } },
+    multiAccount: { id: 'multiAccount', title: '多账号批量生成', icon: <UsersRound size={16} />, className: multiAccountOpen ? 'multi-account-active' : '', buttonRef: (node) => { multiAccountButtonRef.current = node; }, ariaExpanded: multiAccountOpen, onClick: () => { setQuickSettingsOpen(false); setConfigProfilesOpen(false); setMultiAccountOpen((open) => !open); } },
+    sortGroups: { id: 'sortGroups', title: display.sortGroupsSavedOrder ? '还原排列顺序' : '父目录按字母排列', icon: display.sortGroupsSavedOrder ? <RotateCcw size={16} /> : <ArrowDownAZ size={16} />, onClick: sortGroupsByName },
     add: { id: 'add', title: '新增父目录', icon: <Plus size={16} />, onClick: () => addGroup('新分组') },
-    settingsQuick: { id: 'settingsQuick', title: '常用设置快捷入口', icon: <SlidersHorizontal size={16} />, className: quickSettingsOpen ? 'quick-settings-active' : '', buttonRef: (node) => { quickSettingsButtonRef.current = node; }, ariaExpanded: quickSettingsOpen, ariaHaspopup: 'menu', ariaControls: 'topbar-quick-settings-menu', onClick: () => { setConfigProfilesOpen(false); if (quickSettingsOpen) closeQuickSettings(false); else setQuickSettingsOpen(true); } },
+    settingsQuick: { id: 'settingsQuick', title: '常用设置快捷入口', icon: <SlidersHorizontal size={16} />, className: quickSettingsOpen ? 'quick-settings-active' : '', buttonRef: (node) => { quickSettingsButtonRef.current = node; }, ariaExpanded: quickSettingsOpen, ariaHaspopup: 'menu', ariaControls: 'topbar-quick-settings-menu', onClick: () => { setMultiAccountOpen(false); setConfigProfilesOpen(false); if (quickSettingsOpen) closeQuickSettings(false); else setQuickSettingsOpen(true); } },
     settings: { id: 'settings', title: '设置', icon: <Settings size={16} />, onClick: () => setSettingsOpen(true) },
     pin: { id: 'pin', title: behavior.alwaysOnTop ? '取消置顶' : '窗口置顶', icon: behavior.alwaysOnTop ? <PinOff size={16} /> : <Pin size={16} />, className: behavior.alwaysOnTop ? 'window-pin-active' : '', onClick: toggleAlwaysOnTop },
     minimize: { id: 'minimize', title: '最小化', icon: <Minus size={16} />, onClick: minimizeWindow },
@@ -414,22 +483,23 @@ export function TopBar({
           </div>
         </SortableContext>
       </DndContext>
-      {quickSettingsOpen && (
+      {quickSettingsPresence.rendered && (
         <QuickSettingsMenu
           ref={quickSettingsMenuRef}
-          left={quickSettingsMenuLeft}
           onClose={closeQuickSettings}
           reduceMotion={experience.reduceMotion}
+          closing={quickSettingsPresence.closing}
         />
       )}
-      {configProfilesOpen && (
+      {configProfilesPresence.rendered && (
         <ConfigProfilesMenu
           ref={configProfilesMenuRef}
-          left={configProfilesMenuLeft}
           onClose={closeConfigProfiles}
           reduceMotion={experience.reduceMotion}
+          closing={configProfilesPresence.closing}
         />
       )}
+      {multiAccountPresence.rendered && <MultiAccountDialog closing={multiAccountPresence.closing} panelRef={(node) => { multiAccountPanelRef.current = node; }} onClose={() => setMultiAccountOpen(false)} />}
     </header>
   );
 }

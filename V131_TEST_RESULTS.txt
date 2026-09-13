@@ -1,0 +1,16 @@
+V131 TEST RESULTS
+=================
+Version: 0.1.131
+
+PASS - package.json version = 0.1.131
+PASS - package-lock.json root version = 0.1.131
+PASS - src-tauri/Cargo.toml version = 0.1.131
+PASS - src-tauri/tauri.conf.json version = 0.1.131
+PASS - TypeScript/TSX syntax transpile check for all V131-modified source files
+PASS - npm run verify:source-fixes
+PASS - modernWinUI3Mode has type/default/normalizer/persisted display-store path
+PASS - settings checkbox visuals use animated slider switches
+PASS - global command/settings action area uses slider-style action controls
+PASS - command rows with settingTab support blank-row jump navigation
+
+NOTE - Full npm typecheck/test/build could not be completed in this sandbox because npm registry DNS access is unavailable (EAI_AGAIN) and the uploaded source archive does not contain node_modules. The V131-modified TS/TSX files were syntax-transpiled with the installed TypeScript compiler and the repository source-fix verifier passed.

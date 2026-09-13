@@ -7,6 +7,7 @@ import { listen } from '@tauri-apps/api/event';
 export type StableEdgeDockOptions = {
   enabled: boolean;
   dockAutoHide?: boolean;
+  ignoreTaskbar?: boolean;
   paused?: boolean;
   hideDelayMs: number;
   stripSize?: number;
@@ -34,6 +35,7 @@ type NativeEdgeOptions = {
   animationMs: number;
   animationStyle: string;
   dockAutoHide: boolean;
+  ignoreTaskbar: boolean;
   autoEdgeHide: boolean;
   autoEdgeBounce: boolean;
   autoEdgeSnapBack: boolean;
@@ -80,8 +82,10 @@ function setDockMode(mode: 'native' | 'disabled') {
 }
 
 function hasBlockingOverlay() {
-  return Boolean(document.querySelector('.menu-surface, .modal-backdrop, .edit-dialog, .settings-floating-layer, .image-browser-panel'));
+  return document.body.dataset.uiDialogOpen === 'true'
+    || Boolean(document.querySelector('.menu-surface, .modal-backdrop, .edit-dialog, .settings-floating-layer, .image-browser-panel, .ui-dialog-backdrop'));
 }
+
 
 function buildEdgeOptions(opts: StableEdgeDockOptions, override: Partial<NativeEdgeOptions> = {}): NativeEdgeOptions {
   return {
@@ -93,6 +97,7 @@ function buildEdgeOptions(opts: StableEdgeDockOptions, override: Partial<NativeE
     animationMs: opts.animationMs ?? 90,
     animationStyle: opts.animationStyle ?? 'animate-window',
     dockAutoHide: opts.dockAutoHide ?? opts.enabled,
+    ignoreTaskbar: opts.ignoreTaskbar ?? false,
     autoEdgeHide: opts.autoEdgeHide ?? false,
     autoEdgeBounce: opts.autoEdgeBounce ?? true,
     autoEdgeSnapBack: opts.autoEdgeSnapBack ?? false,
@@ -150,7 +155,8 @@ export function useStableEdgeDock(options: StableEdgeDockOptions) {
     observer.observe(document.body, {
       childList: true,
       subtree: false,
-      attributes: false,
+      attributes: true,
+      attributeFilter: ['data-ui-dialog-open'],
     });
 
     return () => {
@@ -166,6 +172,7 @@ export function useStableEdgeDock(options: StableEdgeDockOptions) {
   }, [
     options.enabled,
     options.dockAutoHide,
+    options.ignoreTaskbar,
     options.paused,
     options.hideDelayMs,
     options.stripSize,

@@ -7,6 +7,7 @@ import type {
   FaviconProviderId,
   FontApplyArea,
   Group,
+  MultiAccountSettings,
   NoteSettings,
   RainbowSettings,
   ShortcutItem,
@@ -24,11 +25,13 @@ import {
   DEFAULT_WINDOW_CONTROL_ORDER,
   defaultBehavior,
   defaultDisplay,
+  defaultMultiAccount,
   defaultNotes,
   defaultRainbow,
 } from './defaults';
 import { normalizeUiScale } from '../../lib/uiScale';
 import { normalizeBrowserRouteOverride } from '../../lib/browserRouter';
+import { normalizeItemClickAction } from '../../lib/itemClickActions';
 
 function normalizeWindowControlOrder(order?: unknown): WindowControlId[] {
   const allowed = new Set<WindowControlId>(DEFAULT_WINDOW_CONTROL_ORDER);
@@ -38,7 +41,11 @@ function normalizeWindowControlOrder(order?: unknown): WindowControlId[] {
     if (allowed.has(raw as WindowControlId) && !next.includes(raw as WindowControlId)) next.push(raw as WindowControlId);
   }
   for (const id of DEFAULT_WINDOW_CONTROL_ORDER) {
-    if (!next.includes(id)) next.push(id);
+    if (next.includes(id)) continue;
+    const defaultIndex = DEFAULT_WINDOW_CONTROL_ORDER.indexOf(id);
+    const previous = DEFAULT_WINDOW_CONTROL_ORDER.slice(0, defaultIndex).reverse().find((candidate) => next.includes(candidate));
+    if (previous) next.splice(next.indexOf(previous) + 1, 0, id);
+    else next.push(id);
   }
   return next;
 }
@@ -67,6 +74,69 @@ function normalizeWindowControlHidden(hidden?: unknown): WindowControlId[] {
   return next;
 }
 
+function normalizeSortGroupsSavedOrder(value?: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const next = value.filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+  return next.length ? next : null;
+}
+
+export function normalizeMultiAccountSettings(value?: unknown): MultiAccountSettings {
+  const raw = value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Partial<MultiAccountSettings> : {};
+  const separator = typeof raw.separator === 'string' ? raw.separator.slice(0, 12) : defaultMultiAccount.separator;
+  const targetMode = raw.targetMode === 'selected' || raw.targetMode === 'new' ? raw.targetMode : 'current';
+  const nameOrder = raw.nameOrder === 'profile-prefix' || raw.nameOrder === 'profile-only' ? raw.nameOrder : 'prefix-profile';
+  const selectedTargetKeys = Array.isArray(raw.selectedTargetKeys)
+    ? raw.selectedTargetKeys.filter((value): value is string => typeof value === 'string' && value.length > 0).slice(0, 512)
+    : [];
+  const url = typeof raw.url === 'string' ? raw.url.trim().slice(0, 8192) : '';
+  const urlsText = typeof raw.urlsText === 'string' && raw.urlsText.trim()
+    ? raw.urlsText.slice(0, 65536)
+    : url;
+  const templates = Array.isArray(raw.templates) ? raw.templates.slice(0, 128).map((entry, index) => {
+    const template = entry !== null && typeof entry === 'object' && !Array.isArray(entry) ? entry as any : {};
+    const templateTargetMode = template.targetMode === 'selected' || template.targetMode === 'new' ? template.targetMode : 'current';
+    const templateNameOrder = template.nameOrder === 'profile-prefix' || template.nameOrder === 'profile-only' ? template.nameOrder : 'prefix-profile';
+    return {
+      id: typeof template.id === 'string' && template.id ? template.id.slice(0, 240) : `multi-template-${index + 1}`,
+      name: typeof template.name === 'string' && template.name.trim() ? template.name.trim().slice(0, 240) : `模板 ${index + 1}`,
+      urlsText: typeof template.urlsText === 'string' ? template.urlsText.slice(0, 65536) : '',
+      batchName: typeof template.batchName === 'string' ? template.batchName.trim().slice(0, 240) : '',
+      projectPrefix: typeof template.projectPrefix === 'string' ? template.projectPrefix.trim().slice(0, 240) : '',
+      separator: typeof template.separator === 'string' ? template.separator.slice(0, 12) : ' ',
+      nameOrder: templateNameOrder,
+      lettersOnlyProfileName: template.lettersOnlyProfileName !== false,
+      includeBrowserName: template.includeBrowserName === true,
+      targetMode: templateTargetMode,
+      selectedDirectoryId: typeof template.selectedDirectoryId === 'string' ? template.selectedDirectoryId.slice(0, 240) : '',
+      newDirectoryName: typeof template.newDirectoryName === 'string' && template.newDirectoryName.trim() ? template.newDirectoryName.trim().slice(0, 240) : defaultMultiAccount.newDirectoryName,
+      selectedTargetKeys: Array.isArray(template.selectedTargetKeys) ? template.selectedTargetKeys.filter((key: unknown): key is string => typeof key === 'string' && Boolean(key)).slice(0, 512) : [],
+      skipDuplicates: template.skipDuplicates !== false,
+      autoFetchIcon: template.autoFetchIcon !== false,
+      pinGenerated: template.pinGenerated === true,
+      activateTargetAfterCreate: template.activateTargetAfterCreate !== false,
+    };
+  }) : [];
+  return {
+    url,
+    urlsText,
+    batchName: typeof raw.batchName === 'string' ? raw.batchName.trim().slice(0, 240) : '',
+    projectPrefix: typeof raw.projectPrefix === 'string' ? raw.projectPrefix.trim().slice(0, 240) : '',
+    separator,
+    nameOrder,
+    lettersOnlyProfileName: raw.lettersOnlyProfileName !== false,
+    includeBrowserName: raw.includeBrowserName === true,
+    targetMode,
+    selectedDirectoryId: typeof raw.selectedDirectoryId === 'string' ? raw.selectedDirectoryId.slice(0, 240) : '',
+    newDirectoryName: typeof raw.newDirectoryName === 'string' && raw.newDirectoryName.trim() ? raw.newDirectoryName.trim().slice(0, 240) : defaultMultiAccount.newDirectoryName,
+    selectedTargetKeys,
+    skipDuplicates: raw.skipDuplicates !== false,
+    autoFetchIcon: raw.autoFetchIcon !== false,
+    pinGenerated: raw.pinGenerated === true,
+    activateTargetAfterCreate: raw.activateTargetAfterCreate !== false,
+    templates,
+  };
+}
+
 export function normalizeBehavior(value?: unknown): BehaviorSettings {
   const settings = asRecord(value) as Partial<BehaviorSettings>;
   const merged = { ...defaultBehavior, ...settings };
@@ -75,6 +145,7 @@ export function normalizeBehavior(value?: unknown): BehaviorSettings {
     ...merged,
     launchMode: merged.launchMode === 'single' ? 'single' : 'double',
     urlOpenMode: merged.urlOpenMode === 'foreground-browser' || merged.urlOpenMode === 'specified' ? merged.urlOpenMode : 'default',
+    edgeIgnoreTaskbar: merged.edgeIgnoreTaskbar === true,
     edgeHideDelaySeconds: Math.max(0, Math.min(10, finiteOr(merged.edgeHideDelaySeconds, 0))),
     edgeAnimationMs: Math.max(0, Math.min(1000, Math.round(finiteOr(merged.edgeAnimationMs, defaultBehavior.edgeAnimationMs)))),
     autoEdgeSnapBack: Boolean((merged as any).autoEdgeSnapBack),
@@ -258,6 +329,18 @@ export function normalizeShortcutItem(value: unknown, fallbackOrder = 0, usedIds
   const launchCount = Math.max(0, Math.round(finiteNumber(raw.launchCount, 0)));
   const lastLaunchedAtRaw = finiteNumber(raw.lastLaunchedAt, 0);
   const browserRoute = normalizeBrowserRouteOverride(raw.browserRoute);
+  const singleClickAction = normalizeItemClickAction(raw.singleClickAction);
+  const doubleClickAction = normalizeItemClickAction(raw.doubleClickAction);
+  const rawBatch = asRecord(raw.multiAccountBatch);
+  const batchId = cleanText(rawBatch.batchId, '', 240);
+  const multiAccountBatch = batchId ? {
+    batchId,
+    batchName: cleanText(rawBatch.batchName, '多账号批次', 240),
+    createdAt: Math.max(0, finiteNumber(rawBatch.createdAt, 0)),
+    sourceUrl: cleanText(rawBatch.sourceUrl, path, 8192),
+    ...(cleanText(rawBatch.sourceLabel, '', 240) ? { sourceLabel: cleanText(rawBatch.sourceLabel, '', 240) } : {}),
+    targetKey: cleanText(rawBatch.targetKey, '', 512),
+  } : undefined;
   return {
     id: normalizedId(raw.id, 'item', usedIds),
     name,
@@ -270,6 +353,9 @@ export function normalizeShortcutItem(value: unknown, fallbackOrder = 0, usedIds
     launchCount,
     ...(lastLaunchedAtRaw > 0 ? { lastLaunchedAt: lastLaunchedAtRaw } : {}),
     ...(browserRoute ? { browserRoute } : {}),
+    ...(singleClickAction ? { singleClickAction } : {}),
+    ...(doubleClickAction ? { doubleClickAction } : {}),
+    ...(multiAccountBatch ? { multiAccountBatch } : {}),
   };
 }
 
@@ -359,12 +445,17 @@ export function normalizeGroups(groups: unknown, fallbackGroups?: unknown): Grou
     );
     const color = normalizeGroupColor(raw.color);
     const browserRoute = normalizeBrowserRouteOverride(raw.browserRoute);
+    const sidebarColumnsRaw = Number(raw.sidebarColumns);
+    const sidebarColumns = Number.isFinite(sidebarColumnsRaw)
+      ? Math.max(1, Math.min(6, Math.round(sidebarColumnsRaw)))
+      : undefined;
     return {
       id: normalizedId(raw.id, 'group', usedGroupIds),
       name: cleanText(raw.name ?? raw.title ?? raw.label, `分组 ${groupIndex + 1}`, 240),
       order: finiteNumber(raw.order, groupIndex),
       ...(color ? { color } : {}),
       ...(browserRoute ? { browserRoute } : {}),
+      ...(sidebarColumns ? { sidebarColumns } : {}),
       directories,
     } satisfies Group;
   });
@@ -410,8 +501,10 @@ export function normalizeDisplay(value?: unknown): DisplaySettings {
   return {
     ...defaultDisplay,
     ...(display ?? {}),
+    modernWinUI3Mode: display?.modernWinUI3Mode === true,
     fontFamily: normalizeFontFamily(display?.fontFamily),
     fontApplyAreas: normalizeFontApplyAreas(display?.fontApplyAreas),
+    showFullItemName: display?.showFullItemName === true,
     uiScale: normalizeUiScale(legacyScale ?? mainUiScale),
     mainUiScale: normalizeUiScale(mainUiScale),
     settingsUiScale: normalizeUiScale(settingsUiScale),
@@ -428,9 +521,13 @@ export function normalizeDisplay(value?: unknown): DisplaySettings {
     topTabFontSize: clampDisplayNumber(display?.topTabFontSize, 10, 22, defaultDisplay.topTabFontSize),
     topTabBorderWidth: clampDisplayNumber(display?.topTabBorderWidth, 0, 4, defaultDisplay.topTabBorderWidth),
     topTabColorStrength: clampDisplayNumber(display?.topTabColorStrength, 0.04, 0.55, defaultDisplay.topTabColorStrength),
+    sidebarColumns: Math.round(clampDisplayNumber(display?.sidebarColumns, 1, 6, defaultDisplay.sidebarColumns)),
+    sidebarItemLines: Math.round(clampDisplayNumber(display?.sidebarItemLines, 1, 4, defaultDisplay.sidebarItemLines)),
+    sidebarShowFullNames: display?.sidebarShowFullNames === true,
     windowControlStyle: (['round', 'square', 'bar', 'pad'] as const).includes((display?.windowControlStyle ?? defaultDisplay.windowControlStyle) as any) ? (display?.windowControlStyle ?? defaultDisplay.windowControlStyle) : defaultDisplay.windowControlStyle,
     windowControlOrder: normalizeWindowControlOrder(display?.windowControlOrder),
     windowControlHidden: normalizeWindowControlHidden((display as any)?.windowControlHidden),
+    sortGroupsSavedOrder: normalizeSortGroupsSavedOrder((display as any)?.sortGroupsSavedOrder),
     backgroundEnabled: display?.backgroundEnabled === true && Boolean(backgroundImage),
     backgroundImage,
     backgroundMediaKind: (['auto', 'image', 'video'] as const).includes((display?.backgroundMediaKind ?? defaultDisplay.backgroundMediaKind) as any) ? (display?.backgroundMediaKind ?? defaultDisplay.backgroundMediaKind) : defaultDisplay.backgroundMediaKind,

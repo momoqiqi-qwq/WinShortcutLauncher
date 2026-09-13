@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { Check, Copy, Crop, Edit2, ExternalLink, FolderOpen, ImagePlus, Plus, Settings, Trash2, X } from 'lucide-react';
 import { DEFAULT_IMAGE_BROWSER_SETTINGS, type ImageBrowserGroup, type ImageBrowserItem, type ImageBrowserSettings } from '../../utils/v16Types';
 import './ImageBrowserPanel.css';
 import { uiAlert, uiConfirm, uiPrompt } from '../../lib/uiDialog';
+import { NATIVE_EXTERNAL_DRAG_STATE_EVENT, NATIVE_EXTERNAL_DROP_EVENT, type NativeExternalDragStatePayload, type NativeExternalDropPayload } from '../../lib/nativeExternalDrop';
+import { usePresenceTransition } from '../../hooks/usePresenceTransition';
+import { useAppStore } from '../../stores/appStore';
 
 export interface ImageBrowserPanelProps {
   openPanel: boolean;
@@ -237,6 +241,8 @@ function Thumbnail({ item, selected, width, settings, onSelect }: { item: ImageB
 
 export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, onClose, onChange, onUpdateSettings }: ImageBrowserPanelProps) {
   const settings = { ...DEFAULT_IMAGE_BROWSER_SETTINGS, ...settingsPatch } as ImageBrowserSettings;
+  const reduceMotion = useAppStore((state) => state.experience.reduceMotion);
+  const presence = usePresenceTransition(openPanel && settings.enabled, reduceMotion ? 0 : 240);
   const groups = useMemo(() => normalizeGroups(settings), [settings.groups]);
   const activeGroupId = groups.some((group) => group.id === settings.activeGroupId) ? settings.activeGroupId : groups[0].id;
   const activeGroup = groups.find((group) => group.id === activeGroupId) ?? groups[0];
@@ -276,7 +282,11 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
 
   useEffect(() => {
     if (!openPanel || !settings.acceptExternalDrops) return;
-    let unlisten: undefined | (() => void);
+    let disposed = false;
+    let unlistenWebview: undefined | (() => void);
+    let unlistenNativeDrop: undefined | (() => void);
+    let unlistenNativeState: undefined | (() => void);
+
     getCurrentWebview().onDragDropEvent((event) => {
       const payload: any = event.payload;
       if (payload.type === 'enter' || payload.type === 'over') setDragOver(true);
@@ -286,11 +296,36 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
         const droppedPaths: string[] = payload.paths || [];
         if (droppedPaths.length) onChange(mergeImages(items, droppedPaths, activeGroupId));
       }
-    }).then((fn) => { unlisten = fn; });
-    return () => { unlisten?.(); };
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlistenWebview = fn;
+    });
+
+    void listen<NativeExternalDragStatePayload>(NATIVE_EXTERNAL_DRAG_STATE_EVENT, ({ payload }) => {
+      setDragOver(Boolean(payload.hovering));
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlistenNativeState = fn;
+    });
+
+    void listen<NativeExternalDropPayload>(NATIVE_EXTERNAL_DROP_EVENT, ({ payload }) => {
+      setDragOver(false);
+      const droppedPaths = (payload.paths || []).filter(Boolean);
+      if (droppedPaths.length) onChange(mergeImages(items, droppedPaths, activeGroupId));
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlistenNativeDrop = fn;
+    });
+
+    return () => {
+      disposed = true;
+      unlistenWebview?.();
+      unlistenNativeDrop?.();
+      unlistenNativeState?.();
+    };
   }, [openPanel, settings.acceptExternalDrops, items, onChange, activeGroupId]);
 
-  if (!openPanel || !settings.enabled) return null;
+  if (!presence.rendered) return null;
 
   function updateSettings(patch: Partial<ImageBrowserSettings>) {
     onUpdateSettings?.(patch);
@@ -626,7 +661,8 @@ export function ImageBrowserPanel({ openPanel, items, settings: settingsPatch, o
 
   return (
     <aside
-      className={`image-browser-panel ${dragOver ? 'drag-over' : ''}`}
+      className={`image-browser-panel ${dragOver ? 'drag-over' : ''} ${presence.closing ? 'is-closing' : ''}`}
+      aria-hidden={presence.closing || undefined}
       style={panelStyle}
       data-no-drag
       onMouseDown={(event) => event.stopPropagation()}

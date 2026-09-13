@@ -244,6 +244,7 @@ button:disabled,
 }
 
 .settings-content > .settings-section,
+.settings-tab-pane > .settings-section,
 .settings-category-grid > .settings-section,
 .narrow-section {
   max-width: 720px;
@@ -253,7 +254,8 @@ button:disabled,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.settings-content > .settings-section {
+.settings-content > .settings-section,
+.settings-tab-pane > .settings-section {
   margin: 0 auto;
 }
 
@@ -293,6 +295,7 @@ button:disabled,
   align-items: stretch;
   justify-content: stretch;
   overflow: visible;
+  animation: settings-layer-enter 180ms ease-out backwards;
 }
 
 .floating-settings-panel {
@@ -306,6 +309,43 @@ button:disabled,
   pointer-events: auto;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  transform-origin: 50% 18%;
+  will-change: transform, opacity;
+  animation: settings-panel-enter 280ms cubic-bezier(.16, 1, .3, 1) backwards;
+}
+
+@keyframes settings-layer-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes settings-panel-enter {
+  from { opacity: 0; transform: translate3d(0, -10px, 0) scale(.975); }
+  58% { opacity: 1; }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+.settings-reduce-motion,
+.app-shell.reduce-motion .settings-floating-layer,
+.app-shell.reduce-motion .floating-settings-panel {
+  animation: none;
+}
+
+.settings-floating-layer.is-closing {
+  pointer-events: none;
+  animation: settings-layer-exit 220ms ease-in both;
+}
+
+.floating-settings-panel.is-closing {
+  animation: settings-panel-exit 220ms cubic-bezier(.4, 0, 1, 1) both;
+}
+
+@keyframes settings-layer-exit {
+  to { opacity: 0; }
+}
+
+@keyframes settings-panel-exit {
+  to { opacity: 0; transform: translate3d(0, -8px, 0) scale(.98); }
 }
 
 .settings-drag-header {
@@ -2259,6 +2299,8 @@ button:disabled,
 
 .settings-content > .settings-section,
 .settings-content > .settings-card,
+.settings-tab-pane > .settings-section,
+.settings-tab-pane > .settings-card,
 .settings-category-grid > .settings-section,
 .settings-category-grid > .settings-card {
   width: min(720px, 100%);
@@ -2746,4 +2788,100 @@ button:disabled,
 .floating-settings-panel:not(.settings-panel-adaptive) .settings-drag-header {
   cursor: move;
   user-select: none;
+}
+
+/* v131: checkbox-style settings now use animated slider switches. */
+.settings-panel input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 0 0 auto;
+  width: 38px;
+  min-width: 38px;
+  height: 20px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, var(--text) 14%);
+  border-radius: 999px;
+  outline: none;
+  background-color: color-mix(in srgb, var(--panel-2) 88%, var(--bg));
+  background-image: radial-gradient(circle, #fff 0 6px, rgba(0, 0, 0, .16) 6.4px, transparent 7px);
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+  background-position: 1px 50%;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 4%, transparent);
+  cursor: pointer;
+  transition:
+    background-position 180ms cubic-bezier(.2, .82, .2, 1),
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 120ms ease;
+}
+
+.settings-panel input[type="checkbox"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
+}
+
+.settings-panel input[type="checkbox"]:active:not(:disabled) {
+  transform: scale(.96);
+}
+
+.settings-panel input[type="checkbox"]:checked {
+  border-color: color-mix(in srgb, var(--accent) 82%, var(--border));
+  background-color: var(--accent);
+  background-position: 19px 50%;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 12%, transparent);
+}
+
+.settings-panel input[type="checkbox"]:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 72%);
+}
+
+.settings-panel input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+
+/* v131: slightly smoother settings interactions without changing behavior. */
+.experience-toggle-card,
+.settings-collapse-header,
+.settings-nav > button,
+.settings-panel .btn-primary,
+.settings-panel .btn-secondary,
+.settings-panel .btn-danger,
+.settings-panel .icon-button {
+  transition:
+    transform 150ms cubic-bezier(.2, .82, .2, 1),
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 180ms ease;
+}
+
+.experience-toggle-card:active,
+.settings-panel .btn-primary:active,
+.settings-panel .btn-secondary:active,
+.settings-panel .btn-danger:active,
+.settings-panel .icon-button:active {
+  transform: scale(.985);
+}
+
+.settings-collapse-content {
+  transform-origin: top center;
+  animation: v131-settings-reveal 150ms cubic-bezier(.2, .82, .2, 1);
+}
+
+@keyframes v131-settings-reveal {
+  from { opacity: 0; transform: translateY(-3px) scaleY(.985); }
+  to { opacity: 1; transform: none; }
+}
+
+/* v132: 设置分类切换过渡；可在“体验 → 设置分类切换动画”中关闭，减少动画时不生效。 */
+.settings-tab-pane.animate {
+  animation: settings-tab-enter 190ms cubic-bezier(.2, .82, .2, 1);
+}
+
+@keyframes settings-tab-enter {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: none; }
 }

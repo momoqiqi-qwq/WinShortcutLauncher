@@ -9,13 +9,15 @@ import { launchShortcutItem } from '../../lib/launchShortcut';
 import { buildPaletteEntries, type PaletteEntry } from '../../lib/commandPalette';
 import { requestSettingsTab } from '../../lib/settingsCatalog';
 import { showLauncherNotice } from '../../lib/notify';
+import { usePresenceTransition } from '../../hooks/usePresenceTransition';
 
 interface GlobalSearchProps {
   open: boolean;
   onClose: () => void;
+  closing?: boolean;
 }
 
-function GlobalSearchContent({ open, onClose }: GlobalSearchProps) {
+function GlobalSearchContent({ open, onClose, closing }: GlobalSearchProps) {
   const groups = useAppStore((state) => state.groups);
   const settings = useAppStore((state) => state.globalSearch);
   const commandUsage = useAppStore((state) => state.commandUsage);
@@ -59,6 +61,13 @@ function GlobalSearchContent({ open, onClose }: GlobalSearchProps) {
 
   async function launchItem(item: ShortcutItem) {
     await launchShortcutItem(item, false);
+  }
+
+  async function navigateEntry(entry: PaletteEntry) {
+    if (!entry.settingTab) return;
+    openSettings(entry.settingTab);
+    recordCommandUsage(entry.usageKey);
+    onClose();
   }
 
   async function executeEntry(entry: PaletteEntry, alternate = false) {
@@ -110,11 +119,14 @@ function GlobalSearchContent({ open, onClose }: GlobalSearchProps) {
   return (
     <GlobalSearchModal
       open={open}
+      closing={closing}
       entries={entries}
       usage={commandUsage}
       settings={settings}
       onClose={onClose}
       onExecute={executeEntry}
+      onNavigate={navigateEntry}
+      getActionSwitchState={(entry) => entry.id === 'command:toggle-pin' ? behavior.alwaysOnTop : false}
     />
   );
 }
@@ -147,10 +159,10 @@ class GlobalSearchErrorBoundary extends Component<GlobalSearchErrorBoundaryProps
 
   render() {
     if (!this.state.error) return this.props.children;
-    if (!this.props.open) return null;
+    if (!this.props.open && !this.props.closing) return null;
     return (
-      <div className="global-search-backdrop">
-        <div className="global-search-modal global-search-error-panel" role="alertdialog" aria-modal="true" aria-label="全局命令面板错误">
+      <div className={`global-search-backdrop ${this.props.closing ? 'is-closing' : ''}`}>
+        <div className={`global-search-modal global-search-error-panel ${this.props.closing ? 'is-closing' : ''}`} role="alertdialog" aria-modal="true" aria-label="全局命令面板错误">
           <div className="global-search-error-content">
             <h3>全局命令面板暂时无法打开</h3>
             <p>已隔离本次错误，主界面仍可继续使用。关闭后可再次尝试；若持续出现，请在自检中检查旧配置。</p>
@@ -164,10 +176,13 @@ class GlobalSearchErrorBoundary extends Component<GlobalSearchErrorBoundaryProps
 }
 
 export function GlobalSearch(props: GlobalSearchProps) {
-  if (!props.open) return null;
+  const reduceMotion = useAppStore((state) => state.experience.reduceMotion);
+  const presence = usePresenceTransition(props.open, reduceMotion ? 0 : 220);
+  if (!presence.rendered) return null;
+  const presenceProps = { ...props, closing: presence.closing };
   return (
-    <GlobalSearchErrorBoundary {...props}>
-      <GlobalSearchContent {...props} />
+    <GlobalSearchErrorBoundary {...presenceProps}>
+      <GlobalSearchContent {...presenceProps} />
     </GlobalSearchErrorBoundary>
   );
 }

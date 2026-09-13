@@ -102,6 +102,26 @@ describe('persisted shortcut data normalization', () => {
     });
   });
 
+  it('keeps full project-name display opt-in and defaults it off', () => {
+    expect(normalizeDisplay({}).showFullItemName).toBe(false);
+    expect(normalizeDisplay({ showFullItemName: true }).showFullItemName).toBe(true);
+    expect(normalizeDisplay({ showFullItemName: 'true' as never }).showFullItemName).toBe(false);
+  });
+
+  it('keeps modern WinUI 3 mode opt-in and ignores malformed truthy values', () => {
+    expect(normalizeDisplay({}).modernWinUI3Mode).toBe(false);
+    expect(normalizeDisplay({ modernWinUI3Mode: true }).modernWinUI3Mode).toBe(true);
+    expect(normalizeDisplay({ modernWinUI3Mode: 'true' as never }).modernWinUI3Mode).toBe(false);
+  });
+
+  it('normalizes the saved group order used by the alphabetical-sort restore toggle', () => {
+    expect(normalizeDisplay({}).sortGroupsSavedOrder).toBeNull();
+    expect(normalizeDisplay({ sortGroupsSavedOrder: ['g2', 'g1'] }).sortGroupsSavedOrder).toEqual(['g2', 'g1']);
+    expect(normalizeDisplay({ sortGroupsSavedOrder: ['g2', 7, ''] as never }).sortGroupsSavedOrder).toEqual(['g2']);
+    expect(normalizeDisplay({ sortGroupsSavedOrder: [] }).sortGroupsSavedOrder).toBeNull();
+    expect(normalizeDisplay({ sortGroupsSavedOrder: 'broken' as never }).sortGroupsSavedOrder).toBeNull();
+  });
+
   it('normalizes the URL browser opening mode and keeps default-browser compatibility', () => {
     expect(normalizeBehavior({}).urlOpenMode).toBe('default');
     expect(normalizeBehavior({ urlOpenMode: 'foreground-browser' }).urlOpenMode).toBe('foreground-browser');

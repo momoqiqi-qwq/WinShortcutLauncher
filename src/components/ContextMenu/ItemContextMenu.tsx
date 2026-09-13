@@ -1,8 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardCopy, Copy, CopyPlus, FolderOpen, ImagePlus, Pencil, Pin, PinOff, RefreshCw, Shield, Sparkles, Trash2, CheckSquare, XCircle } from 'lucide-react';
+import { ChevronRight, ClipboardCopy, ClipboardPaste, Copy, CopyPlus, FolderOpen, ImagePlus, Pencil, Pin, PinOff, RefreshCw, Shield, Sparkles, Trash2, CheckSquare } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
-import type { BrowserRouteOverride, ContextMenuState, ShortcutItem, ShortcutType } from '../../types';
+import type { BrowserRouteOverride, ContextMenuState, ItemClickAction, ShortcutItem, ShortcutType } from '../../types';
 import { useAppStore } from '../../stores/appStore';
 import { byOrder } from '../../lib/sort';
 import { launchShortcutItem } from '../../lib/launchShortcut';
@@ -13,6 +13,8 @@ import { refreshShortcutIcon } from '../../lib/refreshShortcutIcon';
 import { showLauncherNotice } from '../../lib/notify';
 import { BrowserRoutePicker } from '../Settings/BrowserRoutePicker';
 import { useBrowserCatalog } from '../../hooks/useBrowserCatalog';
+import { ItemClickActionPicker } from '../ItemInteraction/ItemClickActionPicker';
+import { writeTextToClipboard } from '../../lib/clipboardText';
 
 interface ItemContextMenuProps {
   menu: Extract<ContextMenuState, { kind: 'item' }>;
@@ -40,7 +42,10 @@ function ItemEditDialog({ item, onSave, onCancel }: {
   const [type, setType] = useState<ShortcutType>(item.type);
   const [icon, setIcon] = useState(item.icon ?? '');
   const [browserRoute, setBrowserRoute] = useState<BrowserRouteOverride>(item.browserRoute ?? { mode: 'inherit' });
+  const [singleClickAction, setSingleClickAction] = useState<ItemClickAction>(item.singleClickAction ?? 'inherit');
+  const [doubleClickAction, setDoubleClickAction] = useState<ItemClickAction>(item.doubleClickAction ?? 'inherit');
   const router = useAppStore((state) => state.browserRouter);
+  const globalLaunchMode = useAppStore((state) => state.behavior.launchMode);
   const { catalog } = useBrowserCatalog(router.customBrowsers);
 
   function submit(event: FormEvent) {
@@ -51,6 +56,8 @@ function ItemEditDialog({ item, onSave, onCancel }: {
       type,
       icon: icon.trim() || undefined,
       browserRoute: type === 'url' ? browserRoute : item.browserRoute,
+      singleClickAction: singleClickAction === 'inherit' ? undefined : singleClickAction,
+      doubleClickAction: doubleClickAction === 'inherit' ? undefined : doubleClickAction,
     });
   }
 
@@ -87,6 +94,32 @@ function ItemEditDialog({ item, onSave, onCancel }: {
             <small className="settings-hint">“继承上一级”会先读取所在父目录设置，再读取全局浏览器路由中心。</small>
           </label>
         )}
+        <div className="edit-field item-click-action-editor">
+          <span>点击动作</span>
+          <div className="item-click-action-grid">
+            <label>
+              <small>左键单击</small>
+              <ItemClickActionPicker
+                value={singleClickAction}
+                interaction="single"
+                itemType={type}
+                globalLaunchMode={globalLaunchMode}
+                onChange={setSingleClickAction}
+              />
+            </label>
+            <label>
+              <small>左键双击</small>
+              <ItemClickActionPicker
+                value={doubleClickAction}
+                interaction="double"
+                itemType={type}
+                globalLaunchMode={globalLaunchMode}
+                onChange={setDoubleClickAction}
+              />
+            </label>
+          </div>
+          <small className="settings-hint">可分别设置打开、复制名称、复制{type === 'url' ? '网址' : type === 'command' ? '命令' : '路径'}、复制“名称 + 内容”或无动作。单击和双击都有动作时，会按 Windows 双击速度自动区分，不会误触发两次复制。</small>
+        </div>
         <label className="edit-field">
           <span>图标</span>
           <textarea
@@ -115,12 +148,15 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
   const experience = useAppStore((state) => state.experience);
   const selectItem = useAppStore((state) => state.selectItem);
   const selectItems = useAppStore((state) => state.selectItems);
-  const clearSelection = useAppStore((state) => state.clearSelection);
+  const beginMultiSelect = useAppStore((state) => state.beginMultiSelect);
   const deleteSelectedItems = useAppStore((state) => state.deleteSelectedItems);
   const updateItem = useAppStore((state) => state.updateItem);
-  const copyItemToDirectory = useAppStore((state) => state.copyItemToDirectory);
+  const copyItemsToDirectory = useAppStore((state) => state.copyItemsToDirectory);
   const moveItemToDirectory = useAppStore((state) => state.moveItemToDirectory);
   const duplicateItem = useAppStore((state) => state.duplicateItem);
+  const copyItemsToClipboard = useAppStore((state) => state.copyItemsToClipboard);
+  const itemClipboard = useAppStore((state) => state.itemClipboard);
+  const pasteItemsToDirectory = useAppStore((state) => state.pasteItemsToDirectory);
   const [openSubmenu, setOpenSubmenu] = useState<ItemSubmenu>(null);
   const [editOpen, setEditOpen] = useState(false);
   const { ref, style, submenuClassName } = useSmartMenuPosition(menu.x, menu.y, 8, 320);
@@ -148,7 +184,8 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
   const actionCount = actionItemIds.length;
 
   function copyActionItemsToDirectory(directoryId: string) {
-    actionItemIds.forEach((id) => copyItemToDirectory(id, directoryId));
+    const count = copyItemsToDirectory(actionItemIds, directoryId);
+    if (count > 0) showLauncherNotice(`已复制 ${count} 个项目到目标子目录`);
     onClose();
   }
 
@@ -240,20 +277,28 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
     onClose();
   }
 
+  function copyActionItems() {
+    const count = copyItemsToClipboard(actionItemIds);
+    if (count > 0) showLauncherNotice(`已复制 ${count} 个项目，可在目标子目录粘贴`);
+    onClose();
+  }
+
+  function pasteActionItems() {
+    const sourceDirectory = groups.flatMap((group) => group.directories).find((directory) => directory.items.some((entry) => entry.id === currentItem.id));
+    const targetDirectory = (activeDirectory?.kind ?? 'normal') === 'normal' ? activeDirectory : sourceDirectory;
+    if (!targetDirectory || (targetDirectory.kind ?? 'normal') !== 'normal') return;
+    const count = pasteItemsToDirectory(targetDirectory.id);
+    if (count > 0) showLauncherNotice(`已粘贴 ${count} 个项目到「${targetDirectory.name}」`);
+    onClose();
+  }
+
   async function copyText(value: string, label: string) {
     try {
-      await navigator.clipboard.writeText(value);
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = value;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
+      await writeTextToClipboard(value);
+      showLauncherNotice(`已复制${label}`);
+    } catch (error) {
+      void uiAlert(`复制失败：${String(error)}`);
     }
-    showLauncherNotice(`已复制${label}`);
     onClose();
   }
 
@@ -283,34 +328,30 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
         <div className="menu-item" onClick={() => { invoke('open_file_location', { path: currentItem.path }).catch((error) => uiAlert(`打开所在文件夹失败：${String(error)}`)); onClose(); }}>
           <span>打开所在文件夹</span><FolderOpen size={14} />
         </div>
-        {(selectedItemIds.length > 0 || visibleItemIds.length > 1) && (
-          <>
-            <div className="menu-separator" />
-            {!currentIsSelected && selectedItemIds.length > 0 && (
-              <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => { selectItem(currentItem.id, true); onClose(); }}>
-                <span>加入多选</span><CheckSquare size={14} />
-              </div>
-            )}
-            {currentIsSelected && (
-              <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => { selectItem(currentItem.id, true); onClose(); }}>
-                <span>取消选择此项</span><XCircle size={14} />
-              </div>
-            )}
-            {visibleItemIds.length > 1 && (
-              <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => { selectItems(visibleItemIds); onClose(); }}>
-                <span>选中本页全部</span><CheckSquare size={14} />
-              </div>
-            )}
-            {selectedItemIds.length > 0 && (
-              <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => { clearSelection(); onClose(); }}>清除多选</div>
-            )}
-          </>
+        <div className="menu-separator" />
+        <div
+          className="menu-item"
+          onMouseEnter={() => setOpenSubmenu(null)}
+          onClick={() => { beginMultiSelect(currentItem.id); onClose(); }}
+        >
+          <span>使用多选</span><CheckSquare size={14} />
+        </div>
+        {visibleItemIds.length > 1 && (
+          <div
+            className="menu-item"
+            onMouseEnter={() => setOpenSubmenu(null)}
+            onClick={() => { selectItems(visibleItemIds); beginMultiSelect(); onClose(); }}
+          >
+            <span>选中本页全部</span><CheckSquare size={14} />
+          </div>
         )}
         <div className="menu-separator" />
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => setEditOpen(true)}><span>编辑</span><Pencil size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={togglePinned}>
           <span>{currentItem.pinned ? '取消固定项目' : '固定项目到前面'}</span>{currentItem.pinned ? <PinOff size={14} /> : <Pin size={14} />}
         </div>
+        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={copyActionItems}><span>复制项目{actionCount > 1 ? `（${actionCount} 项）` : ''}</span><Copy size={14} /></div>
+        <div className={`menu-item ${itemClipboard.length ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => itemClipboard.length && pasteActionItems()}><span>粘贴项目{itemClipboard.length ? `（${itemClipboard.length} 项）` : ''}</span><ClipboardPaste size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={duplicateCurrentItem}><span>创建当前项目副本</span><CopyPlus size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void copyText(currentItem.path, currentItem.type === 'url' ? '网址' : '路径')}><span>复制{currentItem.type === 'url' ? '网址' : '路径'}</span><ClipboardCopy size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={refreshCurrentItemIcon}><span>刷新当前项目图标</span><RefreshCw size={14} /></div>

@@ -10,32 +10,40 @@ export interface SettingsSearchItem {
   focusText?: string;
   targetId?: string;
   keywords: string[];
+  quickControl?:
+    | { kind: 'toggle'; setting: 'showFullItemName' | 'modernWinUI3Mode' | 'sidebarShowFullNames' }
+    | { kind: 'range'; setting: 'charsPerLine'; min: number; max: number; step?: number };
 }
 
 export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { id: 'theme-preset', label: '主题与配色', description: '切换内置主题和扩展主题', tab: 'general', focusText: '主题', keywords: ['深色', '浅色', '颜色', '外观'] },
+  { id: 'modern-winui3-mode', label: '现代 WinUI 3 模式', description: '切换 Windows 11 / WinUI 3 风格的圆角、层级和交互动效', tab: 'interface', focusText: '现代 WinUI 3 模式', targetId: 'modern-winui3-mode', keywords: ['winui', 'winui3', 'windows 11', '现代', '圆角', '动效', '界面模式'], quickControl: { kind: 'toggle', setting: 'modernWinUI3Mode' } },
   { id: 'ui-scale', label: '界面缩放', description: '调整主界面和设置界面的缩放', tab: 'interface', section: 'scale', focusText: '缩放', keywords: ['大小', 'ui scale', '设置缩放'] },
   { id: 'main-background', label: '主界面背景 / 动态壁纸', description: '背景图片、视频、位置、透明度和模糊', tab: 'interface', section: 'background', focusText: '主界面背景', keywords: ['壁纸', '视频', '透明度', '模糊', 'background'] },
   { id: 'settings-background', label: '设置窗口背景', description: '独立背景、面板不透明度与可调玻璃效果', tab: 'interface', section: 'settingsBackground', focusText: '设置面板外观', keywords: ['毛玻璃', '玻璃', '透明', '不透明度', '模糊', '饱和度', '高光', '壁纸'] },
   { id: 'scrollbar', label: '滚动条样式', description: '滚动条宽度、圆角和主题颜色', tab: 'interface', section: 'scrollbar', focusText: '滚动条', keywords: ['滚动', 'scrollbar', '圆角'] },
-  { id: 'sidebar', label: '侧栏尺寸', description: '子目录侧栏宽度、间距和字体', tab: 'interface', section: 'sidebar', focusText: '侧栏', keywords: ['子目录', '宽度', '间距'] },
+  { id: 'sidebar', label: '侧栏布局', description: '子目录侧栏宽度、默认列数、名称行数、间距和字体', tab: 'interface', section: 'sidebar', focusText: '侧栏', keywords: ['子目录', '宽度', '列数', '多列', '间距', '行数', '换行'] },
   { id: 'topbar', label: '顶部父目录标签', description: '标签宽度、高度、间距、字体、边框、颜色强度和形状', tab: 'interface', section: 'topbar', focusText: '父目录', keywords: ['顶栏', '标签', '宽度', '高度', '间距', '字体', '边框', '颜色', '彩色', '形状'] },
   { id: 'window-controls', label: '右上角功能按钮', description: '按钮大小、样式、显示和排序', tab: 'interface', section: 'controls', focusText: '功能按钮', keywords: ['右上角', '隐藏按钮', '设置快捷入口'] },
   { id: 'font-family', label: '自定义字体', description: '设置字体和生效区域', tab: 'font', focusText: '字体', keywords: ['微软雅黑', 'Segoe UI', 'MiSans', '思源'] },
+  { id: 'item-name-full', label: '完整显示项目名称', description: '项目名称不再按最大显示行数截断，长名称完整换行展示', tab: 'font', focusText: '完整显示项目名称', targetId: 'font-show-full-item-name', keywords: ['项目文字', '项目字数', '完整项目', '完整名称', '不截断', '全部显示'], quickControl: { kind: 'toggle', setting: 'showFullItemName' } },
+  { id: 'sidebar-name-full', label: '完整显示子目录名称', description: '子目录名称不再按“子目录名称行数”截断，长名称完整换行展示', tab: 'font', focusText: '完整显示子目录名称', targetId: 'font-show-full-sidebar-names', keywords: ['子目录文字', '侧栏名称', '完整子目录', '子目录名称', '不截断', '全部显示'], quickControl: { kind: 'toggle', setting: 'sidebarShowFullNames' } },
+  { id: 'item-name-wrap', label: '项目名称换行字数', description: '设置项目名称每行大约显示多少个字符后换行', tab: 'font', focusText: '每行字数', targetId: 'font-chars-per-line', keywords: ['换行', '字数', '每行', '字符', '项目名称'], quickControl: { kind: 'range', setting: 'charsPerLine', min: 4, max: 20, step: 1 } },
   { id: 'icon-provider', label: '网站图标来源', description: 'Favicon 来源、测速和缓存', tab: 'icons', focusText: '图标', keywords: ['favicon', '网站图标', '缓存', '测速'] },
   { id: 'rainbow-effects', label: '彩虹特效', description: '鼠标、拖尾、边框和文字彩虹', tab: 'rainbow', section: 'main', focusText: '开启彩虹效果', targetId: 'rainbow-effects', keywords: ['鼠标', '拖尾', '边框', '文字'] },
   { id: 'launch-mode', label: '单击 / 双击启动', description: '调整项目启动方式', tab: 'behavior', section: 'launchClose', focusText: '启动方式', targetId: 'launch-mode', keywords: ['单击', '双击', 'launch'] },
   { id: 'url-browser-mode', label: '浏览器路由中心', description: '默认 / 前台 / 指定浏览器，Profile、多账号与自定义浏览器', tab: 'behavior', section: 'launchClose', focusText: '浏览器路由中心', targetId: 'url-browser-mode', keywords: ['浏览器', '默认浏览器', '前台浏览器', '指定浏览器', '网址', 'browser', 'profile', 'floorp', 'chrome', 'edge', 'firefox', '账号'] },
-  { id: 'edge-dock', label: '窗口贴边隐藏', description: '贴边触发、隐藏延迟和边缘宽度', tab: 'behavior', section: 'edgeAutoHide', focusText: '自动贴边隐藏', targetId: 'edge-dock', keywords: ['边缘', '隐藏', '自动贴边'] },
+  { id: 'edge-dock', label: '窗口贴边隐藏', description: '贴边触发、任务栏忽略、隐藏延迟和边缘宽度', tab: 'behavior', section: 'edgeAutoHide', focusText: '自动贴边隐藏', targetId: 'edge-dock', keywords: ['边缘', '隐藏', '自动贴边', '任务栏', '忽视任务栏'] },
   { id: 'autostart', label: '开机自动启动', description: '跟随 Windows 启动', tab: 'behavior', section: 'launchClose', focusText: '开机自启动', targetId: 'autostart', keywords: ['自启动', '开机启动'] },
   { id: 'always-on-top', label: '窗口置顶', description: '保持主窗口在其他窗口上方', tab: 'window', focusText: '窗口置顶', keywords: ['always on top', '最前', '图钉'] },
   { id: 'snapback', label: '窗口回弹动画', description: '拖出屏幕后回弹与速度', tab: 'window', focusText: '回弹', keywords: ['弹回', '屏幕外', '动画'] },
   { id: 'settings-panel-adaptive', label: '设置面板自动适配', description: '控制设置窗口是否自动适配主窗口大小', tab: 'window', focusText: '设置面板自动适配', keywords: ['设置窗口', '自适应', 'adaptive', '大小'] },
   { id: 'settings-panel-remember-bounds', label: '记住设置面板大小和位置', description: '固定尺寸模式下记住设置窗口的尺寸与位置', tab: 'window', focusText: '记住设置面板', keywords: ['设置窗口', '尺寸', '位置', '记住'] },
   { id: 'drag-long-press', label: '长按拖动时间', description: '单击启动模式下的拖动触发时间', tab: 'drag', focusText: '长按', keywords: ['拖动', '排序', '抖动'] },
-  { id: 'drag-website-rename', label: '拖入网站后重命名', description: '浏览器或 .url 拖入后默认弹出重命名界面', tab: 'drag', focusText: '拖入网站', keywords: ['网站', '网址', '浏览器', '拖入', '重命名', '弹窗'] },
+  { id: 'drag-website-rename', label: '拖入网站命名选择', description: '拖入后可选标签页标题或网站地址，也可先手动修改', tab: 'drag', focusText: '拖入网站', keywords: ['网站', '网址', '浏览器', '拖入', '命名', '标题', '地址', '弹窗'] },
   { id: 'remember-page', label: '记住上次页面', description: '重新打开时恢复上次父目录和子目录', tab: 'experience', focusText: '记住', keywords: ['恢复', '父目录', '子目录'] },
   { id: 'reduce-motion', label: '减少界面动画', description: '降低动画强度，偏向稳定与性能', tab: 'experience', focusText: '动画', keywords: ['性能', '低性能', 'reduce motion'] },
+  { id: 'settings-tab-animation', label: '设置分类切换动画', description: '切换设置分类时使用淡入和上滑过渡，可关闭', tab: 'experience', focusText: '设置分类切换动画', targetId: 'settings-tab-animation', keywords: ['动画', '过渡', '切换分类', '流畅', '淡入', '性能'] },
   { id: 'compact-settings', label: '设置简洁模式', description: '紧凑分类并隐藏辅助描述', tab: 'experience', focusText: '设置', keywords: ['简洁', '描述', '紧凑'] },
   { id: 'directory-create', label: '新建子目录行为', description: '命名、重名编号和创建后切换', tab: 'navigation', focusText: '新建', keywords: ['子目录', '重名', '编号'] },
   { id: 'directory-count', label: '子目录项目数量', description: '在侧栏显示项目或便签行数', tab: 'navigation', focusText: '数量', keywords: ['侧栏', '项目数', '行数'] },

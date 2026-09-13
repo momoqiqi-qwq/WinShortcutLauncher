@@ -23,11 +23,14 @@ import './GlobalSearchModal.css';
 
 export interface GlobalSearchModalProps {
   open: boolean;
+  closing?: boolean;
   entries: PaletteEntry[];
   usage: Record<string, CommandUsage>;
   settings?: Partial<GlobalSearchSettings>;
   onClose: () => void;
   onExecute: (entry: PaletteEntry, alternate?: boolean) => void | Promise<void>;
+  onNavigate?: (entry: PaletteEntry) => void | Promise<void>;
+  getActionSwitchState?: (entry: PaletteEntry) => boolean;
 }
 
 function getSearchIconTarget(item: ShortcutItem, mode: GlobalSearchSettings['iconResolveMode']): { direct?: string; command?: IconResolveCommand; path?: string } {
@@ -121,13 +124,13 @@ function highlightText(text: string, query: string, enabled: boolean) {
   return <>{text.slice(0, index)}<mark>{text.slice(index, index + normalized.length)}</mark>{text.slice(index + normalized.length)}</>;
 }
 
-export function GlobalSearchModal({ open, entries, usage, settings: settingsPatch, onClose, onExecute }: GlobalSearchModalProps) {
+export function GlobalSearchModal({ open, closing = false, entries, usage, settings: settingsPatch, onClose, onExecute, onNavigate, getActionSwitchState }: GlobalSearchModalProps) {
   const closeShortcut = useAppStore((state) => state.shortcuts.closeOverlay);
   const settings = useMemo(() => normalizeGlobalSearchSettings(settingsPatch), [settingsPatch]);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [active, setActive] = useState(0);
-  const [executing, setExecuting] = useState(false);
+  const [executingId, setExecutingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const activeRowRef = useRef<HTMLDivElement>(null);
 
@@ -147,7 +150,7 @@ export function GlobalSearchModal({ open, entries, usage, settings: settingsPatc
     setQuery('');
     setDebouncedQuery('');
     setActive(0);
-    setExecuting(false);
+    setExecutingId(null);
     window.setTimeout(() => inputRef.current?.focus(), 30);
   }, [open]);
   useEffect(() => setActive(0), [debouncedQuery]);
@@ -160,13 +163,22 @@ export function GlobalSearchModal({ open, entries, usage, settings: settingsPatc
   if (!open || !settings.enabled) return null;
 
   async function requestExecute(entry: PaletteEntry, alternate = false) {
-    if (executing) return;
-    setExecuting(true);
+    if (executingId) return;
+    setExecutingId(entry.id);
     try {
       await onExecute(entry, alternate);
     } finally {
-      setExecuting(false);
+      setExecutingId(null);
     }
+  }
+
+  async function requestNavigate(entry: PaletteEntry) {
+    if (!onNavigate || !entry.settingTab || executingId) return;
+    await onNavigate(entry);
+  }
+
+  function usesActionSwitch(entry: PaletteEntry) {
+    return entry.kind === 'setting' || entry.kind === 'command' || entry.kind === 'theme' || entry.kind === 'font';
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
@@ -195,8 +207,8 @@ export function GlobalSearchModal({ open, entries, usage, settings: settingsPatc
   }
 
   return (
-    <div className="global-search-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="global-search-modal" role="dialog" aria-label="全局命令面板" aria-modal="true">
+    <div className={`global-search-backdrop ${closing ? 'is-closing' : ''}`} aria-hidden={closing || undefined} onMouseDown={(event) => !closing && event.target === event.currentTarget && onClose()}>
+      <div className={`global-search-modal ${closing ? 'is-closing' : ''}`} role="dialog" aria-label="全局命令面板" aria-modal="true">
         <div className="global-search-input-row">
           <Search size={21} className="global-search-lens" />
           <input
@@ -224,13 +236,13 @@ export function GlobalSearchModal({ open, entries, usage, settings: settingsPatc
             <div
               key={row.id}
               ref={index === active ? activeRowRef : undefined}
-              className={`global-search-row ${index === active ? 'active' : ''} ${row.dangerous ? 'dangerous' : ''}`}
+              className={`global-search-row ${index === active ? 'active' : ''} ${row.dangerous ? 'dangerous' : ''} ${row.settingTab ? 'has-jump-target' : ''}`}
               role="option"
               aria-selected={index === active}
               onMouseEnter={() => setActive(index)}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => setActive(index)}
-              onDoubleClick={() => void requestExecute(row)}
+              onClick={() => { setActive(index); if (row.settingTab) void requestNavigate(row); }}
+              onDoubleClick={() => { if (!row.settingTab) void requestExecute(row); }}
             >
               {settings.showItemIcon && <KindIcon entry={row} size={settings.iconSize} mode={settings.iconResolveMode} />}
               <div className="global-search-main">
@@ -243,9 +255,24 @@ export function GlobalSearchModal({ open, entries, usage, settings: settingsPatc
                 {settings.showFullPath && row.detail && <div className="global-search-path">{highlightText(row.detail, query, settings.highlightMatches)}</div>}
               </div>
               <div className="global-search-actions">
-                <button type="button" className="primary" disabled={executing} onClick={(event) => { event.stopPropagation(); void requestExecute(row); }}>
-                  {row.kind === 'item' ? '打开' : '执行'}
-                </button>
+                {usesActionSwitch(row) ? (
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={Boolean(getActionSwitchState?.(row)) || executingId === row.id}
+                    aria-label={`执行：${row.title}`}
+                    title={row.settingTab ? '滑动/点击执行；点击该行空白区域可定位到相关设置' : '滑动/点击执行'}
+                    className={`global-search-action-switch ${Boolean(getActionSwitchState?.(row)) || executingId === row.id ? 'checked' : ''}`}
+                    disabled={Boolean(executingId) && executingId !== row.id}
+                    onClick={(event) => { event.stopPropagation(); void requestExecute(row); }}
+                  >
+                    <span className="global-search-action-switch-thumb" />
+                  </button>
+                ) : (
+                  <button type="button" className="primary" disabled={Boolean(executingId)} onClick={(event) => { event.stopPropagation(); void requestExecute(row); }}>
+                    {row.kind === 'item' ? '打开' : '执行'}
+                  </button>
+                )}
               </div>
             </div>
           ))}

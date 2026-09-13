@@ -1,9 +1,9 @@
 import type { AreaContextMenuItemId, DirectoryContextMenuItemId, ExperienceSettings, GroupContextMenuItemId } from '../types';
 import { normalizeAfterLaunchAction } from './itemExperience';
 
-export const DIRECTORY_CONTEXT_MENU_IDS: DirectoryContextMenuItemId[] = ['rename', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete'];
-export const GROUP_CONTEXT_MENU_IDS: GroupContextMenuItemId[] = ['create', 'merge', 'color', 'delete'];
-export const AREA_CONTEXT_MENU_IDS: AreaContextMenuItemId[] = ['createDirectory', 'addFile', 'addFolder', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons'];
+export const DIRECTORY_CONTEXT_MENU_IDS: DirectoryContextMenuItemId[] = ['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'rename', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete'];
+export const GROUP_CONTEXT_MENU_IDS: GroupContextMenuItemId[] = ['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete'];
+export const AREA_CONTEXT_MENU_IDS: AreaContextMenuItemId[] = ['paste', 'createDirectory', 'addFile', 'addFolder', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons'];
 
 function normalizeHiddenMenuItems<T extends string>(value: unknown, allowed: readonly T[]): T[] {
   if (!Array.isArray(value)) return [];
@@ -12,7 +12,7 @@ function normalizeHiddenMenuItems<T extends string>(value: unknown, allowed: rea
 
 export const defaultExperience: ExperienceSettings = {
   rememberLastPage: true,
-  rememberSettingsTab: true,
+  rememberSettingsTab: false,
   rememberSettingsScrollPosition: true,
   showEmptyGuide: true,
   showLaunchNotice: false,
@@ -24,6 +24,7 @@ export const defaultExperience: ExperienceSettings = {
   pinnedItemsFirst: true,
   compactSettingsNav: false,
   showSettingsDescriptions: true,
+  settingsTabAnimation: true,
   keyboardNavigation: true,
   typeToSearch: true,
   searchIncludesPath: true,
@@ -49,7 +50,7 @@ export function normalizeExperience(settings?: Partial<ExperienceSettings>): Exp
   const merged = { ...defaultExperience, ...(settings ?? {}) };
   return {
     rememberLastPage: merged.rememberLastPage !== false,
-    rememberSettingsTab: merged.rememberSettingsTab !== false,
+    rememberSettingsTab: merged.rememberSettingsTab === true,
     rememberSettingsScrollPosition: merged.rememberSettingsScrollPosition !== false,
     showEmptyGuide: merged.showEmptyGuide !== false,
     showLaunchNotice: merged.showLaunchNotice === true,
@@ -61,6 +62,7 @@ export function normalizeExperience(settings?: Partial<ExperienceSettings>): Exp
     pinnedItemsFirst: merged.pinnedItemsFirst !== false,
     compactSettingsNav: merged.compactSettingsNav === true,
     showSettingsDescriptions: merged.showSettingsDescriptions !== false,
+    settingsTabAnimation: merged.settingsTabAnimation !== false,
     keyboardNavigation: merged.keyboardNavigation !== false,
     typeToSearch: merged.typeToSearch !== false,
     searchIncludesPath: merged.searchIncludesPath !== false,

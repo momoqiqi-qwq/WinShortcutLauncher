@@ -1,7 +1,27 @@
-import { makeId } from '../../../lib/id';
+import { cloneShortcutItemsForCopy, snapshotShortcutItems } from '../../../lib/itemCopy';
 import { reindex, sortShortcutItemsForStorage } from '../../../lib/sort';
+import type { Group, ShortcutItem } from '../../../types';
 import type { AppSliceCreator, ItemActions } from '../types';
 import { cleanDisplayPatch } from '../normalizers';
+
+function collectItemsByIds(groups: readonly Group[], itemIds: readonly string[]): ShortcutItem[] {
+  const uniqueIds = Array.from(new Set(itemIds.filter(Boolean)));
+  if (!uniqueIds.length) return [];
+  const wanted = new Set(uniqueIds);
+  const found = new Map<string, ShortcutItem>();
+  for (const group of groups) {
+    for (const directory of group.directories) {
+      for (const item of directory.items) {
+        if (!wanted.has(item.id) || found.has(item.id)) continue;
+        found.set(item.id, item);
+        if (found.size === wanted.size) break;
+      }
+      if (found.size === wanted.size) break;
+    }
+    if (found.size === wanted.size) break;
+  }
+  return uniqueIds.map((id) => found.get(id)).filter(Boolean) as ShortcutItem[];
+}
 
 export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
   reorderItems: (directoryId, itemIds) => set((state) => ({
@@ -37,7 +57,15 @@ export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
       selectedNavTarget: null,
     };
   }),
-  clearSelection: () => set({ selectedItemIds: [] }),
+  beginMultiSelect: (itemId) => set((state) => ({
+    multiSelectMode: true,
+    selectedItemIds: itemId
+      ? Array.from(new Set([...state.selectedItemIds, itemId]))
+      : state.selectedItemIds,
+    selectedNavTarget: null,
+  })),
+  finishMultiSelect: () => set({ multiSelectMode: false, selectedItemIds: [] }),
+  clearSelection: () => set({ selectedItemIds: [], multiSelectMode: false }),
   setItemLabelLines: (itemId, lines) => set((state) => ({
     groups: state.groups.map((group) => ({
       ...group,
@@ -107,6 +135,23 @@ export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
       })),
     };
   }),
+  deleteItemsByIds: (itemIds) => {
+    const ids = new Set(itemIds.filter(Boolean));
+    if (!ids.size) return 0;
+    let removed = 0;
+    set((state) => ({
+      selectedItemIds: state.selectedItemIds.filter((id) => !ids.has(id)),
+      groups: state.groups.map((group) => ({
+        ...group,
+        directories: group.directories.map((dir) => {
+          const next = dir.items.filter((item) => !ids.has(item.id));
+          removed += dir.items.length - next.length;
+          return next.length === dir.items.length ? dir : { ...dir, items: reindex(next) };
+        }),
+      })),
+    }));
+    return removed;
+  },
   updateItem: (itemId, patch) => set((state) => ({
     groups: state.groups.map((group) => ({
       ...group,
@@ -116,20 +161,26 @@ export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
       })),
     })),
   })),
-  copyItemToDirectory: (itemId, directoryId) => set((state) => {
-    const item = get().getItemById(itemId);
-    if (!item) return state;
-    return {
+  copyItemToDirectory: (itemId, directoryId) => {
+    get().copyItemsToDirectory([itemId], directoryId);
+  },
+  copyItemsToDirectory: (itemIds, directoryId) => {
+    const sources = collectItemsByIds(get().groups, itemIds);
+    if (!sources.length) return 0;
+    let copied = 0;
+    set((state) => ({
       groups: state.groups.map((group) => ({
         ...group,
-        directories: group.directories.map((dir) =>
-          dir.id === directoryId
-            ? { ...dir, items: reindex([...dir.items, { ...item, id: makeId('item'), order: dir.items.length }]) }
-            : dir,
-        ),
+        directories: group.directories.map((dir) => {
+          if (dir.id !== directoryId || (dir.kind ?? 'normal') !== 'normal') return dir;
+          const copies = cloneShortcutItemsForCopy(sources, dir.items.length);
+          copied = copies.length;
+          return { ...dir, items: reindex([...dir.items, ...copies]) };
+        }),
       })),
-    };
-  }),
+    }));
+    return copied;
+  },
   moveItemToDirectory: (itemId, directoryId) => set((state) => {
     const item = get().getItemById(itemId);
     if (!item) return state;
@@ -163,21 +214,43 @@ export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
           if (index < 0 || duplicated) return dir;
           duplicated = true;
           const source = dir.items[index];
-          const copy = {
-            ...source,
-            id: makeId('item'),
-            name: `${source.name} - 副本`,
-            pinned: false,
-            launchCount: 0,
-            lastLaunchedAt: undefined,
-            order: index + 1,
-          };
+          const [copy] = cloneShortcutItemsForCopy(
+            [source],
+            index + 1,
+            (entry) => `${entry.name} - 副本`,
+          );
+          copy.pinned = false;
           const next = [...dir.items.slice(0, index + 1), copy, ...dir.items.slice(index + 1)];
           return { ...dir, items: reindex(next) };
         }),
       })),
     };
   }),
+  copyItemsToClipboard: (itemIds) => {
+    const sources = collectItemsByIds(get().groups, itemIds);
+    const items = snapshotShortcutItems(sources);
+    set({ itemClipboard: items, navigationClipboard: null });
+    return items.length;
+  },
+  pasteItemsToDirectory: (directoryId) => {
+    const clipboard = get().itemClipboard;
+    if (!clipboard.length) return 0;
+    let pasted = 0;
+    set((state) => ({
+      groups: state.groups.map((group) => ({
+        ...group,
+        directories: group.directories.map((dir) => {
+          if (dir.id !== directoryId || (dir.kind ?? 'normal') !== 'normal') return dir;
+          const copies = cloneShortcutItemsForCopy(clipboard, dir.items.length);
+          pasted = copies.length;
+          return { ...dir, items: reindex([...dir.items, ...copies]) };
+        }),
+      })),
+      selectedItemIds: [],
+    }));
+    return pasted;
+  },
+  clearItemClipboard: () => set({ itemClipboard: [] }),
   recordItemLaunch: (itemId) => set((state) => ({
     groups: state.groups.map((group) => ({
       ...group,

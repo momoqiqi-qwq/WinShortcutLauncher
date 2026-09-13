@@ -8,7 +8,11 @@ import { chooseIconResolveCommand, getCachedIcon, isDirectImageSource, resolveIc
 import type { IconResolveMode, TransferStationSettings } from '../../utils/v16Types';
 import { transferStationFolderDropProps } from './ItemCard.drop-patch';
 import { uiAlert } from '../../lib/uiDialog';
-import { buildItemTooltip, getItemActivationHint, shouldLaunchItemFromInteraction } from '../../lib/itemExperience';
+import { buildItemTooltip } from '../../lib/itemExperience';
+import { getItemCopyPayload, getItemInteractionHint, resolveItemClickAction, type ResolvedItemClickAction } from '../../lib/itemClickActions';
+import { writeTextToClipboard } from '../../lib/clipboardText';
+import { getSystemDoubleClickTimeMs, primeSystemDoubleClickTime } from '../../lib/doubleClickTiming';
+import { showLauncherNotice } from '../../lib/notify';
 import { launchShortcutItem } from '../../lib/launchShortcut';
 import { trackActivePointerReset } from '../../lib/pointerResetHub';
 
@@ -56,9 +60,13 @@ function FallbackIcon({ type, size }: { type: ShortcutItem['type']; size: number
 function ItemCardComponent({ item, selected, display, behavior, transferStation, onContextMenu }: ItemCardProps) {
   const selectItem = useAppStore((state) => state.selectItem);
   const clearSelection = useAppStore((state) => state.clearSelection);
+  const multiSelectMode = useAppStore((state) => state.multiSelectMode);
   const itemTooltipMode = useAppStore((state) => state.experience.itemTooltipMode);
   const showLaunchCountBadge = useAppStore((state) => state.experience.showLaunchCountBadge);
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: display.sortMode !== 'custom' });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+    disabled: display.sortMode !== 'custom' || multiSelectMode,
+  });
   const sortableListeners = listeners as Record<string, ((event: unknown) => void) | undefined>;
   const cardRef = useRef<HTMLDivElement | null>(null);
   const untrackPointerResetRef = useRef<(() => void) | null>(null);
@@ -71,11 +79,19 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
   const fallbackIconSize = Math.max(28, display.iconSize - 12);
   const pointerDownRef = useRef<{ x: number; y: number; button: number; pointerId: number } | null>(null);
   const singleClickDragTimerRef = useRef<number | null>(null);
+  const pendingSingleActionTimerRef = useRef<number | null>(null);
+  const pendingSingleActionGenerationRef = useRef(0);
   const pointerStillDownRef = useRef(false);
   const singleClickSortableStartedRef = useRef(false);
   const pointerMovedBeyondClickRef = useRef(false);
   const launchLockRef = useRef<{ pending: boolean; lastAt: number }>({ pending: false, lastAt: 0 });
   const itemIconMode = display.itemIconResolveMode ?? 'auto';
+  const singleClickAction = resolveItemClickAction(item.singleClickAction, 'single', behavior.launchMode);
+  const doubleClickAction = resolveItemClickAction(item.doubleClickAction, 'double', behavior.launchMode);
+  const singleClickHasAction = singleClickAction !== 'none';
+  const interactionHint = multiSelectMode
+    ? '多选模式：左键选择或取消选择，右键对已选项目执行批量操作'
+    : getItemInteractionHint(item, behavior.launchMode, display.sortMode === 'custom');
   const iconTarget = useMemo(() => {
     const target = getIconResolveTarget(item);
     const rawIcon = target.value;
@@ -152,6 +168,10 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
     '--label-font-size': display.fontSize
   } as CSSProperties;
 
+  useEffect(() => {
+    primeSystemDoubleClickTime();
+  }, []);
+
   async function launch(asAdmin = false) {
     const now = Date.now();
     if (launchLockRef.current.pending || now - launchLockRef.current.lastAt < LAUNCH_DEBOUNCE_MS) return;
@@ -166,13 +186,55 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
     }
   }
 
+  async function executeClickAction(action: ResolvedItemClickAction) {
+    if (action === 'none') return;
+    if (action === 'open') {
+      await launch(false);
+      return;
+    }
+    const payload = getItemCopyPayload(item, action);
+    if (!payload || !payload.text) {
+      showLauncherNotice('当前项目没有可复制的内容');
+      return;
+    }
+    try {
+      await writeTextToClipboard(payload.text);
+      showLauncherNotice(`已复制${payload.label}：${item.name}`);
+    } catch (error) {
+      console.error('copy item click action failed', error);
+      void uiAlert(`复制失败：${String(error)}`);
+    }
+  }
+
+  function cancelPendingSingleAction() {
+    pendingSingleActionGenerationRef.current += 1;
+    if (pendingSingleActionTimerRef.current !== null) {
+      window.clearTimeout(pendingSingleActionTimerRef.current);
+      pendingSingleActionTimerRef.current = null;
+    }
+  }
+
+  function scheduleSingleAction(action: ResolvedItemClickAction) {
+    cancelPendingSingleAction();
+    const generation = pendingSingleActionGenerationRef.current;
+    void getSystemDoubleClickTimeMs().then((systemDelay) => {
+      if (generation !== pendingSingleActionGenerationRef.current) return;
+      const delay = Math.max(220, Math.min(1050, systemDelay + 28));
+      pendingSingleActionTimerRef.current = window.setTimeout(() => {
+        pendingSingleActionTimerRef.current = null;
+        if (generation !== pendingSingleActionGenerationRef.current) return;
+        void executeClickAction(action);
+      }, delay);
+    });
+  }
+
   function getSingleClickTolerance() {
     return Math.max(2, Math.min(28, Math.round(behavior.itemDragTolerance ?? 10)));
   }
 
   function wasPointerDrag(start: { x: number; y: number } | null, event: { clientX: number; clientY: number }) {
     if (!start) return true;
-    const threshold = behavior.launchMode === 'single' ? getSingleClickTolerance() : 6;
+    const threshold = singleClickHasAction ? getSingleClickTolerance() : 6;
     return Math.hypot(event.clientX - start.x, event.clientY - start.y) > threshold;
   }
 
@@ -199,15 +261,29 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
     untrackPointerResetRef.current?.();
     untrackPointerResetRef.current = null;
     clearSingleClickDragTimer();
+    cancelPendingSingleAction();
   }, []);
 
   function handleClick(event: MouseEvent<HTMLDivElement>) {
-    // 左键点击只负责启动判定，不再改变选中项目；普通左键同时清掉旧选择，避免残留蓝色状态造成歧义。
+    // 多选模式只负责切换选中状态，不触发项目原本的单击/双击动作。
     event.stopPropagation();
+    if (multiSelectMode) return;
+    // 普通左键同时清掉旧选择，避免残留蓝色状态造成歧义。
     if (!(event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)) clearSelection();
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (multiSelectMode) {
+      cancelPendingSingleAction();
+      resetPressState();
+      if (event.button === 0) {
+        // 多选不需要等待 pointerup / 双击判定：按下一次就立即切换选中状态。
+        event.preventDefault();
+        event.stopPropagation();
+        selectItem(item.id, true);
+      }
+      return;
+    }
     pointerDownRef.current = { x: event.clientX, y: event.clientY, button: event.button, pointerId: event.pointerId };
     pointerStillDownRef.current = true;
     untrackPointerResetRef.current?.();
@@ -236,11 +312,27 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
     if (!start || start.pointerId !== event.pointerId) return;
     const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
     const dragged = sortableAlreadyStarted || pointerMovedBeyondClickRef.current || wasPointerDrag(start, event) || isDragging;
-    if (!shouldLaunchItemFromInteraction(behavior.launchMode, 'pointer-up', { button: event.button, modified, dragged })) return;
+    if (multiSelectMode) {
+      cancelPendingSingleAction();
+      if (event.button === 0 && !dragged) {
+        event.stopPropagation();
+        selectItem(item.id, true);
+      }
+      return;
+    }
+    if (event.button !== 0 || modified || dragged || singleClickAction === 'none') return;
     event.stopPropagation();
-    // 让 dnd-kit 的 document pointerup 先完成清理，再启动外部程序。
-    // 否则外部程序抢焦点时，偶发会留下一个已经激活/待激活的拖拽态。
-    window.setTimeout(() => void launch(false), 60);
+
+    // 当单击和双击都配置了动作时，等待 Windows 当前的双击时间。
+    // 这样双击不会先执行一次单击复制，再覆盖成双击复制。
+    if (doubleClickAction !== 'none') {
+      scheduleSingleAction(singleClickAction);
+      return;
+    }
+
+    cancelPendingSingleAction();
+    // 让 dnd-kit 的 document pointerup 先完成清理，再执行复制/打开动作。
+    window.setTimeout(() => void executeClickAction(singleClickAction), 60);
   }
 
   function handlePointerCancel(event: PointerEvent<HTMLDivElement>) {
@@ -248,17 +340,21 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
   }
 
   function handleDoubleClick(event: MouseEvent<HTMLDivElement>) {
+    cancelPendingSingleAction();
     event.preventDefault();
     event.stopPropagation();
+    if (multiSelectMode) return;
     const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
-    if (!shouldLaunchItemFromInteraction(behavior.launchMode, 'double-click', { button: event.button, modified, dragged: isDragging })) return;
-    void launch(false);
+    if (event.button !== 0 || modified || isDragging || doubleClickAction === 'none') return;
+    void executeClickAction(doubleClickAction);
   }
 
   function handleContext(event: MouseEvent<HTMLDivElement>) {
     event.preventDefault();
     event.stopPropagation();
-    if (event.ctrlKey || event.metaKey) {
+    if (multiSelectMode) {
+      if (!selected) selectItem(item.id, true);
+    } else if (event.ctrlKey || event.metaKey) {
       selectItem(item.id, true);
     } else {
       selectItem(item.id, false);
@@ -270,11 +366,11 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
     <div
       ref={setCardNodeRef}
       style={style}
-      className={`item-card ${selected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${item.pinned ? 'pinned' : ''}`}
-      title={[buildItemTooltip(item, itemTooltipMode), getItemActivationHint(behavior.launchMode, display.sortMode === 'custom')].filter(Boolean).join('\n')}
+      className={`item-card ${selected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${item.pinned ? 'pinned' : ''} ${multiSelectMode ? 'multi-select-item' : ''} ${display.showFullItemName ? 'full-item-name' : ''}`}
+      title={[buildItemTooltip(item, itemTooltipMode), interactionHint].filter(Boolean).join('\n')}
       data-item-id={item.id}
       aria-selected={selected}
-      aria-label={`${item.name}，${getItemActivationHint(behavior.launchMode, display.sortMode === 'custom')}`}
+      aria-label={`${item.name}，${interactionHint}`}
       data-launch-mode={behavior.launchMode}
       {...attributes}
       {...listeners}
@@ -282,9 +378,9 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
       onClick={handleClick}
       onPointerDown={(event) => {
         handlePointerDown(event);
-        if (event.button !== 0) return;
+        if (event.button !== 0 || multiSelectMode) return;
 
-        if (behavior.launchMode !== 'single') {
+        if (!singleClickHasAction) {
           sortableListeners.onPointerDown?.(event);
           return;
         }
@@ -329,6 +425,7 @@ function areItemCardPropsEqual(previous: ItemCardProps, next: ItemCardProps) {
     && previous.transferStation.dragToShortcutFolders === next.transferStation.dragToShortcutFolders
     && previous.display.sortMode === next.display.sortMode
     && previous.display.labelLines === next.display.labelLines
+    && previous.display.showFullItemName === next.display.showFullItemName
     && previous.display.iconSize === next.display.iconSize
     && previous.display.itemIconResolveMode === next.display.itemIconResolveMode
     && previous.display.charsPerLine === next.display.charsPerLine
