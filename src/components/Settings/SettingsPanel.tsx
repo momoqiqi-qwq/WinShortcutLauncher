@@ -200,6 +200,14 @@ export function SettingsPanel() {
       const textTarget = candidates.find((element) => (element.textContent ?? '').trim().toLocaleLowerCase('zh-CN').includes(focusText));
       const target = exactTarget ?? tagged ?? textTarget;
 
+      // v138: 折叠块内容改为常驻 DOM（visibility 隐藏），命中的目标若在收起块内，先点开展开再重试
+      const collapsedAncestor = target?.closest<HTMLElement>('.settings-collapse-block.is-collapsed');
+      if (collapsedAncestor) {
+        collapsedAncestor.querySelector<HTMLButtonElement>('.settings-collapse-header')?.click();
+        focusTimer = window.setTimeout(() => locateTarget(attempt + 1), experience.reduceMotion ? 20 : 80);
+        return;
+      }
+
       if (!target && attempt < 5) {
         focusTimer = window.setTimeout(() => locateTarget(attempt + 1), 60);
         return;

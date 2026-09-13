@@ -96,12 +96,6 @@ export interface ThemePreset {
   name: string;
   description: string;
   vars: Record<string, string>;
-  preview?: {
-    bg: string;
-    panel: string;
-    accent: string;
-    text: string;
-  };
 }
 
 export const DEFAULT_GLOBAL_SEARCH_SETTINGS: GlobalSearchSettings = {

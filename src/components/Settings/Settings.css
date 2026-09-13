@@ -539,6 +539,7 @@ button:disabled,
   background: color-mix(in srgb, var(--accent), transparent 88%);
 }
 
+/* v138: 折叠箭头改为常驻 ▾，收起时旋转 -90° 变成 ▸，避免字符切换的跳变 */
 .settings-collapse-arrow {
   width: 18px;
   height: 18px;
@@ -551,6 +552,15 @@ button:disabled,
   font-size: 14px;
   line-height: 1;
   flex: 0 0 auto;
+  transition: transform 240ms cubic-bezier(.2, .82, .2, 1), background-color 160ms ease;
+}
+
+.settings-collapse-header:hover .settings-collapse-arrow {
+  background: color-mix(in srgb, var(--accent), transparent 78%);
+}
+
+.settings-collapse-block.is-collapsed .settings-collapse-arrow {
+  transform: rotate(-90deg);
 }
 
 .settings-collapse-title {
@@ -568,7 +578,32 @@ button:disabled,
   white-space: nowrap;
 }
 
+/* v138: 展开/收起高度过渡。region 用 0fr ↔ 1fr 的 grid 轨道动画；
+   内容常驻挂载（visibility 控制焦点与可交互性），收起时也会平滑收回而不是瞬间消失。 */
+.settings-collapse-region {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 260ms cubic-bezier(.2, .82, .2, 1);
+}
+
+.settings-collapse-region:not(.is-collapsed) {
+  grid-template-rows: 1fr;
+}
+
 .settings-collapse-content {
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  /* 收起时等高度动画走完再隐藏（避免内容提前消失）；展开时立即可见 */
+  transition: visibility 0s linear 260ms;
+}
+
+.settings-collapse-region:not(.is-collapsed) .settings-collapse-content {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.settings-collapse-content-inner {
   padding: 10px 14px 14px;
 }
 
@@ -2866,14 +2901,14 @@ button:disabled,
   transform: scale(.985);
 }
 
-.settings-collapse-content {
-  transform-origin: top center;
-  animation: v131-settings-reveal 150ms cubic-bezier(.2, .82, .2, 1);
-}
-
-@keyframes v131-settings-reveal {
-  from { opacity: 0; transform: translateY(-3px) scaleY(.985); }
-  to { opacity: 1; transform: none; }
+/* v138: 旧的 v131 进场 reveal 已被上面的 region 高度过渡取代 */
+.settings-reduce-motion .settings-collapse-region,
+.settings-reduce-motion .settings-collapse-content,
+.settings-reduce-motion .settings-collapse-arrow,
+.app-shell.reduce-motion .settings-collapse-region,
+.app-shell.reduce-motion .settings-collapse-content,
+.app-shell.reduce-motion .settings-collapse-arrow {
+  transition: none;
 }
 
 /* v132: 设置分类切换过渡；可在“体验 → 设置分类切换动画”中关闭，减少动画时不生效。 */

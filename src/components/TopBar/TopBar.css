@@ -11,6 +11,7 @@
 }
 
 .topbar-tabs {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
@@ -262,3 +263,100 @@
 
 .topbar-actions-pad .window-control-button:nth-child(11) { order: 11; }
 .topbar-actions-pad .window-control-button:nth-child(12) { order: 12; }
+
+/* v138: 同色相邻父目录自动成组框。
+   框体是描边 + 发光（比标签本身的半透明填充更鲜艳），中间镂空不挡标签点击；
+   只有四条边框区域可以抓取拖动，拖动时整组标签跟随框一起移动。 */
+.topbar-tab-cluster {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.topbar-tab-cluster.suppressed {
+  opacity: 0;
+}
+
+.topbar-tab-cluster.dragging {
+  z-index: 30;
+}
+
+.topbar-tab-cluster-segment {
+  position: absolute;
+  border: 1.5px solid var(--cluster-accent, var(--accent));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cluster-accent, var(--accent)) 8%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cluster-accent, var(--accent)) 28%, transparent),
+    0 0 16px color-mix(in srgb, var(--cluster-accent, var(--accent)) 32%, transparent),
+    inset 0 0 14px color-mix(in srgb, var(--cluster-accent, var(--accent)) 10%, transparent);
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.topbar-shape-square .topbar-tab-cluster-segment {
+  border-radius: 12px;
+}
+
+.topbar-tab-cluster-segment:has(.topbar-tab-cluster-handle:hover) {
+  background: color-mix(in srgb, var(--cluster-accent, var(--accent)) 14%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cluster-accent, var(--accent)) 45%, transparent),
+    0 0 22px color-mix(in srgb, var(--cluster-accent, var(--accent)) 45%, transparent),
+    inset 0 0 18px color-mix(in srgb, var(--cluster-accent, var(--accent)) 14%, transparent);
+}
+
+.topbar-tab-cluster.dragging .topbar-tab-cluster-segment {
+  background: color-mix(in srgb, var(--cluster-accent, var(--accent)) 18%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cluster-accent, var(--accent)) 55%, transparent),
+    0 12px 28px color-mix(in srgb, var(--cluster-accent, var(--accent)) 40%, transparent),
+    inset 0 0 20px color-mix(in srgb, var(--cluster-accent, var(--accent)) 16%, transparent);
+}
+
+.topbar-tab-cluster-handle {
+  position: absolute;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.topbar-tab-cluster.dragging .topbar-tab-cluster-handle {
+  pointer-events: none;
+  cursor: grabbing;
+}
+
+.topbar-tab-cluster-handle.edge-n { top: -4px; left: 12px; right: 12px; height: 8px; }
+.topbar-tab-cluster-handle.edge-s { bottom: -4px; left: 12px; right: 12px; height: 8px; }
+.topbar-tab-cluster-handle.edge-w { left: -4px; top: 12px; bottom: 12px; width: 8px; }
+.topbar-tab-cluster-handle.edge-e { right: -4px; top: 12px; bottom: 12px; width: 8px; }
+
+/* 拖动中的成员标签：抬到其他标签之上并带同色投影 */
+.top-tab.cluster-drag-member {
+  position: relative;
+  z-index: 5;
+  transition: none;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--group-accent, var(--accent)) 32%, transparent);
+}
+
+/* 落点插入指示条 */
+.topbar-cluster-insert-indicator {
+  position: absolute;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--cluster-indicator-color, var(--accent));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--cluster-indicator-color, var(--accent)), transparent 30%);
+  display: none;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.topbar-cluster-insert-indicator.visible {
+  display: block;
+}
+
+.app-shell.reduce-motion .topbar-tab-cluster,
+.app-shell.reduce-motion .topbar-tab-cluster-segment,
+.app-shell.reduce-motion .top-tab.cluster-drag-member {
+  transition: none;
+}

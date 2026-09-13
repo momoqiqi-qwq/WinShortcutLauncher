@@ -1,4 +1,4 @@
-# Yue launcher v0.1.136
+# Yue launcher v0.1.138
 
 Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快捷启动器。
 
@@ -164,4 +164,4 @@ npm run typecheck
 npm run test
 ```
 
-当前程序版本：`0.1.135`
+当前程序版本：`0.1.137`

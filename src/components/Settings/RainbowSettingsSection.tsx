@@ -67,12 +67,14 @@ function CollapseBlock({ id, title, collapsed, onToggle, children }: {
   children: ReactNode;
 }) {
   return (
-    <div className="settings-collapse-block" data-settings-section={id}>
+    <div className={`settings-collapse-block ${collapsed ? 'is-collapsed' : ''}`} data-settings-section={id}>
       <button type="button" className="settings-collapse-header" aria-expanded={!collapsed} onClick={() => onToggle(id)}>
-        <span className="settings-collapse-arrow" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
+        <span className="settings-collapse-arrow" aria-hidden="true">▾</span>
         <span className="settings-collapse-title">{title}</span>
       </button>
-      {!collapsed && <div className="settings-collapse-content">{children}</div>}
+      <div className={`settings-collapse-region ${collapsed ? 'is-collapsed' : ''}`}>
+        <div className="settings-collapse-content"><div className="settings-collapse-content-inner">{children}</div></div>
+      </div>
     </div>
   );
 }

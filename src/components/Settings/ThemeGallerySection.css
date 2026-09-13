@@ -20,23 +20,67 @@
 .theme-card.active {
   outline: 2px solid var(--accent, #7ea2ff);
 }
-.theme-preview {
+/* v137: mini app mockup, colored from the theme's own vars. */
+.theme-mockup {
   display: flex;
-  gap: 5px;
-  align-items: end;
-  height: 34px;
-  padding: 6px;
-  border-radius: 9px;
-  margin-bottom: 8px;
+  flex-direction: column;
+  height: 46px;
+  margin-bottom: 6px;
+  border-radius: 7px;
+  border: 1px solid var(--tm-border, rgba(255, 255, 255, 0.14));
+  background: var(--tm-bg, #171921);
+  overflow: hidden;
 }
-.theme-preview i {
-  display: block;
-  width: 28px;
-  border-radius: 5px;
+.theme-mockup .tm-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 13px;
+  padding: 0 4px;
+  background: var(--tm-panel, rgba(255, 255, 255, 0.08));
+  border-bottom: 1px solid var(--tm-border, rgba(255, 255, 255, 0.1));
 }
-.theme-preview i:nth-child(1) { height: 22px; }
-.theme-preview i:nth-child(2) { height: 28px; }
-.theme-preview i:nth-child(3) { height: 16px; }
+.theme-mockup .tm-dot {
+  flex: none;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--tm-accent, #7ea2ff);
+}
+.theme-mockup .tm-search {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--tm-text, #fff);
+  opacity: 0.2;
+}
+.theme-mockup .tm-body {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  min-height: 0;
+}
+.theme-mockup .tm-side {
+  flex: none;
+  width: 9px;
+  border-radius: 2.5px;
+  background: var(--tm-panel, rgba(255, 255, 255, 0.08));
+}
+.theme-mockup .tm-tiles {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+.theme-mockup .tm-tiles i {
+  border-radius: 2.5px;
+  background: var(--tm-panel2, rgba(255, 255, 255, 0.14));
+}
+.theme-mockup .tm-tiles i.tm-accent {
+  background: var(--tm-accent, #7ea2ff);
+}
 .theme-card strong,
 .theme-card small { display: block; }
 .theme-card small { margin-top: 4px; color: var(--muted, #aaa); line-height: 1.35; }
@@ -77,20 +121,7 @@
   padding: 7px;
   border-radius: 10px;
 }
-.theme-preview {
-  height: 22px;
-  padding: 4px;
-  gap: 3px;
-  border-radius: 7px;
-  margin-bottom: 5px;
-}
-.theme-preview i {
-  width: 19px;
-  border-radius: 4px;
-}
-.theme-preview i:nth-child(1) { height: 14px; }
-.theme-preview i:nth-child(2) { height: 18px; }
-.theme-preview i:nth-child(3) { height: 10px; }
+/* v137: mockup preview keeps one size; compact overrides only cover text. */
 .theme-card strong { font-size: 12px; line-height: 1.15; }
 .theme-card small {
   margin-top: 2px;

@@ -37,13 +37,15 @@ function SettingsCollapseBlock({ id, title, hint, collapsed, onToggle, children 
   children: ReactNode;
 }) {
   return (
-    <div className="settings-collapse-block" data-settings-section={id}>
+    <div className={`settings-collapse-block ${collapsed ? 'is-collapsed' : ''}`} data-settings-section={id}>
       <button type="button" className="settings-collapse-header" aria-expanded={!collapsed} onClick={onToggle}>
-        <span className="settings-collapse-arrow" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
+        <span className="settings-collapse-arrow" aria-hidden="true">▾</span>
         <span className="settings-collapse-title">{title}</span>
         {hint && <span className="settings-collapse-hint">{hint}</span>}
       </button>
-      {!collapsed && <div className="settings-collapse-content">{children}</div>}
+      <div className={`settings-collapse-region ${collapsed ? 'is-collapsed' : ''}`}>
+        <div className="settings-collapse-content"><div className="settings-collapse-content-inner">{children}</div></div>
+      </div>
     </div>
   );
 }

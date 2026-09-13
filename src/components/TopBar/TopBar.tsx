@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
 import { DndContext, DragEndEvent, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -113,6 +113,230 @@ interface SortableWindowActionProps {
   ariaControls?: string;
 }
 
+interface ClusterSegmentRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+interface TabCluster {
+  id: string;
+  color: string;
+  groupIds: string[];
+}
+
+interface ClusterDragRuntime {
+  startX: number;
+  startY: number;
+  clientX: number;
+  clientY: number;
+  zoom: number;
+  activated: boolean;
+  frame: number;
+  offsetX: number;
+  offsetY: number;
+  target: { id: string; before: boolean } | null;
+  members: HTMLElement[];
+  handle: HTMLDivElement;
+  root: HTMLDivElement;
+  indicator: HTMLDivElement | null;
+  onMove: (event: globalThis.PointerEvent) => void;
+  onUp: (event: globalThis.PointerEvent) => void;
+  onCancel: (event: globalThis.PointerEvent) => void;
+  onKey: (event: KeyboardEvent) => void;
+  finish: (commit: boolean) => void;
+}
+
+// 成组框外扩的留白（px）。默认标签间距 8px，框外扩 4 + 把手外探 4 正好不侵入相邻标签
+const CLUSTER_FRAME_PAD = 4;
+// 指针移动超过该距离才真正开始拖动，避免误触
+const CLUSTER_DRAG_THRESHOLD = 6;
+
+// v138: 同色相邻父目录的「成组框」。框是覆盖在标签外圈的描边（中间镂空，不挡标签点击），
+// 抓住边框拖动即可把整组同色标签作为一个块移动到别的位置。
+function TopBarTabClusterOverlay({
+  cluster,
+  segments,
+  suppressed,
+  insertIndicatorRef,
+  onClusterDrop,
+  onClusterDragChange,
+}: {
+  cluster: TabCluster;
+  segments: ClusterSegmentRect[];
+  suppressed: boolean;
+  insertIndicatorRef: RefObject<HTMLDivElement | null>;
+  onClusterDrop: (cluster: TabCluster, overGroupId: string | null, before: boolean) => void;
+  onClusterDragChange: (clusterId: string | null) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<ClusterDragRuntime | null>(null);
+
+  // 卸载兜底：清掉内联 transform 和全局监听，避免残留
+  useEffect(() => () => dragRef.current?.finish(false), []);
+
+  function beginTracking(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || dragRef.current) return;
+    const rootCandidate = rootRef.current;
+    if (!rootCandidate) return;
+    const rootNode = rootCandidate;
+    const tabsContainer = rootNode.parentElement;
+    if (!tabsContainer) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const memberIds = new Set(cluster.groupIds);
+    const members = Array.from(tabsContainer.querySelectorAll<HTMLElement>('.top-tab[data-group-id]'))
+      .filter((tab) => memberIds.has(tab.dataset.groupId ?? ''));
+    const indicator = insertIndicatorRef.current;
+    // .app-main-layer 上的 UI 缩放（zoom）会让视觉像素和布局像素差一个系数，位移要除回去
+    const zoom = rootNode.offsetWidth ? rootNode.getBoundingClientRect().width / rootNode.offsetWidth : 1;
+
+    function activate() {
+      state.activated = true;
+      setDragging(true);
+      onClusterDragChange(cluster.id);
+      for (const member of members) {
+        member.classList.add('cluster-drag-member');
+        member.style.willChange = 'transform';
+      }
+      if (indicator) {
+        indicator.style.setProperty('--cluster-indicator-color', cluster.color);
+        indicator.classList.add('visible');
+      }
+    }
+
+    function updateIndicator() {
+      if (!indicator) return;
+      const stack = document.elementsFromPoint(state.clientX, state.clientY);
+      let targetTab: HTMLElement | null = null;
+      for (const element of stack) {
+        const tab = element.closest?.('.top-tab') as HTMLElement | null;
+        const id = tab?.dataset.groupId;
+        if (id && !memberIds.has(id)) {
+          targetTab = tab;
+          break;
+        }
+      }
+      if (!targetTab) {
+        state.target = null;
+        indicator.classList.remove('visible');
+        return;
+      }
+      const rect = targetTab.getBoundingClientRect();
+      const before = state.clientX < rect.left + rect.width / 2;
+      state.target = { id: targetTab.dataset.groupId as string, before };
+      const gap = 5;
+      indicator.style.left = `${(before ? targetTab.offsetLeft - gap : targetTab.offsetLeft + targetTab.offsetWidth + gap) - 1}px`;
+      indicator.style.top = `${targetTab.offsetTop - 2}px`;
+      indicator.style.height = `${targetTab.offsetHeight + 4}px`;
+      indicator.classList.add('visible');
+    }
+
+    function applyFrame() {
+      state.frame = 0;
+      const dx = state.offsetX;
+      const dy = state.offsetY;
+      rootNode.style.transform = `translate(${dx}px, ${dy}px)`;
+      for (const member of state.members) member.style.transform = `translate(${dx}px, ${dy}px)`;
+      updateIndicator();
+    }
+
+    function finish(commit: boolean) {
+      if (dragRef.current !== state) return;
+      dragRef.current = null;
+      if (state.frame) window.cancelAnimationFrame(state.frame);
+      handle.removeEventListener('pointermove', state.onMove);
+      handle.removeEventListener('pointerup', state.onUp);
+      handle.removeEventListener('pointercancel', state.onCancel);
+      window.removeEventListener('keydown', state.onKey, true);
+      // 先移除 class（恢复 transition）再清 transform，让标签平滑落回新位置
+      for (const member of state.members) {
+        member.classList.remove('cluster-drag-member');
+        member.style.willChange = '';
+        member.style.transform = '';
+      }
+      rootNode.style.transform = '';
+      indicator?.classList.remove('visible');
+      setDragging(false);
+      onClusterDragChange(null);
+      if (commit && state.activated && state.target) onClusterDrop(cluster, state.target.id, state.target.before);
+    }
+
+    function onMove(nativeEvent: globalThis.PointerEvent) {
+      if (!state.activated && Math.hypot(nativeEvent.clientX - state.startX, nativeEvent.clientY - state.startY) < CLUSTER_DRAG_THRESHOLD) return;
+      if (!state.activated) activate();
+      state.clientX = nativeEvent.clientX;
+      state.clientY = nativeEvent.clientY;
+      state.offsetX = (nativeEvent.clientX - state.startX) / state.zoom;
+      state.offsetY = (nativeEvent.clientY - state.startY) / state.zoom;
+      if (!state.frame) state.frame = window.requestAnimationFrame(applyFrame);
+    }
+
+    const state: ClusterDragRuntime = {
+      startX: event.clientX,
+      startY: event.clientY,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      zoom,
+      activated: false,
+      frame: 0,
+      offsetX: 0,
+      offsetY: 0,
+      target: null,
+      members,
+      handle,
+      root: rootNode,
+      indicator,
+      onMove,
+      onUp: () => finish(true),
+      onCancel: () => finish(false),
+      onKey: (nativeEvent) => {
+        if (nativeEvent.key === 'Escape') finish(false);
+      },
+      finish,
+    };
+    dragRef.current = state;
+
+    handle.setPointerCapture(event.pointerId);
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', state.onUp);
+    handle.addEventListener('pointercancel', state.onCancel);
+    window.addEventListener('keydown', state.onKey, true);
+  }
+
+  if (!segments.length) return null;
+
+  return (
+    <div
+      ref={rootRef}
+      className={`topbar-tab-cluster ${suppressed ? 'suppressed' : ''} ${dragging ? 'dragging' : ''}`}
+      aria-hidden="true"
+    >
+      {segments.map((segment) => (
+        <div
+          key={`${segment.top}-${segment.left}`}
+          className="topbar-tab-cluster-segment"
+          style={{
+            left: segment.left - CLUSTER_FRAME_PAD,
+            top: segment.top - CLUSTER_FRAME_PAD,
+            width: segment.width + CLUSTER_FRAME_PAD * 2,
+            height: segment.height + CLUSTER_FRAME_PAD * 2,
+            '--cluster-accent': cluster.color,
+          } as CSSProperties}
+        >
+          <div className="topbar-tab-cluster-handle edge-n" title="拖动整组移动这些同色父目录" onPointerDown={beginTracking} />
+          <div className="topbar-tab-cluster-handle edge-s" title="拖动整组移动这些同色父目录" onPointerDown={beginTracking} />
+          <div className="topbar-tab-cluster-handle edge-w" title="拖动整组移动这些同色父目录" onPointerDown={beginTracking} />
+          <div className="topbar-tab-cluster-handle edge-e" title="拖动整组移动这些同色父目录" onPointerDown={beginTracking} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SortableWindowAction({ id, title, icon, className = '', onClick, buttonRef, ariaExpanded, ariaHaspopup, ariaControls }: SortableWindowActionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
@@ -180,6 +404,29 @@ export function TopBar({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
   const ids = useMemo(() => groups.map((group) => group.id), [groups]);
+  // v138: 找出「颜色相同且在顺序上相邻」的父目录，数量 ≥2 时画一个更鲜艳的成组框
+  const tabClusters = useMemo<TabCluster[]>(() => {
+    const result: TabCluster[] = [];
+    let index = 0;
+    while (index < groups.length) {
+      const color = groups[index].color?.toLowerCase();
+      if (!color) {
+        index += 1;
+        continue;
+      }
+      let end = index + 1;
+      while (end < groups.length && groups[end].color?.toLowerCase() === color) end += 1;
+      if (end - index >= 2) {
+        result.push({ id: `cluster-${groups[index].id}`, color: groups[index].color as string, groupIds: groups.slice(index, end).map((group) => group.id) });
+      }
+      index = end;
+    }
+    return result;
+  }, [groups]);
+  const [clusterSegments, setClusterSegments] = useState<Record<string, ClusterSegmentRect[]>>({});
+  const [draggingClusterId, setDraggingClusterId] = useState<string | null>(null);
+  const [tabSortableDragging, setTabSortableDragging] = useState(false);
+  const insertIndicatorRef = useRef<HTMLDivElement | null>(null);
   const actionOrder = useMemo(() => normalizeControlOrder(display.windowControlOrder), [display.windowControlOrder]);
   const hiddenControlIds = useMemo(() => new Set(display.windowControlHidden ?? []), [display.windowControlHidden]);
   const visibleActionOrder = useMemo(() => actionOrder.filter((id) => !hiddenControlIds.has(id)), [actionOrder, hiddenControlIds]);
@@ -228,6 +475,50 @@ export function TopBar({
       observer.disconnect();
     };
   }, [groups.length, display.topTabEqualWidth, display.topTabWidth, display.topTabShape]);
+
+  // v138: 量出每个成组框覆盖的标签区域。换行时按行拆成多段矩形，框会分段描边但仍算同一组。
+  useLayoutEffect(() => {
+    const node = tabsRef.current;
+    if (!node) return;
+    const currentNode = node;
+
+    function measure() {
+      if (!tabClusters.length) {
+        setClusterSegments((current) => (Object.keys(current).length ? {} : current));
+        return;
+      }
+      const tabById = new Map<string, HTMLElement>();
+      currentNode.querySelectorAll<HTMLElement>('.top-tab[data-group-id]').forEach((tab) => {
+        const id = tab.dataset.groupId;
+        if (id) tabById.set(id, tab);
+      });
+      const next: Record<string, ClusterSegmentRect[]> = {};
+      for (const cluster of tabClusters) {
+        const rows = new Map<number, ClusterSegmentRect>();
+        for (const groupId of cluster.groupIds) {
+          const tab = tabById.get(groupId);
+          if (!tab) continue;
+          const row = rows.get(tab.offsetTop);
+          if (!row) {
+            rows.set(tab.offsetTop, { left: tab.offsetLeft, top: tab.offsetTop, width: tab.offsetWidth, height: tab.offsetHeight });
+          } else {
+            const right = Math.max(row.left + row.width, tab.offsetLeft + tab.offsetWidth);
+            row.left = Math.min(row.left, tab.offsetLeft);
+            row.width = right - row.left;
+            row.height = Math.max(row.height, tab.offsetHeight);
+          }
+        }
+        next[cluster.id] = Array.from(rows.values()).sort((a, b) => a.top - b.top);
+      }
+      setClusterSegments((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+    }
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(currentNode);
+    currentNode.querySelectorAll('.top-tab').forEach((tab) => observer.observe(tab));
+    return () => observer.disconnect();
+  }, [tabClusters, groups.length, display.topTabEqualWidth, display.topTabWidth, display.topTabHeight, display.topTabGap, display.topTabFontSize, display.topTabShape]);
 
 
   // 三个下拉面板统一锚定到「触发它的那个按钮」的右下角：
@@ -387,6 +678,19 @@ export function TopBar({
     reorderGroups(arrayMove(ids, oldIndex, newIndex));
   }
 
+  // v138: 整组拖动落点——把同色块从原顺序里摘出来，插到目标标签的前/后
+  function handleClusterDrop(cluster: TabCluster, overGroupId: string | null, before: boolean) {
+    if (!overGroupId || cluster.groupIds.includes(overGroupId)) return;
+    const memberSet = new Set(cluster.groupIds);
+    const remaining = ids.filter((id) => !memberSet.has(id));
+    const overIndex = remaining.indexOf(overGroupId);
+    if (overIndex < 0) return;
+    const insertIndex = before ? overIndex : overIndex + 1;
+    const next = [...remaining.slice(0, insertIndex), ...cluster.groupIds, ...remaining.slice(insertIndex)];
+    if (next.every((id, index) => id === ids[index])) return;
+    reorderGroups(next);
+  }
+
   function handleActionDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -469,10 +773,31 @@ export function TopBar({
       data-tauri-drag-region
       onContextMenu={handleTopbarContext}
     >
-      <DndContext sensors={tabSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={tabSensors}
+        collisionDetection={closestCenter}
+        onDragStart={() => setTabSortableDragging(true)}
+        onDragEnd={(event) => {
+          setTabSortableDragging(false);
+          handleDragEnd(event);
+        }}
+        onDragCancel={() => setTabSortableDragging(false)}
+      >
         <SortableContext items={ids} strategy={horizontalListSortingStrategy}>
           <div ref={tabsRef} className="topbar-tabs">
             {groups.map((group) => <EditableGroupTab group={group} key={group.id} onContextMenu={onContextMenuGroup} isExternalDropTarget={externalDropTargetGroupId === group.id} />)}
+            <div ref={insertIndicatorRef} className="topbar-cluster-insert-indicator" aria-hidden="true" />
+            {tabClusters.map((cluster) => (
+              <TopBarTabClusterOverlay
+                key={cluster.id}
+                cluster={cluster}
+                segments={clusterSegments[cluster.id] ?? []}
+                suppressed={tabSortableDragging || (draggingClusterId !== null && draggingClusterId !== cluster.id)}
+                insertIndicatorRef={insertIndicatorRef}
+                onClusterDrop={handleClusterDrop}
+                onClusterDragChange={setDraggingClusterId}
+              />
+            ))}
           </div>
         </SortableContext>
       </DndContext>
