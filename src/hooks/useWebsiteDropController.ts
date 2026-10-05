@@ -25,7 +25,9 @@ import {
   type NativeExternalDragStatePayload,
   type NativeExternalDropPayload,
 } from '../lib/nativeExternalDrop';
-import type { BrowserRouteOverride, Group, ItemClickAction } from '../types';
+import { isStartMenuDirectory } from '../lib/startMenu';
+import { isMappedDirectory } from '../lib/mappedFolder';
+import type { BrowserRouteOverride, Directory, Group, ItemClickAction } from '../types';
 
 export type DropTargetSelection = { groupId: string; directoryId: string } | null;
 
@@ -81,6 +83,20 @@ function findFirstNormalDirectory(group?: Group): DropTargetSelection {
   return directory ? { groupId: group.id, directoryId: directory.id } : null;
 }
 
+function findDirectoryById(directoryId: string): Directory | undefined {
+  for (const group of useAppStore.getState().groups) {
+    const directory = group.directories.find((entry) => entry.id === directoryId);
+    if (directory) return directory;
+  }
+  return undefined;
+}
+
+/** 普通子目录与镜像子目录（开始菜单 / 映射文件夹）都能接收拖入。 */
+function isDropAcceptingDirectory(directory?: Directory) {
+  const kind = directory?.kind ?? 'normal';
+  return kind === 'normal' || kind === 'startMenu' || kind === 'mapped';
+}
+
 function findDropGroupId(target: EventTarget | null) {
   if (!(target instanceof Element)) return null;
   return target.closest<HTMLElement>('[data-group-id]')?.dataset.groupId ?? null;
@@ -120,7 +136,7 @@ function resolvePreferredTarget(target: EventTarget | null): DropTargetSelection
   if (directoryId) {
     for (const group of state.groups) {
       const directory = group.directories.find((entry) => entry.id === directoryId);
-      if (directory && (directory.kind ?? 'normal') === 'normal') {
+      if (directory && isDropAcceptingDirectory(directory)) {
         return { groupId: group.id, directoryId: directory.id };
       }
     }
@@ -141,10 +157,30 @@ function activeFallbackTarget(): DropTargetSelection {
   const state = useAppStore.getState();
   const activeGroup = state.getActiveGroup();
   const activeDirectory = state.getActiveDirectory();
-  if (activeGroup && activeDirectory && (activeDirectory.kind ?? 'normal') === 'normal') {
+  if (activeGroup && activeDirectory && isDropAcceptingDirectory(activeDirectory)) {
     return { groupId: activeGroup.id, directoryId: activeDirectory.id };
   }
   return findFirstNormalDirectory(activeGroup);
+}
+
+/** 拖到镜像子目录：直接在该文件夹里生成快捷方式，不进「添加快捷项目」对话框。 */
+async function addPathsToMirror(directoryId: string, paths: string[]) {
+  const clean = paths.map((path) => path.trim()).filter(Boolean);
+  if (!clean.length) return;
+  const isMapped = isMappedDirectory(findDirectoryById(directoryId));
+  const label = isMapped ? '映射文件夹' : '开始菜单';
+  try {
+    const result = isMapped
+      ? await useAppStore.getState().addToMappedFolder(directoryId, clean)
+      : await useAppStore.getState().addToStartMenu(clean);
+    const parts: string[] = [];
+    if (result.created.length) parts.push(`已在${label}创建 ${result.created.length} 个快捷方式`);
+    if (result.skipped.length) parts.push(`${result.skipped.length} 个已在${label}中，已跳过`);
+    if (result.errors.length) parts.push(`失败 ${result.errors.length} 个：${result.errors[0]}`);
+    showLauncherNotice(parts.length ? parts.join('；') : '没有写入任何快捷方式');
+  } catch (error) {
+    showLauncherNotice(`写入${label}失败：${String(error)}`);
+  }
 }
 
 export function useWebsiteDropController({ disabled }: WebsiteDropControllerOptions) {
@@ -166,6 +202,27 @@ export function useWebsiteDropController({ disabled }: WebsiteDropControllerOpti
     const resolvedTarget = preferredTarget ?? activeFallbackTarget();
     if (!resolvedTarget) {
       showLauncherNotice('当前没有可添加网址的普通子目录');
+      return;
+    }
+
+    // 拖到镜像子目录：写成那个真实文件夹里的 .url 快捷方式。
+    const mirrorDirectory = findDirectoryById(resolvedTarget.directoryId);
+    if (isStartMenuDirectory(mirrorDirectory) || isMappedDirectory(mirrorDirectory)) {
+      const isMapped = isMappedDirectory(mirrorDirectory);
+      const label = isMapped ? '映射文件夹' : '开始菜单';
+      const urlName = cleanDroppedTitle(link.name || '', link.url)
+        || websiteAddressName(link.url)
+        || createUrlShortcut(link.url).name;
+      try {
+        if (isMapped) {
+          await useAppStore.getState().addUrlToMappedFolder(resolvedTarget.directoryId, link.url, urlName);
+        } else {
+          await useAppStore.getState().addUrlToStartMenu(link.url, urlName);
+        }
+        showLauncherNotice(`已在${label}创建网址快捷方式：${urlName}`);
+      } catch (error) {
+        showLauncherNotice(`写入${label}失败：${String(error)}`);
+      }
       return;
     }
 
@@ -255,6 +312,13 @@ export function useWebsiteDropController({ disabled }: WebsiteDropControllerOpti
 
   const handleDropPaths = useCallback((paths: string[], preferredTarget?: DropTargetSelection, timingSource: DropTiming['source'] = 'html', startedAt = performance.now()) => {
     if (disabled || !paths.length) return;
+    // 落在镜像子目录上：直接写进那个真实文件夹，不再弹「添加快捷项目」。
+    const mirrorTarget = preferredTarget ?? activeFallbackTarget();
+    const mirrorDirectory = mirrorTarget ? findDirectoryById(mirrorTarget.directoryId) : undefined;
+    if (mirrorTarget && (isStartMenuDirectory(mirrorDirectory) || isMappedDirectory(mirrorDirectory))) {
+      void addPathsToMirror(mirrorTarget.directoryId, paths);
+      return;
+    }
     void (async () => {
       const filePaths: string[] = [];
       for (const path of paths) {

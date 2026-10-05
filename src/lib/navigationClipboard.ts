@@ -96,6 +96,8 @@ export function appendCopiedGroupToConfig(config: AppConfig, source: Group) {
 }
 
 export function canPasteDirectoryIntoGroup(source: Directory, target: Group) {
-  if ((source.kind ?? 'normal') !== 'all') return true;
-  return !target.directories.some((directory) => (directory.kind ?? 'normal') === 'all');
+  const sourceKind = source.kind ?? 'normal';
+  // 「全部」和「开始菜单」都是每个父目录唯一，不允许重复粘贴/移动进去。
+  if (sourceKind !== 'all' && sourceKind !== 'startMenu') return true;
+  return !target.directories.some((directory) => (directory.kind ?? 'normal') === sourceKind);
 }

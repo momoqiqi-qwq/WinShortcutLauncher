@@ -15,6 +15,8 @@ import { BrowserRoutePicker } from '../Settings/BrowserRoutePicker';
 import { useBrowserCatalog } from '../../hooks/useBrowserCatalog';
 import { ItemClickActionPicker } from '../ItemInteraction/ItemClickActionPicker';
 import { writeTextToClipboard } from '../../lib/clipboardText';
+import { isStartMenuItemId } from '../../lib/startMenu';
+import { isMappedItemId } from '../../lib/mappedFolder';
 
 interface ItemContextMenuProps {
   menu: Extract<ContextMenuState, { kind: 'item' }>;
@@ -139,7 +141,11 @@ function ItemEditDialog({ item, onSave, onCancel }: {
 }
 
 export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
-  const item = useAppStore((state) => state.getItemById(menu.itemId));
+  // 镜像子目录（开始菜单 / 映射文件夹）里的条目不在配置里，需要回退到运行时条目。
+  const storedItem = useAppStore((state) => state.getItemById(menu.itemId));
+  const startMenuItem = useAppStore((state) => state.getStartMenuItemById(menu.itemId));
+  const mappedItem = useAppStore((state) => state.findMappedItemById(menu.itemId));
+  const item = storedItem ?? startMenuItem ?? mappedItem;
   const groups = useAppStore((state) => state.groups);
   const selectedItemIds = useAppStore((state) => state.selectedItemIds);
   const activeGroup = useAppStore((state) => state.getActiveGroup());
@@ -157,6 +163,13 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
   const copyItemsToClipboard = useAppStore((state) => state.copyItemsToClipboard);
   const itemClipboard = useAppStore((state) => state.itemClipboard);
   const pasteItemsToDirectory = useAppStore((state) => state.pasteItemsToDirectory);
+  const startMenuItems = useAppStore((state) => state.startMenuItems);
+  const removeFromStartMenu = useAppStore((state) => state.removeFromStartMenu);
+  const renameStartMenuItem = useAppStore((state) => state.renameStartMenuItem);
+  const activeMappedItems = useAppStore((state) => state.getMappedItems(state.activeDirectoryId));
+  const mappedDirectoryId = useAppStore((state) => state.findMappedDirectoryIdByItemId(menu.itemId));
+  const removeFromMappedFolder = useAppStore((state) => state.removeFromMappedFolder);
+  const renameMappedItem = useAppStore((state) => state.renameMappedItem);
   const [openSubmenu, setOpenSubmenu] = useState<ItemSubmenu>(null);
   const [editOpen, setEditOpen] = useState(false);
   const { ref, style, submenuClassName } = useSmartMenuPosition(menu.x, menu.y, 8, 320);
@@ -168,6 +181,12 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
 
   const visibleItemIds = useMemo(() => {
     if (!activeDirectory) return [];
+    if ((activeDirectory.kind ?? 'normal') === 'startMenu') {
+      return startMenuItems.map((entry) => entry.id);
+    }
+    if ((activeDirectory.kind ?? 'normal') === 'mapped') {
+      return activeMappedItems.map((entry) => entry.id);
+    }
     if ((activeDirectory.kind ?? 'normal') === 'all') {
       return (activeGroup?.directories ?? [])
         .filter((dir) => (dir.kind ?? 'normal') === 'normal')
@@ -175,13 +194,16 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
     }
     if ((activeDirectory.kind ?? 'normal') !== 'normal') return [];
     return activeDirectory.items.map((entry) => entry.id);
-  }, [activeDirectory, activeGroup]);
+  }, [activeDirectory, activeGroup, startMenuItems, activeMappedItems]);
 
   if (!item) return null;
   const currentItem = item;
   const currentIsSelected = selectedItemIds.includes(currentItem.id);
   const actionItemIds = currentIsSelected ? selectedItemIds : [currentItem.id];
   const actionCount = actionItemIds.length;
+  // 镜像子目录里的条目是真实文件，操作要落到文件上（开始菜单 / 映射文件夹同理）。
+  const isStartMenuItem = isStartMenuItemId(currentItem.id);
+  const isMappedItem = isMappedItemId(currentItem.id);
 
   function copyActionItemsToDirectory(directoryId: string) {
     const count = copyItemsToDirectory(actionItemIds, directoryId);
@@ -302,7 +324,82 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
     onClose();
   }
 
+  async function renameStartMenuEntry() {
+    const next = await uiPrompt('快捷方式名称', currentItem.name, '重命名开始菜单快捷方式');
+    if (next === null) return;
+    const name = next.trim();
+    if (!name || name === currentItem.name) {
+      onClose();
+      return;
+    }
+    onClose();
+    try {
+      await renameStartMenuItem(currentItem.id, name);
+      showLauncherNotice(`已重命名开始菜单快捷方式：${name}`);
+    } catch (error) {
+      void uiAlert(`重命名失败：${String(error)}`);
+    }
+  }
+
+  /** 映射子目录的重命名改的是那个文件夹里的真实文件名。 */
+  async function renameMappedEntry() {
+    if (!mappedDirectoryId) return;
+    const next = await uiPrompt('名称', currentItem.name, '重命名（会改真实文件名）');
+    if (next === null) return;
+    const name = next.trim();
+    if (!name || name === currentItem.name) {
+      onClose();
+      return;
+    }
+    onClose();
+    try {
+      await renameMappedItem(mappedDirectoryId, currentItem.id, name);
+      showLauncherNotice(`已重命名：${name}`);
+    } catch (error) {
+      void uiAlert(`重命名失败：${String(error)}`);
+    }
+  }
+
   async function deleteActionItems() {
+    if (isStartMenuItem) {
+      const targets = actionItemIds.filter(isStartMenuItemId);
+      if (!targets.length) return;
+      const label = targets.length > 1 ? `选中的 ${targets.length} 个开始菜单快捷方式` : `「${currentItem.name}」`;
+      if (experience.confirmDeleteItems) {
+        const ok = await uiConfirm(`确定删除 ${label} 吗？文件会被送入回收站，可从回收站恢复。`);
+        if (!ok) return;
+      }
+      onClose();
+      try {
+        const removed = await removeFromStartMenu(targets);
+        showLauncherNotice(removed > 0
+          ? `已从开始菜单删除 ${removed} 个快捷方式（可在回收站恢复）`
+          : '没有删除任何快捷方式');
+      } catch (error) {
+        void uiAlert(`删除失败：${String(error)}`);
+      }
+      return;
+    }
+    if (isMappedItem) {
+      if (!mappedDirectoryId) return;
+      const targets = actionItemIds.filter(isMappedItemId);
+      if (!targets.length) return;
+      const label = targets.length > 1 ? `选中的 ${targets.length} 个项目` : `「${currentItem.name}」`;
+      if (experience.confirmDeleteItems) {
+        const ok = await uiConfirm(`确定删除 ${label} 吗？会删除映射文件夹里的真实文件（送入回收站，可从回收站恢复）。`);
+        if (!ok) return;
+      }
+      onClose();
+      try {
+        const removed = await removeFromMappedFolder(mappedDirectoryId, targets);
+        showLauncherNotice(removed > 0
+          ? `已从映射文件夹删除 ${removed} 个项目（可在回收站恢复）`
+          : '没有删除任何项目');
+      } catch (error) {
+        void uiAlert(`删除失败：${String(error)}`);
+      }
+      return;
+    }
     if (experience.confirmDeleteItems) {
       const ok = await uiConfirm(`确定删除${actionCount > 1 ? `选中的 ${actionCount} 个项目` : `「${currentItem.name}」`}吗？`);
       if (!ok) return;
@@ -346,6 +443,18 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
           </div>
         )}
         <div className="menu-separator" />
+        {isStartMenuItem || isMappedItem ? (
+          <>
+            <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void (isStartMenuItem ? renameStartMenuEntry() : renameMappedEntry())}><span>{isStartMenuItem ? '重命名快捷方式' : '重命名（改真实文件名）'}</span><Pencil size={14} /></div>
+            <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void copyText(currentItem.name, '名称')}><span>复制名称</span><ClipboardCopy size={14} /></div>
+            <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void copyText(currentItem.path, '路径')}><span>复制路径</span><ClipboardCopy size={14} /></div>
+            <div className="menu-separator" />
+            <div className="menu-item danger" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void deleteActionItems()}>
+              <span>删除{actionCount > 1 ? ` ${actionCount} 项` : ''}（送回收站）</span><Trash2 size={14} />
+            </div>
+          </>
+        ) : (
+        <>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => setEditOpen(true)}><span>编辑</span><Pencil size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={togglePinned}>
           <span>{currentItem.pinned ? '取消固定项目' : '固定项目到前面'}</span>{currentItem.pinned ? <PinOff size={14} /> : <Pin size={14} />}
@@ -391,6 +500,8 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
         <div className="menu-item danger" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void deleteActionItems()}>
           <span>删除{actionCount > 1 ? ` ${actionCount} 项` : ''}</span><Trash2 size={14} />
         </div>
+        </>
+        )}
       </div>
       {editOpen && (
         <ItemEditDialog

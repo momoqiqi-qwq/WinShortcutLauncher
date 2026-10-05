@@ -7,6 +7,9 @@ mod legacy_import;
 mod process_integrity;
 #[cfg(target_os = "windows")]
 mod native_browser_drop;
+mod folder_mirror;
+mod mapped_folder;
+mod start_menu;
 mod transfer_station;
 mod window_persistence;
 mod website_metadata;
@@ -403,6 +406,18 @@ pub fn run() {
       commands::test_browser_target,
       commands::open_file_location,
       commands::resolve_lnk,
+      start_menu::get_start_menu_folder,
+      start_menu::list_start_menu_shortcuts,
+      start_menu::create_start_menu_shortcuts,
+      start_menu::create_start_menu_url,
+      start_menu::remove_start_menu_shortcuts,
+      start_menu::rename_start_menu_shortcut,
+      mapped_folder::validate_mapped_folder,
+      mapped_folder::list_mapped_folder,
+      mapped_folder::create_mapped_shortcuts,
+      mapped_folder::create_mapped_url,
+      mapped_folder::remove_mapped_entries,
+      mapped_folder::rename_mapped_entry,
       commands::save_config,
       commands::load_config,
       commands::get_file_info,

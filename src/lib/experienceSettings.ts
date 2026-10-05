@@ -1,7 +1,7 @@
 import type { AreaContextMenuItemId, DirectoryContextMenuItemId, ExperienceSettings, GroupContextMenuItemId } from '../types';
 import { normalizeAfterLaunchAction } from './itemExperience';
 
-export const DIRECTORY_CONTEXT_MENU_IDS: DirectoryContextMenuItemId[] = ['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'rename', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete'];
+export const DIRECTORY_CONTEXT_MENU_IDS: DirectoryContextMenuItemId[] = ['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'rename', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete'];
 export const GROUP_CONTEXT_MENU_IDS: GroupContextMenuItemId[] = ['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete'];
 export const AREA_CONTEXT_MENU_IDS: AreaContextMenuItemId[] = ['paste', 'createDirectory', 'addFile', 'addFolder', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons'];
 

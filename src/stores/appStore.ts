@@ -10,6 +10,8 @@ import { createItemSlice } from './appStore/slices/itemSlice';
 import { createMediaSlice } from './appStore/slices/mediaSlice';
 import { createNavigationSlice } from './appStore/slices/navigationSlice';
 import { createSettingsSlice } from './appStore/slices/settingsSlice';
+import { createStartMenuSlice } from './appStore/slices/startMenuSlice';
+import { createMappedSlice } from './appStore/slices/mappedSlice';
 import type { AppState } from './appStore/types';
 
 export type { AppState } from './appStore/types';
@@ -48,6 +50,8 @@ export const useAppStore = create<AppState>()(
         ...createMediaSlice(set, get),
         ...createConfigSlice(set, get),
         ...createCommandSlice(set, get),
+        ...createStartMenuSlice(set, get),
+        ...createMappedSlice(set, get),
         ...defaults,
         activeGroupId: first.groupId,
         activeDirectoryId: first.directoryId,
@@ -69,6 +73,15 @@ export const useAppStore = create<AppState>()(
         browserRouter: defaults.browserRouter!,
         multiAccount: defaults.multiAccount!,
         commandUsage: defaults.commandUsage ?? {},
+        startMenuItems: [],
+        startMenuLoading: false,
+        startMenuError: null,
+        startMenuFolder: '',
+        startMenuLoadedAt: 0,
+        mappedItems: {},
+        mappedLoading: {},
+        mappedError: {},
+        mappedLoadedAt: {},
       };
     },
     appPersistOptions,

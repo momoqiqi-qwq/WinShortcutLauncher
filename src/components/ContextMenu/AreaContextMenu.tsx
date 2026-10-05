@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardPaste, FilePlus2, FolderPlus, Globe, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, FilePlus2, FolderPlus, FolderSymlink, Globe, LayoutGrid, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type } from 'lucide-react';
+import { getMappedPath, isMappedDirectory } from '../../lib/mappedFolder';
 import { useMemo, useState, type FormEvent } from 'react';
 import type { BrowserRouteOverride, ContextMenuState, Directory, DirectoryKind, ItemClickAction, ShortcutItem, SortMode, ViewMode } from '../../types';
 import { getEffectiveDisplay, useAppStore } from '../../stores/appStore';
@@ -60,6 +61,12 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   const clearSelection = useAppStore((state) => state.clearSelection);
   const itemClipboard = useAppStore((state) => state.itemClipboard);
   const pasteItemsToDirectory = useAppStore((state) => state.pasteItemsToDirectory);
+  const addToStartMenu = useAppStore((state) => state.addToStartMenu);
+  const addUrlToStartMenu = useAppStore((state) => state.addUrlToStartMenu);
+  const refreshStartMenu = useAppStore((state) => state.refreshStartMenu);
+  const addToMappedFolder = useAppStore((state) => state.addToMappedFolder);
+  const addUrlToMappedFolder = useAppStore((state) => state.addUrlToMappedFolder);
+  const refreshMappedFolder = useAppStore((state) => state.refreshMappedFolder);
   const createDirectory = useDirectoryCreator();
   const display = useMemo(() => getEffectiveDisplay(globalDisplay, activeDirectory), [globalDisplay, activeDirectory]);
   type AreaSubmenu = 'directory' | 'system' | 'icon' | 'view' | 'sort' | 'columns' | 'globalIcon' | 'globalView' | 'globalSort' | null;
@@ -78,6 +85,11 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     ? firstNormalDirectory(activeGroup?.directories ?? [], activeDirectoryId)
     : activeDirectoryId;
   const activeKind = activeDirectory?.kind ?? 'normal';
+  // 镜像类子目录（开始菜单 / 映射文件夹）的内容来自真实文件夹，
+  // 添加动作要写进那个文件夹，而不是配置。
+  const isStartMenuActive = activeKind === 'startMenu';
+  const isMappedActive = isMappedDirectory(activeDirectory);
+  const activeMappedRoot = isMappedActive ? getMappedPath(activeDirectory) : '';
 
   async function addSubdirectory(kind: DirectoryKind, name: string) {
     setOpenSubmenu(null);
@@ -93,6 +105,37 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     });
     const paths = normalizeOpenResult(picked as string | string[] | null);
     if (!paths.length) return;
+
+    if (isStartMenuActive) {
+      onClose();
+      try {
+        const result = await addToStartMenu(paths);
+        const parts: string[] = [];
+        if (result.created.length) parts.push(`已在开始菜单创建 ${result.created.length} 个快捷方式`);
+        if (result.skipped.length) parts.push(`${result.skipped.length} 个已在开始菜单中，已跳过`);
+        if (result.errors.length) parts.push(`失败 ${result.errors.length} 个：${result.errors[0]}`);
+        showLauncherNotice(parts.length ? parts.join('；') : '没有写入任何快捷方式');
+      } catch (error) {
+        showLauncherNotice(`写入开始菜单失败：${String(error)}`);
+      }
+      return;
+    }
+
+    if (isMappedActive) {
+      onClose();
+      try {
+        const result = await addToMappedFolder(activeDirectoryId, paths);
+        const parts: string[] = [];
+        if (result.created.length) parts.push(`已在映射文件夹创建 ${result.created.length} 个快捷方式`);
+        if (result.skipped.length) parts.push(`${result.skipped.length} 个已在映射文件夹中，已跳过`);
+        if (result.errors.length) parts.push(`失败 ${result.errors.length} 个：${result.errors[0]}`);
+        showLauncherNotice(parts.length ? parts.join('；') : '没有写入任何快捷方式');
+      } catch (error) {
+        showLauncherNotice(`写入映射文件夹失败：${String(error)}`);
+      }
+      return;
+    }
+
     const items = await createShortcutItemsFromPaths(paths);
     addItems(activeGroupId, targetDirectoryId, items);
     onClose();
@@ -125,6 +168,34 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
       setUrlError('网址格式不正确');
       return;
     }
+    if (isStartMenuActive) {
+      const startMenuName = urlNameDraft.trim() || createUrlShortcut(normalizedUrl).name;
+      try {
+        await addUrlToStartMenu(normalizedUrl, startMenuName);
+      } catch (error) {
+        setUrlError(String(error));
+        return;
+      }
+      setUrlDialogOpen(false);
+      onClose();
+      showLauncherNotice(`已在开始菜单创建网址快捷方式：${startMenuName}`);
+      return;
+    }
+
+    if (isMappedActive) {
+      const mappedName = urlNameDraft.trim() || createUrlShortcut(normalizedUrl).name;
+      try {
+        await addUrlToMappedFolder(activeDirectoryId, normalizedUrl, mappedName);
+      } catch (error) {
+        setUrlError(String(error));
+        return;
+      }
+      setUrlDialogOpen(false);
+      onClose();
+      showLauncherNotice(`已在映射文件夹创建网址快捷方式：${mappedName}`);
+      return;
+    }
+
     const item = createUrlShortcut(normalizedUrl, urlNameDraft.trim() || undefined);
     item.browserRoute = urlBrowserRoute;
     if (urlSingleClickAction !== 'inherit') item.singleClickAction = urlSingleClickAction;
@@ -155,6 +226,29 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   }
 
   async function refreshIcons() {
+    if (isStartMenuActive) {
+      onClose();
+      await refreshStartMenu();
+      const state = useAppStore.getState();
+      showLauncherNotice(state.startMenuError
+        ? `刷新开始菜单失败：${state.startMenuError}`
+        : `已刷新开始菜单：${state.startMenuItems.length} 个快捷方式`);
+      return;
+    }
+    if (isMappedActive) {
+      onClose();
+      if (!activeMappedRoot) {
+        showLauncherNotice('该映射子目录还没有选择文件夹，请在子目录右键菜单里重新选择');
+        return;
+      }
+      await refreshMappedFolder(activeDirectoryId);
+      const state = useAppStore.getState();
+      const error = state.mappedError[activeDirectoryId];
+      showLauncherNotice(error
+        ? `刷新映射文件夹失败：${error}`
+        : `已刷新映射文件夹：${state.getMappedItems(activeDirectoryId).length} 个项目`);
+      return;
+    }
     const items: ShortcutItem[] = activeDirectory?.kind === 'all'
       ? (activeGroup?.directories ?? [])
           .filter((directory) => (directory.kind ?? 'normal') === 'normal')
@@ -269,8 +363,9 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   }
 
   const showPasteSection = show('paste');
-  const canPaste = itemClipboard.length > 0 && activeKind !== 'notes' && Boolean(targetDirectoryId);
-  const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addUrl') || show('addSystem');
+  const canPaste = itemClipboard.length > 0 && activeKind !== 'notes' && !isStartMenuActive && !isMappedActive && Boolean(targetDirectoryId);
+  const showAddSystemItem = show('addSystem') && !isStartMenuActive && !isMappedActive;
+  const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addUrl') || showAddSystemItem;
   const showLocalDisplaySection = show('iconSize') || show('viewMode') || show('sortMode') || show('directoryColumns');
   const showGlobalDisplaySection = show('globalIconSize') || show('globalViewMode') || show('globalSortMode');
   const showMaintenanceSection = show('refreshIcons');
@@ -300,13 +395,28 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
             <div className="menu-item" onClick={(event) => { event.stopPropagation(); void addSubdirectory('normal', '新目录'); }}><span>普通子目录</span><FolderPlus size={13} /></div>
             <div className="menu-item" onClick={(event) => { event.stopPropagation(); void addSubdirectory('all', '全部'); }}><span>全部子目录</span><Tags size={13} /></div>
             <div className="menu-item" onClick={(event) => { event.stopPropagation(); void addSubdirectory('notes', '便签'); }}><span>便签子目录</span><StickyNote size={13} /></div>
+            <div className="menu-separator" />
+            <div
+              className="menu-item"
+              title="直连当前用户开始菜单文件夹：显示其中的快捷方式，拖入应用会写成快捷方式"
+              onClick={(event) => { event.stopPropagation(); void addSubdirectory('startMenu', '开始菜单'); }}
+            >
+              <span>开始菜单子目录</span><LayoutGrid size={13} />
+            </div>
+            <div
+              className="menu-item"
+              title="选择一个文件夹，实时映射它的内容；拖入应用会在那个文件夹里生成快捷方式"
+              onClick={(event) => { event.stopPropagation(); void addSubdirectory('mapped', '映射文件夹'); }}
+            >
+              <span>映射文件夹子目录</span><FolderSymlink size={13} />
+            </div>
           </div>
         )}
       </div>}
       {show('addFile') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(false)}><span>添加文件</span><FilePlus2 size={15} /></div>}
       {show('addFolder') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(true)}><span>添加文件夹</span><FolderPlus size={15} /></div>}
       {show('addUrl') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={addUrl}><span>添加网址</span><Globe size={15} /></div>}
-      {show('addSystem') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('system')} onClick={() => setOpenSubmenu((value) => value === 'system' ? null : 'system')}>
+      {showAddSystemItem && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('system')} onClick={() => setOpenSubmenu((value) => value === 'system' ? null : 'system')}>
         <span>添加系统功能</span><ChevronRight size={14} />
         {openSubmenu === 'system' && (
           <div className="menu-surface directory-submenu system-tool-submenu">

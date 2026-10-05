@@ -27,6 +27,7 @@ import type {
   TransferStationSettings,
 } from '../../utils/v16Types';
 import type { NavigationClipboard } from '../../lib/navigationClipboard';
+import type { CreateShortcutsResult } from '../../lib/folderMirror';
 
 export interface NavigationSlice {
   activeGroupId: string;
@@ -55,6 +56,8 @@ export interface NavigationSlice {
   pasteGroupFromClipboard: () => string | null;
   moveDirectoryToGroup: (directoryId: string, targetGroupId: string) => boolean;
   addDirectory: (groupId: string, name: string, kind?: DirectoryKind) => string;
+  /** 设置 / 清除映射子目录被镜像的文件夹；传空串表示清除。 */
+  setDirectoryMappedPath: (directoryId: string, mappedPath: string) => void;
   addGroup: (name: string) => void;
   mergeGroup: (sourceGroupId: string, targetGroupId: string) => void;
   mergeDirectory: (sourceDirectoryId: string, targetDirectoryId: string) => void;
@@ -135,9 +138,50 @@ export interface MediaSlice {
   clearTransferItems: () => void;
 }
 
+export interface StartMenuSlice {
+  /** 开始菜单文件夹的实时条目；不写入配置，每次刷新重新扫描。 */
+  startMenuItems: ShortcutItem[];
+  startMenuLoading: boolean;
+  startMenuError: string | null;
+  startMenuFolder: string;
+  startMenuLoadedAt: number;
+  refreshStartMenu: () => Promise<number>;
+  addToStartMenu: (paths: string[]) => Promise<CreateShortcutsResult>;
+  addUrlToStartMenu: (url: string, name: string) => Promise<string>;
+  removeFromStartMenu: (itemIds: string[]) => Promise<number>;
+  renameStartMenuItem: (itemId: string, name: string) => Promise<boolean>;
+  getStartMenuItemById: (itemId: string) => ShortcutItem | undefined;
+}
+
+export interface MappedSlice {
+  /**
+   * 映射子目录的实时条目，**按子目录 id 分组**；不写入配置。
+   *
+   * 每个映射子目录镜像的是各自选定的文件夹，所以必须分开存。
+   */
+  mappedItems: Record<string, ShortcutItem[]>;
+  mappedLoading: Record<string, boolean>;
+  mappedError: Record<string, string | null>;
+  mappedLoadedAt: Record<string, number>;
+  /** 重新扫描某个映射子目录；返回条目数。 */
+  refreshMappedFolder: (directoryId: string) => Promise<number>;
+  addToMappedFolder: (directoryId: string, paths: string[]) => Promise<CreateShortcutsResult>;
+  addUrlToMappedFolder: (directoryId: string, url: string, name: string) => Promise<string>;
+  removeFromMappedFolder: (directoryId: string, itemIds: string[]) => Promise<number>;
+  renameMappedItem: (directoryId: string, itemId: string, name: string) => Promise<boolean>;
+  /** 某个映射子目录的条目；未加载时返回稳定的空数组（避免每次新引用导致重渲染）。 */
+  getMappedItems: (directoryId: string) => ShortcutItem[];
+  /** 在所有映射子目录里按虚拟 id 找条目。 */
+  findMappedItemById: (itemId: string) => ShortcutItem | undefined;
+  /** 该虚拟条目属于哪个映射子目录。 */
+  findMappedDirectoryIdByItemId: (itemId: string) => string | undefined;
+}
+
 export type NavigationActions = Omit<NavigationSlice, 'activeGroupId' | 'activeDirectoryId' | 'selectedNavTarget' | 'navigationClipboard' | 'settingsOpen'>;
 export type ItemActions = Omit<ItemSlice, 'selectedItemIds' | 'multiSelectMode' | 'itemClipboard'>;
 export type MediaActions = Omit<MediaSlice, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts'>;
+export type StartMenuActions = Omit<StartMenuSlice, 'startMenuItems' | 'startMenuLoading' | 'startMenuError' | 'startMenuFolder' | 'startMenuLoadedAt'>;
+export type MappedActions = Omit<MappedSlice, 'mappedItems' | 'mappedLoading' | 'mappedError' | 'mappedLoadedAt'>;
 
 
 export interface CommandUsageSlice {
@@ -154,7 +198,7 @@ export interface ConfigSlice {
 
 export type RequiredAppConfig = Omit<AppConfig, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts' | 'browserRouter' | 'multiAccount'> & Required<Pick<AppConfig, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts' | 'browserRouter' | 'multiAccount'>>;
 
-export type AppState = RequiredAppConfig & NavigationSlice & ItemSlice & SettingsSlice & MediaSlice & CommandUsageSlice & ConfigSlice & {
+export type AppState = RequiredAppConfig & NavigationSlice & ItemSlice & SettingsSlice & MediaSlice & CommandUsageSlice & StartMenuSlice & MappedSlice & ConfigSlice & {
   editItemId?: string;
 };
 

@@ -259,6 +259,26 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
     }));
     return directoryId;
   },
+  /**
+   * 设置 / 清除映射子目录被镜像的文件夹。
+   *
+   * 传空串表示清除（该映射子目录会变成「未选择文件夹」状态，内容区提示重新选择）。
+   */
+  setDirectoryMappedPath: (directoryId, mappedPath) => {
+    const clean = mappedPath.trim();
+    set((state) => ({
+      groups: state.groups.map((group) => ({
+        ...group,
+        directories: group.directories.map((directory) => {
+          if (directory.id !== directoryId) return directory;
+          const next: Directory = { ...directory };
+          if (clean) next.mappedPath = clean;
+          else delete next.mappedPath;
+          return next;
+        }),
+      })),
+    }));
+  },
   addGroup: (name) => set((state) => ({
     groups: [
       ...state.groups,

@@ -14,7 +14,7 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
-import { CheckSquare, Inbox, Search, X } from 'lucide-react';
+import { CheckSquare, Inbox, RefreshCw, Search, X } from 'lucide-react';
 import type { Directory, DisplaySettings, Group, ShortcutItem } from '../../../types';
 import { useAppStore } from '../../../stores/appStore';
 import { sortShortcutItemsForDisplay } from '../../../lib/sort';
@@ -24,12 +24,16 @@ import { launchShortcutItem } from '../../../lib/launchShortcut';
 import { matchesItemQuery, nextKeyboardItemIndex } from '../../../lib/itemExperience';
 import { uiAlert } from '../../../lib/uiDialog';
 import { formatShortcut, shortcutMatchesEvent } from '../../../lib/keyboardShortcuts';
+import { getMappedPath, isMappedDirectory } from '../../../lib/mappedFolder';
+import type { MirrorKind } from '../../../lib/folderMirror';
 
 interface ShortcutGridProps {
   activeGroup?: Group;
   activeDirectory: Directory;
   display: DisplaySettings;
   isAllDirectory: boolean;
+  /** 镜像子目录（开始菜单 / 映射文件夹）；null 表示普通子目录。 */
+  mirrorKind: MirrorKind | null;
   onContextMenuItem: (itemId: string, x: number, y: number) => void;
 }
 
@@ -38,8 +42,11 @@ export function ShortcutGrid({
   activeDirectory,
   display,
   isAllDirectory,
+  mirrorKind,
   onContextMenuItem,
 }: ShortcutGridProps) {
+  const isStartMenuDirectory = mirrorKind === 'startMenu';
+  const isMappedDirectory = mirrorKind === 'mapped';
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement | null>(null);
   const selectedItemIds = useAppStore((state) => state.selectedItemIds);
@@ -52,8 +59,34 @@ export function ShortcutGrid({
   const transferStation = useAppStore((state) => state.transferStation);
   const reorderItems = useAppStore((state) => state.reorderItems);
   const selectItem = useAppStore((state) => state.selectItem);
+  const startMenuItems = useAppStore((state) => state.startMenuItems);
+  const startMenuLoading = useAppStore((state) => state.startMenuLoading);
+  const refreshStartMenu = useAppStore((state) => state.refreshStartMenu);
+  const mappedItems = useAppStore((state) => state.getMappedItems(activeDirectory.id));
+  const mappedLoading = useAppStore((state) => Boolean(state.mappedLoading[activeDirectory.id]));
+  const mappedError = useAppStore((state) => state.mappedError[activeDirectory.id] ?? '');
+  const refreshMappedFolder = useAppStore((state) => state.refreshMappedFolder);
+  const mappedRoot = isMappedDirectory ? getMappedPath(activeDirectory) : '';
+  // 两类镜像子目录共用的加载态与刷新入口。
+  const mirrorLoading = isStartMenuDirectory ? startMenuLoading : mappedLoading;
+  const refreshMirror = () => (isStartMenuDirectory ? refreshStartMenu() : refreshMappedFolder(activeDirectory.id));
 
   const items = useMemo(() => {
+    // 镜像子目录的条目是运行时扫描出来的，不来自配置。
+    if (isStartMenuDirectory) {
+      return sortShortcutItemsForDisplay(
+        startMenuItems,
+        display.sortMode,
+        experience.pinnedItemsFirst,
+      );
+    }
+    if (isMappedDirectory) {
+      return sortShortcutItemsForDisplay(
+        mappedItems,
+        display.sortMode,
+        experience.pinnedItemsFirst,
+      );
+    }
     if (isAllDirectory) {
       return sortShortcutItemsForDisplay(
         (activeGroup?.directories ?? [])
@@ -68,7 +101,7 @@ export function ShortcutGrid({
       display.sortMode,
       experience.pinnedItemsFirst,
     );
-  }, [activeDirectory.items, activeGroup, display.sortMode, experience.pinnedItemsFirst, isAllDirectory]);
+  }, [activeDirectory.items, activeGroup, display.sortMode, experience.pinnedItemsFirst, isAllDirectory, isStartMenuDirectory, isMappedDirectory, startMenuItems, mappedItems]);
 
   const filteredItems = useMemo(
     () => items.filter((item) => matchesItemQuery(item, query, experience.searchIncludesPath)),
@@ -172,6 +205,8 @@ export function ShortcutGrid({
       display.sortMode !== 'custom' ||
       query.trim() ||
       isAllDirectory ||
+      isStartMenuDirectory ||
+      isMappedDirectory ||
       !over ||
       active.id === over.id
     ) return;
@@ -183,6 +218,34 @@ export function ShortcutGrid({
 
   function renderGrid() {
     if (items.length === 0) {
+      if (mirrorKind) {
+        const label = isStartMenuDirectory ? '开始菜单' : '映射文件夹';
+        // 映射子目录没选文件夹 / 读取失败时，提示「怎么办」而不是「没有项目」。
+        const mappedHint = !mappedRoot
+          ? '还没有选择要映射的文件夹：在左侧该子目录上右键 →「重新选择文件夹」'
+          : mappedError
+            ? `读取失败：${mappedError}`
+            : '这个文件夹里还没有内容';
+        return (
+          <div className="empty-state">
+            <Inbox size={38} />
+            <div>{isStartMenuDirectory ? '开始菜单文件夹里还没有快捷方式' : '映射文件夹里还没有内容'}</div>
+            {isMappedDirectory ? (
+              <small>{mappedHint}</small>
+            ) : experience.showEmptyGuide ? (
+              <small>把应用、文件或文件夹拖到这里，就会在{label}里生成快捷方式</small>
+            ) : null}
+            <button
+              type="button"
+              className="btn-secondary btn-compact"
+              onClick={() => void refreshMirror()}
+              disabled={mirrorLoading || (isMappedDirectory && !mappedRoot)}
+            >
+              <RefreshCw size={13} /> {mirrorLoading ? '正在刷新…' : `刷新${label}`}
+            </button>
+          </div>
+        );
+      }
       return (
         <div className="empty-state">
           <Inbox size={38} />
@@ -220,7 +283,7 @@ export function ShortcutGrid({
       />
     ));
 
-    if (isAllDirectory) return <div className="items-grid all-items-grid">{cards}</div>;
+    if (isAllDirectory || mirrorKind) return <div className="items-grid all-items-grid">{cards}</div>;
 
     return (
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -248,6 +311,17 @@ export function ShortcutGrid({
             </button>
           )}
           <span>{filteredItems.length}/{items.length}</span>
+          {mirrorKind && (
+            <button
+              type="button"
+              className="toolbar-clear"
+              title={isStartMenuDirectory ? '重新扫描系统开始菜单文件夹' : `重新扫描 ${mappedRoot || '映射文件夹'}`}
+              onClick={() => void refreshMirror()}
+              disabled={mirrorLoading || (isMappedDirectory && !mappedRoot)}
+            >
+              <RefreshCw size={14} />
+            </button>
+          )}
           {multiSelectMode && (
             <button
               type="button"

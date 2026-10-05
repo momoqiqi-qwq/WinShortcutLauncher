@@ -26,6 +26,11 @@ const DIRECTORY_LABELS: Record<DirectoryContextMenuItemId, { label: string; hint
   merge: { label: '合并到子目录', hint: '把当前子目录合并到同类型子目录。' },
   switchToNotes: { label: '空子目录切换为便签', hint: '仅空普通子目录可用。' },
   switchToNormal: { label: '便签切换为普通子目录', hint: '把便签恢复为普通子目录。' },
+  refreshStartMenu: { label: '刷新开始菜单', hint: '仅开始菜单子目录显示；重新扫描系统开始菜单文件夹。' },
+  openStartMenuFolder: { label: '打开开始菜单文件夹', hint: '仅开始菜单子目录显示；在资源管理器中打开对应文件夹。' },
+  refreshMappedFolder: { label: '刷新映射文件夹', hint: '仅映射文件夹子目录显示；重新扫描被映射的文件夹。' },
+  openMappedFolder: { label: '打开映射文件夹', hint: '仅映射文件夹子目录显示；在资源管理器中打开被映射的文件夹。' },
+  changeMappedFolder: { label: '重新选择文件夹', hint: '仅映射文件夹子目录显示；换一个被映射的文件夹，不动原文件夹内容。' },
   clear: { label: '清空子目录项目', hint: '清空当前普通子目录中的快捷项目。' },
   delete: { label: '删除子目录', hint: '删除当前子目录。' },
 };
@@ -42,7 +47,7 @@ const GROUP_LABELS: Record<GroupContextMenuItemId, { label: string; hint: string
 
 const AREA_LABELS: Record<AreaContextMenuItemId, { label: string; hint: string }> = {
   paste: { label: '粘贴项目', hint: '把内部项目剪贴板内容粘贴到当前子目录。' },
-  createDirectory: { label: '新建子目录', hint: '在当前父目录中创建普通、全部或便签子目录。' },
+  createDirectory: { label: '新建子目录', hint: '在当前父目录中创建普通、全部、便签或开始菜单子目录。' },
   addFile: { label: '添加文件', hint: '选择一个或多个文件。' },
   addFolder: { label: '添加文件夹', hint: '选择文件夹并添加快捷项目。' },
   addUrl: { label: '添加网址', hint: '打开添加网站窗口。' },

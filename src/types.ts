@@ -2,7 +2,7 @@ import type { GlobalSearchSettings, TransferStationSettings, ImageBrowserSetting
 export type ShortcutType = 'file' | 'folder' | 'url' | 'command';
 export type ViewMode = 'grid' | 'compact';
 export type SortMode = 'custom' | 'name' | 'type' | 'recent' | 'frequent';
-export type DirectoryKind = 'normal' | 'all' | 'notes';
+export type DirectoryKind = 'normal' | 'all' | 'notes' | 'startMenu' | 'mapped';
 export type EdgeAnimationStyle =
   | 'animate-window'
   | 'setwindowpos'
@@ -302,6 +302,8 @@ export interface Directory {
   order: number;
   items: ShortcutItem[];
   kind?: DirectoryKind;
+  /** 仅 kind='mapped' 使用：被实时镜像的文件夹绝对路径。 */
+  mappedPath?: string;
   display?: DirectoryDisplaySettings;
   note?: string;
   /** 当前便签是否显示行号，仅在 notes.lineNumberScope='current' 时生效。 */
@@ -432,6 +434,11 @@ export type DirectoryContextMenuItemId =
   | 'merge'
   | 'switchToNotes'
   | 'switchToNormal'
+  | 'refreshStartMenu'
+  | 'openStartMenuFolder'
+  | 'refreshMappedFolder'
+  | 'openMappedFolder'
+  | 'changeMappedFolder'
   | 'clear'
   | 'delete';
 

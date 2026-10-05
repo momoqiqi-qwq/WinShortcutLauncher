@@ -79,8 +79,9 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
         .find((entry) => entry.id === currentGroup.id)
         ?.directories.find((entry) => entry.id === pastedId);
       showLauncherNotice(`已粘贴子目录到「${currentGroup.name}」${pasted ? `：${pasted.name}` : ''}`);
-    } else if ((copiedDirectory.kind ?? 'normal') === 'all') {
-      showLauncherNotice(`「${currentGroup.name}」已经有“全部”子目录，不能重复粘贴`);
+    } else if ((copiedDirectory.kind ?? 'normal') === 'all' || (copiedDirectory.kind ?? 'normal') === 'startMenu') {
+      const label = (copiedDirectory.kind ?? 'normal') === 'startMenu' ? '开始菜单' : '全部';
+      showLauncherNotice(`「${currentGroup.name}」已经有“${label}”子目录，不能重复粘贴`);
     }
     onClose();
   }

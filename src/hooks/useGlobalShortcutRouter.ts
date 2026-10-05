@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { shortcutMatchesEvent } from '../lib/keyboardShortcuts';
+import { isStartMenuItemId } from '../lib/startMenu';
+import { isMappedItemId } from '../lib/mappedFolder';
 import { showLauncherNotice } from '../lib/notify';
 import { uiConfirm } from '../lib/uiDialog';
 
@@ -31,6 +33,12 @@ export function useGlobalShortcutRouter({
       const activeDirectory = state.getActiveDirectory();
       const activeGroup = state.getActiveGroup();
       if (!activeDirectory) return [];
+      if ((activeDirectory.kind ?? 'normal') === 'startMenu') {
+        return state.startMenuItems.map((item) => item.id);
+      }
+      if ((activeDirectory.kind ?? 'normal') === 'mapped') {
+        return state.getMappedItems(activeDirectory.id).map((item) => item.id);
+      }
       if ((activeDirectory.kind ?? 'normal') === 'all') {
         return (activeGroup?.directories ?? [])
           .filter((dir) => (dir.kind ?? 'normal') === 'normal')
@@ -152,6 +160,41 @@ export function useGlobalShortcutRouter({
 
       if (state.selectedItemIds.length > 0) {
         event.preventDefault();
+        // 开始菜单子目录里的选中项要落到真实文件上（送入回收站），不能走配置删除。
+        const startMenuIds = state.selectedItemIds.filter(isStartMenuItemId);
+        if (startMenuIds.length) {
+          const ok = !state.experience.confirmDeleteItems
+            || await uiConfirm(`确定删除选中的 ${startMenuIds.length} 个开始菜单快捷方式吗？文件会被送入回收站，可从回收站恢复。`);
+          if (!ok) return;
+          try {
+            const removed = await state.removeFromStartMenu(startMenuIds);
+            showLauncherNotice(removed > 0
+              ? `已从开始菜单删除 ${removed} 个快捷方式（可在回收站恢复）`
+              : '没有删除任何快捷方式');
+          } catch (error) {
+            showLauncherNotice(`删除失败：${String(error)}`);
+          }
+          return;
+        }
+        // 映射子目录同理：删除要落到那个文件夹里的真实文件上。
+        const mappedIds = state.selectedItemIds.filter(isMappedItemId);
+        if (mappedIds.length) {
+          const mappedDirectoryId = state.findMappedDirectoryIdByItemId(mappedIds[0]);
+          if (mappedDirectoryId) {
+            const ok = !state.experience.confirmDeleteItems
+              || await uiConfirm(`确定删除选中的 ${mappedIds.length} 个项目吗？会删除映射文件夹里的真实文件（送入回收站，可从回收站恢复）。`);
+            if (!ok) return;
+            try {
+              const removed = await state.removeFromMappedFolder(mappedDirectoryId, mappedIds);
+              showLauncherNotice(removed > 0
+                ? `已从映射文件夹删除 ${removed} 个项目（可在回收站恢复）`
+                : '没有删除任何项目');
+            } catch (error) {
+              showLauncherNotice(`删除失败：${String(error)}`);
+            }
+            return;
+          }
+        }
         if (!state.experience.confirmDeleteItems || await uiConfirm(`确定删除选中的 ${state.selectedItemIds.length} 个项目吗？`)) {
           state.deleteSelectedItems();
         }

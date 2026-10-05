@@ -171,13 +171,23 @@ export function buildPaletteEntries(
     for (const directory of Array.isArray(group?.directories) ? group.directories : []) {
       const directoryName = typeof directory.name === 'string' ? directory.name : String(directory.name ?? '未命名目录');
       if (settings.includeDirectories && (directory.kind !== 'notes' || settings.includeNotes)) {
+        const isStartMenuDirectory = directory.kind === 'startMenu';
+        const isMappedDirectory = directory.kind === 'mapped';
+        const mappedPath = isMappedDirectory ? String(directory.mappedPath ?? '') : '';
+        const mirrorLabel = isStartMenuDirectory ? '开始菜单' : isMappedDirectory ? '映射文件夹' : '';
         entries.push({
           id: `directory:${directory.id}`,
           kind: directory.kind === 'notes' ? 'note' : 'directory',
           title: directoryName,
-          subtitle: `${groupName} / ${directory.kind === 'notes' ? '便签' : '子目录'}`,
-          detail: directory.kind === 'notes' ? String(directory.note ?? '') : `${Array.isArray(directory.items) ? directory.items.length : 0} 个项目`,
-          keywords: ['目录', '子目录', directory.kind === 'notes' ? '便签' : '打开目录'],
+          subtitle: `${groupName} / ${directory.kind === 'notes' ? '便签' : mirrorLabel || '子目录'}`,
+          detail: directory.kind === 'notes'
+            ? String(directory.note ?? '')
+            : isStartMenuDirectory
+              ? '直连系统开始菜单文件夹'
+              : isMappedDirectory
+                ? (mappedPath ? `映射：${mappedPath}` : '还没选择要映射的文件夹')
+                : `${Array.isArray(directory.items) ? directory.items.length : 0} 个项目`,
+          keywords: ['目录', '子目录', directory.kind === 'notes' ? '便签' : mirrorLabel || '打开目录'],
           usageKey: `directory:${directory.id}`,
           groupId: group.id,
           directoryId: directory.id,

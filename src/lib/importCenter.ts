@@ -83,6 +83,8 @@ function itemEquivalent(a: ShortcutItem, b: ShortcutItem) {
 function kindLabel(kind: Directory['kind']) {
   if (kind === 'notes') return '便签';
   if (kind === 'all') return '全部';
+  if (kind === 'startMenu') return '开始菜单';
+  if (kind === 'mapped') return '映射文件夹';
   return '普通目录';
 }
 

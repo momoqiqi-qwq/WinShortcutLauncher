@@ -110,6 +110,8 @@ export function Sidebar({
   const reorderDirectories = useAppStore((state) => state.reorderDirectories);
   const globalDisplay = useAppStore((state) => state.display);
   const experience = useAppStore((state) => state.experience);
+  const startMenuCount = useAppStore((state) => state.startMenuItems.length);
+  const mappedItemsByDirectory = useAppStore((state) => state.mappedItems);
   const createDirectory = useDirectoryCreator();
   const directories = useMemo(() => activeGroup?.directories.slice().sort(byOrder) ?? [], [activeGroup]);
   const sidebarColumns = Math.max(1, Math.min(6, Math.round(activeGroup?.sidebarColumns ?? globalDisplay.sidebarColumns ?? 1)));
@@ -241,7 +243,7 @@ export function Sidebar({
             {directories.map((directory) => (
               <EditableDirectory
                 directory={directory}
-                count={getDirectoryDisplayCount(directory, directories)}
+                count={getDirectoryDisplayCount(directory, directories, startMenuCount, mappedItemsByDirectory[directory.id]?.length ?? 0)}
                 key={directory.id}
                 onContextMenu={onContextMenuDirectory}
                 dragSessionActive={activeDragId !== null}

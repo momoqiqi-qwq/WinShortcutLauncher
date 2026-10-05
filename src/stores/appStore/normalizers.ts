@@ -399,21 +399,31 @@ export function normalizeDirectory(
   );
   const note = getImportedDirectoryNote(raw);
   const rawKind = cleanText(raw.kind, 'normal', 40) as DirectoryKind;
+  // 镜像类子目录（开始菜单 / 映射文件夹）的内容是实时扫描出来的，不落盘；这里只保留类型标记。
   const kind: DirectoryKind = rawKind === 'all'
     ? 'all'
-    : isImportedNotesDirectory(raw, note, items.length)
-      ? 'notes'
-      : 'normal';
+    : rawKind === 'startMenu'
+      ? 'startMenu'
+      : rawKind === 'mapped'
+        ? 'mapped'
+        : isImportedNotesDirectory(raw, note, items.length)
+          ? 'notes'
+          : 'normal';
+  // 映射目录必须记住被镜像的文件夹，否则重启后不知道要扫哪里。
+  const mappedPath = kind === 'mapped'
+    ? cleanText(raw.mappedPath ?? raw.mirrorPath ?? raw.folderPath, '', 4096).trim()
+    : '';
   const display = normalizeDirectoryDisplay(raw.display);
   return {
     id: normalizedId(raw.id, 'dir', usedDirectoryIds),
     name: cleanText(raw.name ?? raw.title ?? raw.label, '常用', 240),
     order: finiteNumber(raw.order, fallbackOrder),
     kind,
+    ...(mappedPath ? { mappedPath } : {}),
     ...(display ? { display } : {}),
     note,
     ...(typeof raw.noteShowLineNumbers === 'boolean' ? { noteShowLineNumbers: raw.noteShowLineNumbers } : {}),
-    items: kind === 'notes' ? [] : items,
+    items: kind === 'notes' || kind === 'startMenu' || kind === 'mapped' ? [] : items,
   };
 }
 

@@ -133,6 +133,54 @@
   font-weight: 800;
 }
 
+/* 开始菜单子目录：直连系统开始菜单文件夹，用左侧强调条区分，不占用名称宽度。 */
+.side-tab-startMenu {
+  position: relative;
+  background: color-mix(in srgb, var(--panel-2), var(--accent) 6%);
+}
+
+.side-tab-startMenu::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  opacity: 0.9;
+}
+
+.side-tab-startMenu.active::before {
+  opacity: 1;
+}
+
+/* 映射文件夹子目录：同样是镜像，用另一种颜色的强调条与开始菜单区分开。 */
+.side-tab-mapped {
+  position: relative;
+  background: color-mix(in srgb, var(--panel-2), var(--text) 5%);
+}
+
+.side-tab-mapped::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--accent) 0 3px,
+    transparent 3px 6px
+  );
+  opacity: 0.75;
+}
+
+.side-tab-mapped.active::before {
+  opacity: 1;
+}
+
 .side-tab-label {
   flex: 1;
 }

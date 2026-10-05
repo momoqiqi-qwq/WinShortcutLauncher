@@ -1,5 +1,8 @@
-import { useMemo, type MouseEvent } from 'react';
+import { useEffect, useMemo, type MouseEvent } from 'react';
 import { getEffectiveDisplay, useAppStore } from '../../stores/appStore';
+import { isStartMenuDirectory } from '../../lib/startMenu';
+import { getMappedPath, isMappedDirectory } from '../../lib/mappedFolder';
+import type { MirrorKind } from '../../lib/folderMirror';
 import { NoteEditor } from './NoteEditor/NoteEditor';
 import { ShortcutGrid, getContentAreaStyle } from './ShortcutGrid/ShortcutGrid';
 
@@ -22,7 +25,27 @@ export function ContentArea({ onContextMenuItem, onContextMenuArea }: ContentAre
   );
   const isAllDirectory = (activeDirectory?.kind ?? 'normal') === 'all';
   const isNotesDirectory = activeDirectory?.kind === 'notes';
+  const isStartMenu = isStartMenuDirectory(activeDirectory);
+  const isMapped = isMappedDirectory(activeDirectory);
+  const mappedPath = isMapped ? getMappedPath(activeDirectory) : '';
+  const activeDirectoryId = activeDirectory?.id;
+  const refreshStartMenu = useAppStore((state) => state.refreshStartMenu);
+  const refreshMappedFolder = useAppStore((state) => state.refreshMappedFolder);
   const areaStyle = useMemo(() => getContentAreaStyle(display, behavior), [display, behavior]);
+  // 镜像子目录的内容来自真实文件夹，渲染与交互都要走另一套分支。
+  const mirrorKind: MirrorKind | null = isStartMenu ? 'startMenu' : isMapped ? 'mapped' : null;
+
+  // 切到开始菜单子目录时重新扫描一次，保证看到的是系统文件夹的最新状态。
+  useEffect(() => {
+    if (!isStartMenu) return;
+    void refreshStartMenu();
+  }, [isStartMenu, activeDirectoryId, refreshStartMenu]);
+
+  // 映射子目录同理；mappedPath 变化（重新选择文件夹）也要重扫。
+  useEffect(() => {
+    if (!isMapped || !activeDirectoryId) return;
+    void refreshMappedFolder(activeDirectoryId);
+  }, [isMapped, activeDirectoryId, mappedPath, refreshMappedFolder]);
 
   function openAreaMenu(event: MouseEvent<HTMLElement>) {
     const target = event.target as HTMLElement;
@@ -66,6 +89,7 @@ export function ContentArea({ onContextMenuItem, onContextMenuArea }: ContentAre
           activeDirectory={activeDirectory}
           display={display}
           isAllDirectory={isAllDirectory}
+          mirrorKind={mirrorKind}
           onContextMenuItem={onContextMenuItem}
         />
       )}
