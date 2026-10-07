@@ -2920,3 +2920,65 @@ button:disabled,
   from { opacity: 0; transform: translateY(7px); }
   to { opacity: 1; transform: none; }
 }
+
+/* v141: optional text color accents for the major UI surfaces. */
+.app-shell.colorful-text-enabled {
+  --colorful-text-strong: color-mix(in srgb, var(--accent) 70%, var(--text));
+  --colorful-text-main: color-mix(in srgb, var(--accent) 48%, var(--text));
+  --colorful-text-soft: color-mix(in srgb, var(--accent) 48%, var(--muted));
+  --colorful-text-muted: color-mix(in srgb, var(--accent) 32%, var(--muted));
+}
+
+.app-shell.colorful-text-enabled .top-tab:not(.active):not(.has-custom-color) {
+  color: var(--colorful-text-strong);
+}
+
+.app-shell.colorful-text-enabled .top-tab.has-custom-color:not(.active) {
+  color: color-mix(in srgb, var(--group-accent, var(--accent)) 76%, var(--text));
+}
+
+.app-shell.colorful-text-enabled .side-tab:not(.active) .side-tab-label {
+  color: var(--colorful-text-soft);
+}
+
+.app-shell.colorful-text-enabled .side-tab:not(.active) .side-tab-count,
+.app-shell.colorful-text-enabled .sidebar-header-title {
+  color: var(--colorful-text-muted);
+}
+
+.app-shell.colorful-text-enabled .item-card:not(.selected) .item-label,
+.app-shell.colorful-text-enabled .preview-card .item-label {
+  color: var(--colorful-text-main);
+}
+
+.app-shell.colorful-text-enabled .item-card.selected .item-label {
+  color: var(--accent);
+}
+
+.app-shell.colorful-text-enabled .content-toolbar span,
+.app-shell.colorful-text-enabled .notes-title,
+.app-shell.colorful-text-enabled .notes-save-status {
+  color: var(--colorful-text-soft);
+}
+
+.app-shell.colorful-text-enabled .settings-header h2,
+.app-shell.colorful-text-enabled .settings-section h3,
+.app-shell.colorful-text-enabled .settings-collapse-title,
+.app-shell.colorful-text-enabled .experience-toggle-copy strong,
+.app-shell.colorful-text-enabled .settings-layout-help-card strong {
+  color: var(--colorful-text-strong);
+}
+
+.app-shell.colorful-text-enabled .settings-nav > button:not(.active) span,
+.app-shell.colorful-text-enabled .field-row label,
+.app-shell.colorful-text-enabled .settings-subtitle {
+  color: var(--colorful-text-soft);
+}
+
+.app-shell.rainbow-text-groups .top-tab span,
+.app-shell.rainbow-text-directories .side-tab .side-tab-label,
+.app-shell.rainbow-text-settings .settings-panel h2,
+.app-shell.rainbow-text-settings .settings-panel h3,
+.app-shell.rainbow-text-settings .settings-panel .settings-nav button span {
+  color: transparent !important;
+}

@@ -11,13 +11,14 @@ export interface SettingsSearchItem {
   targetId?: string;
   keywords: string[];
   quickControl?:
-    | { kind: 'toggle'; setting: 'showFullItemName' | 'modernWinUI3Mode' | 'sidebarShowFullNames' }
+    | { kind: 'toggle'; setting: 'showFullItemName' | 'modernWinUI3Mode' | 'sidebarShowFullNames' | 'colorfulTextEnabled' }
     | { kind: 'range'; setting: 'charsPerLine'; min: number; max: number; step?: number };
 }
 
 export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { id: 'theme-preset', label: '主题与配色', description: '切换内置主题和扩展主题', tab: 'general', focusText: '主题', keywords: ['深色', '浅色', '颜色', '外观'] },
   { id: 'modern-winui3-mode', label: '现代 WinUI 3 模式', description: '切换 Windows 11 / WinUI 3 风格的圆角、层级和交互动效', tab: 'interface', focusText: '现代 WinUI 3 模式', targetId: 'modern-winui3-mode', keywords: ['winui', 'winui3', 'windows 11', '现代', '圆角', '动效', '界面模式'], quickControl: { kind: 'toggle', setting: 'modernWinUI3Mode' } },
+  { id: 'colorful-text', label: '文字色彩点缀', description: '为不同界面的文字使用主题派生色，减少单调感', tab: 'interface', section: 'global', focusText: '文字色彩点缀', targetId: 'colorful-text', keywords: ['文字颜色', '字体颜色', '彩色文字', '不单调', '颜色点缀'], quickControl: { kind: 'toggle', setting: 'colorfulTextEnabled' } },
   { id: 'ui-scale', label: '界面缩放', description: '调整主界面和设置界面的缩放', tab: 'interface', section: 'scale', focusText: '缩放', keywords: ['大小', 'ui scale', '设置缩放'] },
   { id: 'main-background', label: '主界面背景 / 动态壁纸', description: '背景图片、视频、位置、透明度和模糊', tab: 'interface', section: 'background', focusText: '主界面背景', keywords: ['壁纸', '视频', '透明度', '模糊', 'background'] },
   { id: 'settings-background', label: '设置窗口背景', description: '独立背景、面板不透明度与可调玻璃效果', tab: 'interface', section: 'settingsBackground', focusText: '设置面板外观', keywords: ['毛玻璃', '玻璃', '透明', '不透明度', '模糊', '饱和度', '高光', '壁纸'] },

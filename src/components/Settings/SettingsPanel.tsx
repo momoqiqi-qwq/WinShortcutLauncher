@@ -296,6 +296,20 @@ export function SettingsPanel() {
         </label>
       );
     }
+    if (control.kind === 'toggle' && control.setting === 'colorfulTextEnabled') {
+      const checked = display.colorfulTextEnabled !== false;
+      return (
+        <label className="settings-search-inline-toggle" title="可直接修改，无需进入设置分类">
+          <span>{checked ? '已开启' : '已关闭'}</span>
+          <input
+            type="checkbox"
+            checked={checked}
+            aria-label="文字色彩点缀"
+            onChange={(event) => updateDisplay({ colorfulTextEnabled: event.target.checked })}
+          />
+        </label>
+      );
+    }
     if (control.kind === 'range' && control.setting === 'charsPerLine') {
       return (
         <label className="settings-search-inline-range" title="可直接修改，无需进入设置分类">

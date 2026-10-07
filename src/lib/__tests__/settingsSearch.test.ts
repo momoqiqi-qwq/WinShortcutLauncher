@@ -48,6 +48,15 @@ describe('settings keyword search', () => {
     });
   });
 
+  it('finds the colorful text switch with a direct toggle', () => {
+    expect(searchSettingsItems('文字颜色').find((item) => item.id === 'colorful-text')).toMatchObject({
+      tab: 'interface',
+      section: 'global',
+      targetId: 'colorful-text',
+      quickControl: { kind: 'toggle', setting: 'colorfulTextEnabled' },
+    });
+  });
+
   it('trims and normalizes the query', () => {
     expect(normalizeSettingsQuery('  FAVICON  ')).toBe('favicon');
   });

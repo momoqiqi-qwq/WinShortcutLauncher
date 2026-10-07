@@ -37,6 +37,7 @@ export const DEFAULT_WINDOW_CONTROL_ORDER: WindowControlId[] = [
 
 export const defaultDisplay: DisplaySettings = {
   modernWinUI3Mode: false,
+  colorfulTextEnabled: true,
   fontFamily: '',
   fontApplyAreas: [],
   showFullItemName: false,

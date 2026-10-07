@@ -543,6 +543,15 @@ export function DisplaySettings({ requestedSection, onRequestedSectionHandled }:
         <SliderRow label="项目占位宽度" min={72} max={260} step={4} value={globalDisplay.itemWidth} unit="px" onChange={(value) => setGlobal({ itemWidth: value })} />
         <SliderRow label="项目占位高度" min={82} max={320} step={4} value={globalDisplay.itemHeight} unit="px" onChange={(value) => setGlobal({ itemHeight: value })} />
         <SliderRow label="项目间距" min={4} max={40} step={2} value={globalDisplay.gridGap} unit="px" onChange={(value) => setGlobal({ gridGap: value })} />
+        <label className="check-row" data-settings-target="colorful-text" data-settings-focus="文字色彩点缀">
+          <input
+            type="checkbox"
+            checked={globalDisplay.colorfulTextEnabled !== false}
+            onChange={(event) => setGlobal({ colorfulTextEnabled: event.target.checked })}
+          />
+          文字色彩点缀
+        </label>
+        <p className="settings-hint">开启后，父目录、子目录、项目名称和设置标题会使用当前主题派生色区分层级；关闭后恢复主题原本的纯文字颜色。</p>
       </CollapsibleSection>
 
       <CollapsibleSection

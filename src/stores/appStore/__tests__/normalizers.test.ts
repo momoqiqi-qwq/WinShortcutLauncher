@@ -114,6 +114,12 @@ describe('persisted shortcut data normalization', () => {
     expect(normalizeDisplay({ modernWinUI3Mode: 'true' as never }).modernWinUI3Mode).toBe(false);
   });
 
+  it('enables colorful text by default and preserves an explicit off switch', () => {
+    expect(normalizeDisplay({}).colorfulTextEnabled).toBe(true);
+    expect(normalizeDisplay({ colorfulTextEnabled: false }).colorfulTextEnabled).toBe(false);
+    expect(normalizeDisplay({ colorfulTextEnabled: 'false' as never }).colorfulTextEnabled).toBe(true);
+  });
+
   it('normalizes the saved group order used by the alphabetical-sort restore toggle', () => {
     expect(normalizeDisplay({}).sortGroupsSavedOrder).toBeNull();
     expect(normalizeDisplay({ sortGroupsSavedOrder: ['g2', 'g1'] }).sortGroupsSavedOrder).toEqual(['g2', 'g1']);

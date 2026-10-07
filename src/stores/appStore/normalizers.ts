@@ -512,6 +512,7 @@ export function normalizeDisplay(value?: unknown): DisplaySettings {
     ...defaultDisplay,
     ...(display ?? {}),
     modernWinUI3Mode: display?.modernWinUI3Mode === true,
+    colorfulTextEnabled: display?.colorfulTextEnabled !== false,
     fontFamily: normalizeFontFamily(display?.fontFamily),
     fontApplyAreas: normalizeFontApplyAreas(display?.fontApplyAreas),
     showFullItemName: display?.showFullItemName === true,

@@ -12,7 +12,7 @@ export const SETTINGS_CATALOG: SettingsCatalogEntry[] = [
   { id: 'behavior', label: '操作', description: '启动、关闭、贴边与开机行为', keywords: ['启动', '关闭', '贴边', '开机', '托盘', '单击', '双击', '恢复'] },
   { id: 'drag', label: '拖动', description: '项目拖拽、网站拖入、长按与视觉反馈', keywords: ['长按', '项目拖拽', '网站拖入', '重命名', '发光', '背景'] },
   { id: 'window', label: '窗口行为', description: '窗口大小、位置、回弹与动画', keywords: ['大小', '位置', '回弹', '屏幕外', '动画'] },
-  { id: 'interface', label: '界面', description: '缩放、父目录标签、子目录列数、滚动条、背景图、玻璃感和设置窗口布局', keywords: ['缩放', '父目录', '子目录', '列数', '多列', '标签', '颜色强度', '按钮', '滚动条', '背景图', '玻璃感', '毛玻璃', '提示时间', '设置窗口', '自适应', '重置布局', 'WinUI', 'WinUI3', 'Windows 11', '现代界面模式'] },
+  { id: 'interface', label: '界面', description: '缩放、父目录标签、文字颜色、子目录列数、滚动条、背景图、玻璃感和设置窗口布局', keywords: ['缩放', '父目录', '子目录', '列数', '多列', '标签', '文字颜色', '彩色文字', '颜色强度', '按钮', '滚动条', '背景图', '玻璃感', '毛玻璃', '提示时间', '设置窗口', '自适应', '重置布局', 'WinUI', 'WinUI3', 'Windows 11', '现代界面模式'] },
   { id: 'font', label: '字体', description: '字体、生效区域与预览', keywords: ['字体', '微软雅黑', 'Segoe UI', '思源黑体', 'MiSans', '便签字体', '生效区域'] },
   { id: 'experience', label: '体验', description: '确认、记忆、动画、提示和简洁模式', keywords: ['确认', '记住', '动画', '性能', '固定', '提示', '描述', '简洁'] },
   { id: 'navigation', label: '导航', description: '父目录配色、子目录和导航行为', keywords: ['父目录', '配色', '背景色', '彩色', '子目录', '新建目录', '重名', '数量', '双击', '管理菜单'] },

@@ -185,6 +185,8 @@ export interface TransferItem {
 export interface DisplaySettings {
   /** 使用更接近 Windows 11 / WinUI 3 的现代控件与层级样式。 */
   modernWinUI3Mode: boolean;
+  /** 为不同界面文字启用主题派生的轻量色彩点缀。 */
+  colorfulTextEnabled: boolean;
   /** 自定义字体名称或 CSS 字体栈；留空时跟随当前主题。 */
   fontFamily: string;
   /** 自定义字体生效区域。 */
