@@ -1,4 +1,4 @@
-# Yue launcher v0.1.142
+# Yue launcher v0.1.143
 
 Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快捷启动器。
 

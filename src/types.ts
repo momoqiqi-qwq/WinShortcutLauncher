@@ -509,6 +509,8 @@ export interface ExperienceSettings {
   showEmptyGuide: boolean;
   /** 项目成功启动后显示短提示。 */
   showLaunchNotice: boolean;
+  /** 上次运行时的版本号；与当前构建版本不一致时提示「当前版本是 …」。 */
+  lastSeenVersion: string;
   /** 删除快捷项目前询问确认。 */
   confirmDeleteItems: boolean;
   /** 删除父目录或子目录前询问确认。 */

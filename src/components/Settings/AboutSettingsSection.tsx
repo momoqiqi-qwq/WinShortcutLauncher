@@ -1,9 +1,9 @@
 import { Check, Copy, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { showLauncherNotice } from '../../lib/notify';
-import packageInfo from '../../../package.json';
+import { APP_PACKAGE_VERSION } from '../../lib/appVersion';
 
-export const APP_PACKAGE_VERSION = packageInfo.version;
+export { APP_PACKAGE_VERSION };
 export const PROJECT_URL = 'https://github.com/momoqiqi-qwq/WinShortcutLauncher';
 
 export function AboutSettingsSection() {

@@ -26,6 +26,7 @@ import { UiDialogHost } from './components/UiDialog/UiDialogHost';
 import { RainbowEffects } from './components/RainbowEffects/RainbowEffects';
 import { BackgroundMediaLayer } from './components/BackgroundMedia/BackgroundMedia';
 import { showLauncherNotice, type LauncherNoticeDetail } from './lib/notify';
+import { APP_PACKAGE_VERSION } from './lib/appVersion';
 import { getWindowPersistenceSettings } from './lib/windowPersistence';
 import { getProcessIntegrityStatus } from './lib/processIntegrity';
 import { useWebsiteDropController } from './hooks/useWebsiteDropController';
@@ -88,6 +89,17 @@ function App() {
         showLauncherNotice(`Yue Launcher 当前为 ${status.level} Integrity，不是推荐的标准 Medium；部分文件写入或跨进程交互可能受限。`, { durationMs: 8000 });
       }
     }).catch((error) => console.warn('[integrity] status query failed', error));
+  }, []);
+
+  // 版本更新提示：当前构建版本与上次运行记录的版本不一致（含首次运行）时，提示当前版本。
+  // ⚠️ 本 effect 必须排在注册 `launcher-show-notice` 监听器的 effect 之后 ——
+  // showLauncherNotice 是同步派发事件，声明顺序错了就没人接。
+  // 用 getState() 直接读，不把 experience 写进依赖，保证只在启动时检查一次。
+  useEffect(() => {
+    const store = useAppStore.getState();
+    if (store.experience.lastSeenVersion === APP_PACKAGE_VERSION) return;
+    store.updateExperience({ lastSeenVersion: APP_PACKAGE_VERSION });
+    showLauncherNotice(`当前版本是 v${APP_PACKAGE_VERSION}`, { durationMs: 4000 });
   }, []);
 
   useEffect(() => {

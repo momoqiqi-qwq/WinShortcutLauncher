@@ -65,4 +65,12 @@ describe('experience settings migration', () => {
     expect(normalizeExperience({ showSettingsDescriptions: false }).showSettingsDescriptions).toBe(false);
   });
 
+  it('normalizes the last-seen version used by the update notice', () => {
+    expect(normalizeExperience({}).lastSeenVersion).toBe('');
+    expect(normalizeExperience({ lastSeenVersion: '0.1.143' }).lastSeenVersion).toBe('0.1.143');
+    expect(normalizeExperience({ lastSeenVersion: '  0.1.143  ' }).lastSeenVersion).toBe('0.1.143');
+    expect(normalizeExperience({ lastSeenVersion: 123 as never }).lastSeenVersion).toBe('');
+    expect(normalizeExperience({ lastSeenVersion: null as never }).lastSeenVersion).toBe('');
+  });
+
 });
