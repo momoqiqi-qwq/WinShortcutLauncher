@@ -25,3 +25,34 @@
 3. 如改动含新功能，可另建 `V<版本号>_<主题>_README.md` 说明文档（参照根目录现有文件风格）。
 
 > 例外：纯格式化、无实质内容的改动也不允许跳过版本号——没有例外，改了就升。
+
+---
+
+## 构建后必须同步便捷版
+
+本项目除了 NSIS 安装包，还有一个**免安装便捷版**（裸 exe），放在桌面收纳盒里供日常双击使用。
+**每次构建出可运行产物后，都要把它同步过去** —— 否则用户日常点开的还是旧版本。
+
+| | 路径 |
+| --- | --- |
+| 源（构建产物） | `src-tauri/target/release/shortcut-launcher.exe` |
+| 目标（便捷版） | `C:\Users\yile\DeskBox\DeskBox\Yue launcher.exe` |
+| 备份 | `.workbuddy/portable-backup/Yue launcher_<旧版本>.exe` |
+
+一键同步（零依赖；自带版本探测 + 备份 + 校验 + 失败回滚）：
+
+```bash
+PYTHONIOENCODING=utf-8 python \
+  ~/.workbuddy-ai/skills/yue-launcher-release-publish/scripts/sync-portable.py
+```
+
+### 注意点
+
+- ⚠️ **便捷版经常正在运行**。Windows 上运行中的 exe **不能覆盖、不能删除，但可以重命名**
+  （image section 已映射，改名不受影响）。所以脚本走「改名换新」：
+  `rename(目标, 目标.old-<版本>)` → `copy2(新, 目标)`。
+  用户当前窗口不受影响，**重启后生效** —— 同步完要提醒用户这一点。
+- 若 `rename` 也失败（被独占锁定），先让用户退出 Yue launcher 再重试。
+- 删不掉的 `.old-*` 留着即可，**下次同步会自动清理**。
+- 这一步**每次构建后都做**，不必等发 GitHub Release。
+- 版本判断：源以 `package.json` 的版本号为准；目标文件版本从 PE 资源里探测（UTF-16LE 搜 `x.y.z`）。
