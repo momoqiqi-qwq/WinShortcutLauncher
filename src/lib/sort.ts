@@ -20,6 +20,24 @@ function comparePinned(a: ShortcutItem, b: ShortcutItem, pinnedFirst: boolean) {
   return Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
 }
 
+/** 名称排序：中文/数字感知的本地化比较。 */
+function compareName(a: ShortcutItem, b: ShortcutItem): number {
+  return safeText(a.name).localeCompare(safeText(b.name), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+}
+
+/**
+ * 类型分组比较：**文件夹永远排在最前**，其余类型按类型名排序。
+ *
+ * 「按名称」排序时先用它做一级键，再按名称排 —— 否则文件夹和文件会按首字母
+ * 交错混在一起（映射文件夹 / 开始菜单这类镜像目录尤其明显）。
+ */
+function compareTypeGroup(a: ShortcutItem, b: ShortcutItem): number {
+  const aFolder = a.type === 'folder';
+  const bFolder = b.type === 'folder';
+  if (aFolder !== bFolder) return aFolder ? -1 : 1;
+  return safeText(a.type).localeCompare(safeText(b.type));
+}
+
 export function sortShortcutItemsForDisplay(items: ShortcutItem[], mode: SortMode | string, pinnedFirst = true): ShortcutItem[] {
   const sorted = items.slice();
   sorted.sort((a, b) => {
@@ -27,11 +45,12 @@ export function sortShortcutItemsForDisplay(items: ShortcutItem[], mode: SortMod
     if (pinnedOrder) return pinnedOrder;
 
     if (mode === 'name') {
-      return safeText(a.name).localeCompare(safeText(b.name), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+      // 一级：类型分组（文件夹优先）；二级：名称。
+      return compareTypeGroup(a, b) || compareName(a, b);
     }
     if (mode === 'type') {
-      const typeOrder = safeText(a.type).localeCompare(safeText(b.type));
-      return typeOrder || safeText(a.name).localeCompare(safeText(b.name), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+      // 「按类型」保持原有的纯类型名分组（command → file → folder → url）。
+      return safeText(a.type).localeCompare(safeText(b.type)) || compareName(a, b);
     }
     if (mode === 'recent') {
       return (b.lastLaunchedAt ?? 0) - (a.lastLaunchedAt ?? 0)
