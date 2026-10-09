@@ -249,10 +249,28 @@ pub fn list_entries(root: &Path, filter: EntryFilter) -> Result<Vec<FolderEntry>
   Ok(entries)
 }
 
+/// 一次写入计划：复制已有快捷方式，还是新建一个指向目标的 `.lnk`。
+enum PlannedWrite {
+  Copy { source: PathBuf, destination: PathBuf },
+  Link { source: PathBuf, destination: PathBuf, working_directory: String },
+}
+
+impl PlannedWrite {
+  fn destination(&self) -> &Path {
+    match self {
+      PlannedWrite::Copy { destination, .. } | PlannedWrite::Link { destination, .. } => destination,
+    }
+  }
+}
+
 /// 把外部拖入的路径写成镜像目录里的快捷方式。
 ///
 /// - 源是 `.lnk` / `.url`：直接复制文件过去（保留原快捷方式）。
 /// - 其它（`.exe`、文件夹、普通文件）：用 WScript.Shell 生成指向它的 `.lnk`。
+///
+/// 需要 PowerShell 的那些会**合并成一次调用** —— 拖 20 个文件不该起 20 个
+/// `powershell.exe`（每个约半秒）。成功与否在 Rust 侧用「目标文件是否存在」判定，
+/// 不去解析 PowerShell 的 stdout（本机是 GBK，解析输出容易出乱码）。
 pub fn create_shortcuts(root: &Path, paths: Vec<String>) -> Result<CreateShortcutsResult, String> {
   if !root.is_dir() {
     return Err(format!("镜像目录不存在：{}", root.display()));
@@ -264,6 +282,7 @@ pub fn create_shortcuts(root: &Path, paths: Vec<String>) -> Result<CreateShortcu
     skipped: Vec::new(),
     errors: Vec::new(),
   };
+  let mut plans: Vec<PlannedWrite> = Vec::new();
 
   for raw in paths {
     let trimmed = raw.trim().trim_matches('"').to_string();
@@ -285,42 +304,78 @@ pub fn create_shortcuts(root: &Path, paths: Vec<String>) -> Result<CreateShortcu
 
     let extension = extension_of(&source);
     let is_shortcut = extension == "lnk" || extension == "url";
-    let destination = if is_shortcut {
+    if is_shortcut {
       let file_name = source
         .file_name()
         .map(|value| value.to_string_lossy().to_string())
         .unwrap_or_else(|| format!("快捷方式.{extension}"));
-      unique_copy_path(root, &file_name, &extension)
+      plans.push(PlannedWrite::Copy {
+        destination: unique_copy_path(root, &file_name, &extension),
+        source,
+      });
     } else {
       let stem = source
         .file_stem()
         .map(|value| value.to_string_lossy().to_string())
         .unwrap_or_else(|| "快捷方式".to_string());
-      unique_lnk_path(root, &stem)
-    };
-
-    if is_shortcut {
-      match fs::copy(&source, &destination) {
-        Ok(_) => result.created.push(destination.to_string_lossy().to_string()),
-        Err(error) => result.errors.push(format!("{}：{}", source.display(), error)),
-      }
-      continue;
+      let working_directory = source
+        .parent()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_default();
+      plans.push(PlannedWrite::Link {
+        destination: unique_lnk_path(root, &stem),
+        source,
+        working_directory,
+      });
     }
+  }
 
-    let working_directory = source
-      .parent()
-      .map(|value| value.to_string_lossy().to_string())
-      .unwrap_or_default();
-    let script = format!(
-      "$shell = New-Object -ComObject WScript.Shell; $s = $shell.CreateShortcut('{}'); $s.TargetPath = '{}'; $s.WorkingDirectory = '{}'; $s.Save()",
-      ps_escape(&destination.to_string_lossy()),
-      ps_escape(&source.to_string_lossy()),
-      ps_escape(&working_directory),
-    );
-
-    match run_powershell(&script) {
-      Ok(()) => result.created.push(destination.to_string_lossy().to_string()),
+  // 1) 复制类：纯文件操作，逐条判定。
+  for plan in plans.iter().filter(|plan| matches!(plan, PlannedWrite::Copy { .. })) {
+    let PlannedWrite::Copy { source, destination } = plan else { continue };
+    match fs::copy(source, destination) {
+      Ok(_) => result.created.push(destination.to_string_lossy().to_string()),
       Err(error) => result.errors.push(format!("{}：{}", source.display(), error)),
+    }
+  }
+
+  // 2) 链接类：合成一条 PowerShell 脚本一次跑完。
+  let link_commands: Vec<String> = plans
+    .iter()
+    .filter_map(|plan| match plan {
+      PlannedWrite::Link { source, destination, working_directory } => Some(format!(
+        "$s = $shell.CreateShortcut('{}'); $s.TargetPath = '{}'; $s.WorkingDirectory = '{}'; $s.Save()",
+        ps_escape(&destination.to_string_lossy()),
+        ps_escape(&source.to_string_lossy()),
+        ps_escape(working_directory),
+      )),
+      _ => None,
+    })
+    .collect();
+
+  let mut batch_error: Option<String> = None;
+  if !link_commands.is_empty() {
+    let script = format!(
+      "$shell = New-Object -ComObject WScript.Shell; {}",
+      link_commands.join("; ")
+    );
+    if let Err(error) = run_powershell(&script) {
+      batch_error = Some(error);
+    }
+  }
+
+  // 3) 链接类的结果：落盘了就算成功，没落盘就报错（结果一律在 Rust 侧算）。
+  for plan in plans.iter().filter(|plan| matches!(plan, PlannedWrite::Link { .. })) {
+    let destination = plan.destination();
+    if destination.exists() {
+      result.created.push(destination.to_string_lossy().to_string());
+    } else {
+      let source = match plan {
+        PlannedWrite::Link { source, .. } => source,
+        _ => destination,
+      };
+      let detail = batch_error.clone().unwrap_or_else(|| "创建快捷方式失败".to_string());
+      result.errors.push(format!("{}：{}", source.display(), detail));
     }
   }
 

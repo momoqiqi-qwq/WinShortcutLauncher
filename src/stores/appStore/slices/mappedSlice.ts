@@ -1,4 +1,3 @@
-import { resolveIconDataUrl } from '../../../lib/iconCache';
 import {
   createMappedShortcuts,
   createMappedUrl,
@@ -30,36 +29,23 @@ function pathsFromItemIds(itemIds: string[], items: ShortcutItem[]): string[] {
   return items.filter((item) => wanted.has(item.id)).map((item) => item.path);
 }
 
+/**
+ * 映射文件夹子目录的运行时切片。
+ *
+ * **这里刻意不预取图标。** 早先的实现在每次扫描完之后，会对**全部**条目
+ * 各发一次 `get_file_icon`；而那个命令以前是同步命令（跑在 Tauri 主线程上）
+ * 且每个图标都要起一个 `powershell.exe`。映射目录列的是根目录里的
+ * **全部文件与文件夹**，几十上百个条目就等于把界面冻结几十秒 —— 这就是
+ * 「映射文件夹卡顿」的直接来源。
+ *
+ * 现在图标交给 `ItemCard` 自己按视口懒加载（IntersectionObserver + 320px 预取边距，
+ * 走 `iconCache` 的内存 / 持久化两级缓存），只有真正滚到眼前的条目才会去取图标。
+ */
 export const createMappedSlice: AppSliceCreator<MappedActions> = (set, get) => {
   /** 取某个映射子目录的根路径；不是映射目录或还没配路径时返回空串。 */
   function rootOf(directoryId: string): string {
     const directory = findDirectory(get().groups, directoryId);
     return isMappedDirectory(directory) ? getMappedPath(directory) : '';
-  }
-
-  /**
-   * 补齐某个映射子目录的图标。走 iconCache（内存 + 持久化两级缓存），
-   * 全部解析完再一次性合并，避免几十次 setState 触发几十次重渲染。
-   */
-  async function hydrateIcons(directoryId: string, items: ShortcutItem[]) {
-    if (!items.length) return;
-    const resolved = await Promise.all(items.map(async (item) => ({
-      id: item.id,
-      icon: await resolveIconDataUrl('get_file_icon', item.path).catch(() => ''),
-    })));
-    const iconMap = new Map(resolved.filter((entry) => entry.icon).map((entry) => [entry.id, entry.icon]));
-    if (!iconMap.size) return;
-
-    const current = get().mappedItems[directoryId];
-    // 期间可能已经切目录 / 重新扫描，条目对不上就放弃这一轮。
-    if (!current || current.length !== items.length) return;
-    const next = current.map((entry) => {
-      const icon = iconMap.get(entry.id);
-      if (!icon || entry.icon === icon) return entry;
-      return { ...entry, icon };
-    });
-    if (!next.some((entry, index) => entry !== current[index])) return;
-    set({ mappedItems: { ...get().mappedItems, [directoryId]: next } });
   }
 
   return {
@@ -72,7 +58,7 @@ export const createMappedSlice: AppSliceCreator<MappedActions> = (set, get) => {
         });
         return 0;
       }
-      // 已经有一轮在跑时直接复用，避免切目录时反复起 PowerShell。
+      // 已经有一轮在跑时直接复用，避免切目录时反复扫盘。
       if (get().mappedLoading[directoryId]) return get().getMappedItems(directoryId).length;
 
       set({
@@ -88,7 +74,6 @@ export const createMappedSlice: AppSliceCreator<MappedActions> = (set, get) => {
           mappedLoading: { ...get().mappedLoading, [directoryId]: false },
           mappedError: { ...get().mappedError, [directoryId]: null },
         });
-        void hydrateIcons(directoryId, items);
         return items.length;
       } catch (error) {
         set({

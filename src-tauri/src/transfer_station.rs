@@ -35,8 +35,17 @@ fn unique_target(folder: &Path, name: &str) -> PathBuf {
   folder.join(name)
 }
 
+/// 把路径复制/移动到中转站文件夹。
+///
+/// 复制整个文件夹（递归）或大文件会耗时很久，以前这里是同步命令 → 主线程被
+/// 占满、窗口直接假死。改成 async 命令 + `spawn_blocking`，把真正的 I/O 挪到
+/// 阻塞线程池，前端照旧 `await invoke(...)`。
 #[tauri::command]
-pub fn copy_transfer_paths_to_folder(paths: Vec<String>, folder: String, action: Option<String>) -> Result<(), String> {
+pub async fn copy_transfer_paths_to_folder(paths: Vec<String>, folder: String, action: Option<String>) -> Result<(), String> {
+  crate::blocking::offload(move || copy_transfer_paths_to_folder_blocking(paths, folder, action)).await
+}
+
+fn copy_transfer_paths_to_folder_blocking(paths: Vec<String>, folder: String, action: Option<String>) -> Result<(), String> {
   let target_folder = PathBuf::from(folder);
   if !target_folder.exists() || !target_folder.is_dir() {
     return Err("目标不是有效文件夹".to_string());

@@ -1,4 +1,3 @@
-import { resolveIconDataUrl } from '../../../lib/iconCache';
 import {
   createStartMenuShortcuts,
   createStartMenuUrl,
@@ -20,26 +19,12 @@ function pathsFromItemIds(itemIds: string[], items: ShortcutItem[]): string[] {
 
 export const createStartMenuSlice: AppSliceCreator<StartMenuActions> = (set, get) => {
   /**
-   * 补齐开始菜单条目的图标。走 iconCache（有内存 + 持久化两级缓存），
-   * 全部解析完再一次性合并，避免几十次 setState 触发几十次重渲染。
+   * 与映射文件夹同理：**这里不预取图标**。
+   *
+   * 批量预取会让每个条目各发一次 `get_file_icon`，而那个命令以前是同步命令
+   * （跑在主线程）且每个图标要起一个 PowerShell 进程。图标现在由 `ItemCard`
+   * 按视口懒加载，走 `iconCache` 的两级缓存。
    */
-  async function hydrateStartMenuIcons(items: ShortcutItem[]) {
-    if (!items.length) return;
-    const resolved = await Promise.all(items.map(async (item) => ({
-      id: item.id,
-      icon: await resolveIconDataUrl('get_file_icon', item.path).catch(() => ''),
-    })));
-    const iconMap = new Map(resolved.filter((entry) => entry.icon).map((entry) => [entry.id, entry.icon]));
-    if (!iconMap.size) return;
-    const current = get().startMenuItems;
-    const next = current.map((entry) => {
-      const icon = iconMap.get(entry.id);
-      if (!icon || entry.icon === icon) return entry;
-      return { ...entry, icon };
-    });
-    if (next.some((entry, index) => entry !== current[index])) set({ startMenuItems: next });
-  }
-
   return {
     refreshStartMenu: async () => {
       // 已经有一轮在跑时直接复用，避免切目录时反复起 PowerShell。
@@ -55,7 +40,6 @@ export const createStartMenuSlice: AppSliceCreator<StartMenuActions> = (set, get
           startMenuLoading: false,
           startMenuError: null,
         });
-        void hydrateStartMenuIcons(items);
         return items.length;
       } catch (error) {
         set({ startMenuLoading: false, startMenuError: String(error) });

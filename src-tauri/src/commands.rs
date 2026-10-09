@@ -100,17 +100,25 @@ fn run_powershell(script: &str) -> Result<String, String> {
   }
 }
 
-#[tauri::command]
-pub fn resolve_lnk(path: String) -> Result<String, String> {
+/// 解析 `.lnk` 的真实目标（同步实现）。
+///
+/// 走的是 PowerShell，单次约半秒，所以只允许在阻塞线程池上调用 ——
+/// 见下面 `resolve_lnk` / `get_file_info` 两个 async 命令。
+fn resolve_lnk_blocking(path: &str) -> Result<String, String> {
   if !path.to_ascii_lowercase().ends_with(".lnk") {
-    return Ok(path);
+    return Ok(path.to_string());
   }
 
   let script = format!(
     "$shell = New-Object -ComObject WScript.Shell; $s = $shell.CreateShortcut('{}'); if ($s.Arguments) {{ Write-Output ($s.TargetPath + ' ' + $s.Arguments) }} else {{ Write-Output $s.TargetPath }}",
-    ps_escape(&path)
+    ps_escape(path)
   );
   run_powershell(&script)
+}
+
+#[tauri::command]
+pub async fn resolve_lnk(path: String) -> Result<String, String> {
+  crate::blocking::offload(move || resolve_lnk_blocking(&path)).await
 }
 
 fn split_command_line(value: &str) -> (String, Option<String>) {
@@ -223,13 +231,13 @@ fn existing_path(candidates: impl IntoIterator<Item = PathBuf>) -> Option<PathBu
   candidates.into_iter().find(|path| path.is_file())
 }
 
+/// 查 `App Paths\<exe>` 得到浏览器真实安装路径。
+///
+/// 以前这里起一个 `powershell.exe` 去 `Test-Path` + `Get-Item`，单次约 400 ms；
+/// 每个候选路径都不存在的浏览器都要白付一次，所以直接读注册表。
 #[cfg(target_os = "windows")]
 fn find_registered_app_path(exe_name: &str) -> Option<PathBuf> {
-  let script = format!(
-    "$keys=@('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{0}','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{0}'); foreach($k in $keys){{if(Test-Path $k){{$v=(Get-Item $k).GetValue(''); if($v){{Write-Output $v; break}}}}}}",
-    ps_escape(exe_name)
-  );
-  let value = run_powershell(&script).ok()?;
+  let value = crate::windows_registry::find_app_path(exe_name)?;
   let path = PathBuf::from(value.trim().trim_matches('"'));
   path.is_file().then_some(path)
 }
@@ -522,9 +530,10 @@ fn build_browser_catalog(custom_browsers: Vec<CustomBrowserInput>) -> Vec<Browse
   entries
 }
 
+/// 扫浏览器目录 + 探测已安装浏览器。会读多个配置目录，放阻塞线程池跑。
 #[tauri::command]
-pub fn scan_browsers(custom_browsers: Option<Vec<CustomBrowserInput>>) -> Vec<BrowserCatalogEntry> {
-  build_browser_catalog(custom_browsers.unwrap_or_default())
+pub async fn scan_browsers(custom_browsers: Option<Vec<CustomBrowserInput>>) -> Result<Vec<BrowserCatalogEntry>, String> {
+  crate::blocking::offload(move || Ok(build_browser_catalog(custom_browsers.unwrap_or_default()))).await
 }
 
 fn browser_launch_target_from_catalog(
@@ -747,19 +756,24 @@ pub fn open_file_location(path: String) -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
+/// 写整份配置 JSON。文件可能有几百 KB，别占着主线程。
 #[tauri::command]
-pub fn save_config(config: String, path: String) -> Result<(), String> {
-  fs::write(path, config).map_err(|error| error.to_string())
+pub async fn save_config(config: String, path: String) -> Result<(), String> {
+  crate::blocking::offload(move || fs::write(path, config).map_err(|error| error.to_string())).await
 }
 
 #[tauri::command]
-pub fn load_config(path: String) -> Result<String, String> {
-  fs::read_to_string(path).map_err(|error| error.to_string())
+pub async fn load_config(path: String) -> Result<String, String> {
+  crate::blocking::offload(move || fs::read_to_string(path).map_err(|error| error.to_string())).await
 }
 
 #[tauri::command]
-pub fn get_file_info(path: String) -> Result<FileInfo, String> {
-  let resolved_path = resolve_lnk(path.clone()).unwrap_or_else(|_| path.clone());
+pub async fn get_file_info(path: String) -> Result<FileInfo, String> {
+  crate::blocking::offload(move || get_file_info_blocking(&path)).await
+}
+
+fn get_file_info_blocking(path: &str) -> Result<FileInfo, String> {
+  let resolved_path = resolve_lnk_blocking(path).unwrap_or_else(|_| path.to_string());
   let metadata = fs::metadata(&resolved_path).ok();
   let target = Path::new(&resolved_path);
   let name = target
@@ -784,7 +798,7 @@ pub fn get_file_info(path: String) -> Result<FileInfo, String> {
 
   Ok(FileInfo {
     name,
-    path,
+    path: path.to_string(),
     resolved_path,
     exists: metadata.is_some(),
     is_dir,
@@ -828,24 +842,19 @@ pub fn set_window_always_on_top(_always_on_top: bool) -> Result<(), String> {
   Ok(())
 }
 
+/// 写/删系统启动项里的自启动登记（原生注册表写入，微秒级）。
+///
+/// 以前 `set` + `get` 连着跑两个 PowerShell，切换开关要卡近 0.8 秒。
 #[cfg(target_os = "windows")]
 #[tauri::command]
 pub fn set_auto_start(enabled: bool) -> Result<(), String> {
   let value_name = startup_registry_value_name();
-  let run_value = current_exe_run_value()?;
-  let script = if enabled {
-    format!(
-      "$ErrorActionPreference = 'Stop'; $runKey = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'; New-Item -Path $runKey -Force | Out-Null; Set-ItemProperty -Path $runKey -Name '{}' -Value '{}'; Write-Output 'enabled'",
-      ps_escape(value_name),
-      ps_escape(&run_value)
-    )
+  if enabled {
+    let run_value = current_exe_run_value()?;
+    crate::windows_registry::write_run_entry(value_name, &run_value)
   } else {
-    format!(
-      "$ErrorActionPreference = 'SilentlyContinue'; $runKey = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'; Remove-ItemProperty -Path $runKey -Name '{}' -ErrorAction SilentlyContinue; Write-Output 'disabled'",
-      ps_escape(value_name)
-    )
-  };
-  run_powershell(&script).map(|_| ())
+    crate::windows_registry::remove_run_entry(value_name).map(|_| ())
+  }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -854,18 +863,18 @@ pub fn set_auto_start(_enabled: bool) -> Result<(), String> {
   Err("开机自启动目前只支持 Windows".to_string())
 }
 
+/// 读系统启动项里的自启动登记（原生注册表读取，微秒级）。
+///
+/// 以前走 PowerShell：读一次约 330–400 ms，打开设置 → 操作行为时会白卡 0.4 秒。
 #[cfg(target_os = "windows")]
 #[tauri::command]
 pub fn get_auto_start() -> Result<bool, String> {
   let value_name = startup_registry_value_name();
   let expected = env::current_exe().map_err(|error| error.to_string())?.to_string_lossy().to_ascii_lowercase();
-  let script = format!(
-    "$ErrorActionPreference = 'SilentlyContinue'; $runKey = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'; $v = (Get-ItemProperty -Path $runKey -Name '{}' -ErrorAction SilentlyContinue).'{}'; if ($null -eq $v) {{ Write-Output '' }} else {{ Write-Output ([string]$v) }}",
-    ps_escape(value_name),
-    ps_escape(value_name)
-  );
-  let out = run_powershell(&script)?;
-  let value = out.trim().trim_matches('"').to_ascii_lowercase();
+  let Some(value) = crate::windows_registry::read_run_entry(value_name) else {
+    return Ok(false);
+  };
+  let value = value.trim().trim_matches('"').to_ascii_lowercase();
   if value.is_empty() {
     return Ok(false);
   }

@@ -67,8 +67,12 @@ fn run_powershell(script: &str) -> Result<String, String> {
   }
 }
 
-#[tauri::command]
-pub fn get_file_icon(path: String) -> Result<String, String> {
+/// 旧的 PowerShell 取图标脚本，现在**只作为原生实现的兜底**。
+///
+/// 每取一个图标就要起一个 `powershell.exe` 并现场 `Add-Type` 编译 C#，
+/// 实测单次约 560 ms。正常路径已经换成 `icon_native` 的毫秒级原生提取，
+/// 只有原生实现拿不到图标时才会走到这里。
+fn powershell_icon_script(path: &str) -> String {
   let script_template = r#"
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
@@ -139,12 +143,40 @@ try {
 }
 "#;
 
-  let script = script_template.replace("__PATH__", &ps_escape(&path));
-  run_powershell(&script)
+  script_template.replace("__PATH__", &ps_escape(path))
+}
+
+/// 同步地取一个图标的 PNG data URL：原生优先，PowerShell 兜底。
+fn resolve_icon_data_url(path: &str) -> Result<String, String> {
+  let trimmed = path.trim().trim_matches('"');
+  if trimmed.is_empty() {
+    return Ok(String::new());
+  }
+  #[cfg(target_os = "windows")]
+  {
+    if let Some(data_url) = crate::icon_native::extract_icon_data_url(trimmed) {
+      return Ok(data_url);
+    }
+  }
+  run_powershell(&powershell_icon_script(trimmed))
+}
+
+/// 取文件 / 快捷方式 / 文件夹的图标（PNG data URL）。
+///
+/// **必须异步**：Tauri 里没标 `async` 的命令跑在**主线程**上，而这个命令
+/// 最坏情况要等一个 PowerShell 进程。映射文件夹一次会请求几十上百个图标，
+/// 同步执行就等于把界面冻结几十秒 —— 这正是「映射文件夹卡顿」的根因。
+#[tauri::command]
+pub async fn get_file_icon(path: String) -> Result<String, String> {
+  crate::blocking::offload(move || resolve_icon_data_url(&path)).await
 }
 
 #[tauri::command]
-pub fn read_icon_as_data_url(path: String) -> Result<String, String> {
+pub async fn read_icon_as_data_url(path: String) -> Result<String, String> {
+  crate::blocking::offload(move || read_icon_file_as_data_url(&path)).await
+}
+
+fn read_icon_file_as_data_url(path: &str) -> Result<String, String> {
   let resolved_path = resolve_readable_icon_path(&path);
   let bytes = fs::read(&resolved_path).map_err(|error| error.to_string())?;
   let extension = resolved_path

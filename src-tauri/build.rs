@@ -39,6 +39,17 @@ const VERIFIED_INPUTS: &[&str] = &[
   "../src/lib/doubleClickTiming.ts",
   "../src/hooks/useBrowserCatalog.ts",
   "../src/hooks/useStableEdgeDock.ts",
+  "src/blocking.rs",
+  "src/icon.rs",
+  "src/icon_native.rs",
+  "src/mapped_folder.rs",
+  "src/start_menu.rs",
+  "src/folder_mirror.rs",
+  "../src/stores/appStore/slices/mappedSlice.ts",
+  "../src/stores/appStore/slices/startMenuSlice.ts",
+  "src/windows_registry.rs",
+  "src/transfer_station.rs",
+  "src/legacy_import.rs",
 ];
 
 fn read(path: impl AsRef<Path>, label: &str) -> String {
@@ -98,6 +109,17 @@ fn verify_persistent_windows_fixes() {
   let double_click_timing = read(root.join("src/lib/doubleClickTiming.ts"), "doubleClickTiming.ts");
   let browser_catalog = read(root.join("src/hooks/useBrowserCatalog.ts"), "useBrowserCatalog.ts");
   let stable_edge = read(root.join("src/hooks/useStableEdgeDock.ts"), "useStableEdgeDock.ts");
+  let blocking = read(manifest.join("src/blocking.rs"), "blocking.rs");
+  let icon = read(manifest.join("src/icon.rs"), "icon.rs");
+  let icon_native = read(manifest.join("src/icon_native.rs"), "icon_native.rs");
+  let mapped_folder = read(manifest.join("src/mapped_folder.rs"), "mapped_folder.rs");
+  let start_menu = read(manifest.join("src/start_menu.rs"), "start_menu.rs");
+  let folder_mirror = read(manifest.join("src/folder_mirror.rs"), "folder_mirror.rs");
+  let mapped_slice = read(root.join("src/stores/appStore/slices/mappedSlice.ts"), "mappedSlice.ts");
+  let start_menu_slice = read(root.join("src/stores/appStore/slices/startMenuSlice.ts"), "startMenuSlice.ts");
+  let windows_registry = read(manifest.join("src/windows_registry.rs"), "windows_registry.rs");
+  let transfer_station = read(manifest.join("src/transfer_station.rs"), "transfer_station.rs");
+  let legacy_import = read(manifest.join("src/legacy_import.rs"), "legacy_import.rs");
 
   require(&app_store, "browserRouter: defaults.browserRouter!", "appStore browserRouter default");
   require(&lib_rs, "Win32::UI::Controls::MARGINS", "MARGINS import from Win32::UI::Controls");
@@ -202,6 +224,52 @@ fn verify_persistent_windows_fixes() {
 
   forbid(&item_menu, "取消选择此项", "v130 removes the old per-item deselect menu command");
   forbid(&item_menu, "清除多选", "v130 removes the old clear-multi-select menu command");
+
+  // V145：映射文件夹卡顿。三条不变量必须同时成立，否则卡顿会回来：
+  // 1) 重活命令必须是 async（Tauri 里同步命令跑在主线程上）；
+  // 2) 图标走原生提取，不再每个图标起一个 PowerShell 进程；
+  // 3) 前端不再对镜像目录的全部条目预取图标（交给视口懒加载）。
+  require(&blocking, "spawn_blocking", "v145 blocking offload helper keeps heavy commands off the main thread");
+  require(&icon, "pub async fn get_file_icon", "v145 icon extraction command must be async so it never blocks the UI thread");
+  require(&icon, "crate::icon_native::extract_icon_data_url", "v145 icons must prefer native extraction over PowerShell");
+  require(&icon_native, "SHGetFileInfoW", "v145 native icon extraction uses the shell icon API");
+  require(&icon_native, "DrawIconEx", "v145 native icon extraction composites alpha through GDI");
+  require(&cargo, "png = \"0.17\"", "v145 native icon extraction encodes PNG without shelling out");
+  require(&mapped_folder, "pub async fn list_mapped_folder", "v145 mapped-folder commands must not run on the main thread");
+  require(&start_menu, "pub async fn list_start_menu_shortcuts", "v145 start-menu commands must not run on the main thread");
+  require(&folder_mirror, "link_commands.join", "v145 shortcut creation batches every link into one PowerShell run");
+
+  forbid(&icon, "#[tauri::command]\npub fn get_file_icon", "v145 the icon command must stay async");
+  forbid(&mapped_slice, "resolveIconDataUrl", "v145 mapped folders must not eagerly resolve icons for every entry");
+  forbid(&start_menu_slice, "resolveIconDataUrl", "v145 the start menu must not eagerly resolve icons for every entry");
+  forbid(&mapped_folder, "#[tauri::command]\npub fn ", "v145 mapped-folder commands must stay async");
+
+  // V146：主线程阻塞清零（第二批）。三类回归都要挡住：
+  // 1) 开机自启动 / App Paths 查询回到「起 PowerShell 读注册表」（单次 330–400 ms）；
+  // 2) 中转站复制、旧版库导入这两个重活命令回到同步（同步命令跑在主线程上）；
+  // 3) 纯 I/O 命令（扫浏览器 / 读写配置）回到同步。
+  require(&windows_registry, "RegGetValueW", "v146 registry reads must stay native instead of spawning PowerShell");
+  require(&windows_registry, "RegSetValueExW", "v146 registry writes must stay native instead of spawning PowerShell");
+  require(&windows_registry, "RegDeleteValueW", "v146 registry value removal must stay native");
+  // 不加 `RRF_NOEXPAND` 时 `RegGetValueW` 会替我们展开 `REG_EXPAND_SZ`，但 `pcbData` 仍是
+  // 未展开长度的口径 —— 实测读 `%SystemRoot%\System32` 会得到 "C:\Windows\System32\0" 再加一个
+  // 类型数字（那正是 REG_EXPAND_SZ = 2）。展开必须由 expand_environment 自己做。
+  require(&windows_registry, "RRF_NOEXPAND", "v146 REG_EXPAND_SZ reads must expand in our own code, not via RegGetValueW's stale size reporting");
+  require(&cargo, "Win32_System_Registry", "v146 the native registry module needs the windows-sys registry feature");
+  require(&commands, "crate::windows_registry::read_run_entry", "v146 auto-start detection must read the registry natively");
+  require(&commands, "crate::windows_registry::write_run_entry", "v146 auto-start toggling must write the registry natively");
+  require(&commands, "crate::windows_registry::find_app_path", "v146 browser App Paths lookup must stay native");
+  require(&commands, "pub async fn scan_browsers", "v146 browser scanning must not run on the main thread");
+  require(&commands, "pub async fn save_config", "v146 config writes must not run on the main thread");
+  require(&commands, "pub async fn load_config", "v146 config reads must not run on the main thread");
+  require(&transfer_station, "pub async fn copy_transfer_paths_to_folder", "v146 transfer-station copies must not run on the main thread");
+  require(&legacy_import, "pub async fn import_legacy_db_config", "v146 legacy imports must not run on the main thread");
+
+  forbid(&commands, "foreach($k in $keys)", "v146 removes the PowerShell App Paths lookup");
+  forbid(&commands, "Get-ItemProperty -Path $runKey", "v146 removes the PowerShell auto-start read");
+  forbid(&commands, "Remove-ItemProperty -Path $runKey", "v146 removes the PowerShell auto-start write");
+  forbid(&transfer_station, "#[tauri::command]\npub fn copy_transfer_paths_to_folder", "v146 the transfer-station copy command must stay async");
+  forbid(&legacy_import, "#[tauri::command]\npub fn import_legacy_db_config", "v146 the legacy import command must stay async");
   forbid(&lib_rs, "Win32::Graphics::Dwm::{DwmExtendFrameIntoClientArea, MARGINS}", "old DWM MARGINS import");
   forbid(&edge, "cached_main == 0", "cached_main integer null comparison");
   forbid(&edge, "cached_strip == 0", "cached_strip integer null comparison");

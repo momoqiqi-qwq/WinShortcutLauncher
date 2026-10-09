@@ -4,7 +4,31 @@
 
 ---
 
-## V144（最新）— 按名称排序时文件夹优先分组
+## V146（最新）— 主线程阻塞清零（第二批）
+
+- 接着 V145 的思路继续排查「主线程上跑耗时活儿」，又清掉四处，都是同一类问题：
+  1. **开机自启动状态用 PowerShell 查**。`get_auto_start` / `set_auto_start` 各起一个 `powershell.exe` 读写注册表，实测单次 **330–400 ms**（进程启动占绝大部分）。打开设置 → 操作行为时会卡约 0.4 秒，切换开关要连续跑 `set` + `get`，接近 **0.8 秒**。现在改用 `RegGetValueW` / `RegSetValueExW` / `RegDeleteValueW` 直接读注册表（新增 `src-tauri/src/windows_registry.rs`），耗时降到微秒级。
+  2. **浏览器探测兜底走 PowerShell**。`find_browser_executable` 在候选路径都找不到时，会去 `App Paths` 注册表项查（`App Paths\<exe>`），原来是用 PowerShell 查的 —— 每有一个没装的浏览器就多起一个进程。启动时扫一次浏览器目录、以及每次「用指定浏览器打开网址」，都会白白卡 **约 0.4 秒**。现在同样改走原生注册表。
+  3. **中转站拖拽复制跑在主线程**。`copy_transfer_paths_to_folder` 是同步命令，复制/移动大文件或整个文件夹时整个界面冻住（几 GB 的文件夹能冻几十秒）。现在改成 `async` + `spawn_blocking`，界面全程可交互。
+  4. **纯 I/O 命令仍在主线程**。`scan_browsers`（扫浏览器配置目录）、`save_config` / `load_config`（读写整份配置 JSON，含自动保存）、`import_legacy_db_config`（读旧版数据库并转换）一并挪到阻塞线程池。
+- 顺手修掉一个原生读取引入的真实缺陷：最初没加 `RRF_NOEXPAND`，而 `RegGetValueW` 会**自己**展开 `REG_EXPAND_SZ`，却仍按未展开的长度回报 `pcbData` —— 实测把 `%SystemRoot%\System32` 读成「`C:\Windows\System32` 后面多一个 NUL 和类型数字 2」（那正是 REG_EXPAND_SZ 的类型值）。凡是走环境变量的 `App Paths` / `Run` 值都会被这个尾巴污染（路径带上 NUL 和 `2`，浏览器探测或自启动命令都会失效）。现在加 `RRF_NOEXPAND`，环境变量展开统一由 `expand_environment` 自己做，与 PowerShell 的差分比对恢复逐字符一致。
+- 回归护栏：`src-tauri/build.rs` 与 `scripts/verify-source-fixes.mjs` 补了一组不变量 —— 必须存在原生注册表调用（`RegGetValueW` / `RegSetValueExW` / `RegDeleteValueW`）且必须带 `RRF_NOEXPAND`，`commands.rs` **不许**再出现 PowerShell 版自启动脚本与 `Test-Path $k` 式 App Paths 查询，中转站复制、浏览器扫描、配置读写、旧库导入必须都是 `async`。
+- 验证：独立基准工程用 `#[path]` 直接引入**要发布的那份** `windows_registry.rs` 后实测 —— 旧 `get_auto_start`（PowerShell 读 Run 键）**570–854 ms**，旧 `find_registered_app_path`（PowerShell 查 App Paths）**435–762 ms**，新的 `read_run_entry` / `find_app_path` 各跑 2000 次平均 **0.023 ms**（最快 0.011 ms），约 **3 万倍**。六个键值与旧 PowerShell 路径差分比对**逐字符一致**（`Run\Yue launcher`、`App Paths` 的 chrome / msedge / floorp / 缺失项）；写入、读取、删除往返与「删除不存在的值」的幂等行为也都验证通过（`Ok(true)` → 值消失 → `Ok(false)`）。`node scripts/verify-source-fixes.mjs` / `npx tsc --noEmit`（0 错误）/ `npx vitest run`（35 文件 167 用例全过）/ `cargo build --release --lib`（仅既有警告）全绿。
+
+## V145 — 映射文件夹卡顿修复
+
+- 定位到卡顿的三条链路，逐条修掉：
+  1. **取图标的命令跑在主线程上**。Tauri 里没标 `async` 的命令在**主线程**执行（官方文档：*Commands without the async keyword are executed on the main thread unless defined with `#[tauri::command(async)]`*），而 `get_file_icon` 每次都要起一个 `powershell.exe`，实测单次约 **560 ms**。映射文件夹列的是根目录里**全部文件与文件夹**（开始菜单只列快捷方式），几十上百个条目就等于把界面冻结几十秒 —— 这就是卡顿的主因。现在 `get_file_icon` / `read_icon_as_data_url`，以及映射文件夹、开始菜单、`resolve_lnk`、`get_file_info` 等会扫盘或起 PowerShell 的命令全部改成 `async` + `spawn_blocking`（新增 `src-tauri/src/blocking.rs` 统一封装）。
+  2. **扫描完就批量预取图标**。`mappedSlice` / `startMenuSlice` 以前在每次扫描结束后，对**每一个**条目各发一次取图标请求，把 `iconCache` 的 6 路并发在主线程上排成了长队。现在切片不再预取，图标交给 `ItemCard` 既有的 IntersectionObserver 视口懒加载（320px 预取边距 + 内存/持久化两级缓存），只有滚到眼前的条目才会去取。
+  3. **每个图标一个 PowerShell 进程**。新增 `src-tauri/src/icon_native.rs`：直接 `SHGetFileInfoW` 取 `HICON` → `GetIconInfo` 问出真实尺寸 → `DrawIconEx` 合成到 32bpp 顶向下 DIB → 反预乘 alpha → `png` 编码成 data URL。实测 **2.78 ms/图标**，比原来快约 **200 倍**；PowerShell 脚本保留为兜底（原生拿不到图标时才走）。输出格式仍是 `data:image/png;base64,`，前端与持久化缓存无需改动。
+- 顺带修掉的两个真实问题：
+  - `DrawIconEx` 在 32bpp 目标上是**按 alpha 混合**画的，而目标 DIB 初始全透明，于是结果被**预乘**了一次（半透明边缘会偏暗，浅色主题下能看到一圈暗边）。现在逐像素反预乘还原；与旧实现逐像素比对：**可见像素（alpha ≥ 128）最大通道差 ≤ 3/255**，纯属取整误差。
+  - 旧实现用 `ExtractIconEx` + `ExtractAssociatedIcon`，对**文件夹**根本取不到图标；`SHGetFileInfoW` 走系统关联，文件夹现在能拿到正常的文件夹图标。
+- 拖入合并：往镜像目录拖多个文件时，`create_shortcuts` 以前**每个文件起一个 PowerShell 进程**（20 个文件 ≈ 12 秒）。现在合并成**一条脚本一次跑完**，成功与否在 Rust 侧用「目标文件是否存在」判定，不解析 PowerShell 的 stdout（本机是 GBK，解析输出容易出乱码）。
+- 回归护栏：`src-tauri/build.rs` 与 `scripts/verify-source-fixes.mjs` 各加了一组不变量检查 —— 图标命令必须 `async`、必须优先走原生、镜像切片**不许**再出现 `resolveIconDataUrl`、映射/开始菜单命令必须 `async`、拖入必须合并成一次 PowerShell；新增 `src/stores/appStore/__tests__/mappedFolderPerformance.test.ts` 断言一次扫描只发一次 invoke。
+- 验证：`npm run typecheck` 0 错误；`npm test` 35 文件 / 167 用例全过；`cargo build --release --lib` 通过（仅既有警告）；原生取图标与旧 PowerShell 实现做了逐像素差分（结论见上）。
+
+## V144 — 按名称排序时文件夹优先分组
 
 - 「按名称」排序改为**两级比较**：一级先按类型分组，二级再按名称排（中文/数字感知）。文件夹永远排在最前，其余类型（command / file / url）各自成组、组内按名称。
 - 修掉的现象：镜像子目录（映射文件夹、开始菜单）以及含文件夹快捷方式的普通子目录，在「按名称」下会变成文件夹和文件按首字母交错混排；现在文件夹统一归到前面，文件类统一在后面。

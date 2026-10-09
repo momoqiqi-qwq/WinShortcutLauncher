@@ -1,8 +1,11 @@
 mod background_media;
+mod blocking;
 mod commands;
 mod edge_dock;
 mod edge_dock_native;
 mod icon;
+#[cfg(target_os = "windows")]
+mod icon_native;
 mod legacy_import;
 mod process_integrity;
 #[cfg(target_os = "windows")]
@@ -12,6 +15,8 @@ mod mapped_folder;
 mod start_menu;
 mod transfer_station;
 mod window_persistence;
+#[cfg(target_os = "windows")]
+mod windows_registry;
 mod website_metadata;
 
 pub use process_integrity::ensure_medium_integrity_before_run;

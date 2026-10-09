@@ -561,8 +561,16 @@ fn build_config(link_path: &Path, icon_path: Option<PathBuf>) -> Result<AppConfi
   })
 }
 
+/// 读旧版 sqlite 数据库并转换成新版配置 JSON。
+///
+/// 要打开数据库、逐表查询、还可能要读图标，属纯 I/O + CPU；以前是同步命令，
+/// 导入时界面会僵住。改成 async 命令 + `spawn_blocking`。
 #[tauri::command]
-pub fn import_legacy_db_config(path: String, icon_db_path: Option<String>) -> Result<String, String> {
+pub async fn import_legacy_db_config(path: String, icon_db_path: Option<String>) -> Result<String, String> {
+  crate::blocking::offload(move || import_legacy_db_config_blocking(path, icon_db_path)).await
+}
+
+fn import_legacy_db_config_blocking(path: String, icon_db_path: Option<String>) -> Result<String, String> {
   let selected = PathBuf::from(path);
   let (link_path, icon_path) = resolve_link_and_icon_paths(&selected, icon_db_path)?;
   let config = build_config(&link_path, icon_path)?;
