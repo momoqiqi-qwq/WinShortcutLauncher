@@ -6,17 +6,21 @@ import { FolderPlus } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { byOrder } from '../../lib/sort';
 import { getDirectoryDisplayCount } from '../../lib/directoryExperience';
+import { resolveColorFrameColors } from '../../lib/colorFrames';
 import { useDirectoryCreator } from '../../hooks/useDirectoryCreator';
 import type { Directory } from '../../types';
 
 function EditableDirectory({
   directory,
   count,
+  frameColor,
   onContextMenu,
   dragSessionActive,
 }: {
   directory: Directory;
   count: number;
+  /** v148: 相邻组合后的实际渲染色（independent 模式下就是 directory.color）。 */
+  frameColor?: string;
   onContextMenu: (directoryId: string, x: number, y: number) => void;
   dragSessionActive: boolean;
 }) {
@@ -33,7 +37,8 @@ function EditableDirectory({
     transform: dragSessionActive ? CSS.Transform.toString(transform) : undefined,
     transition: dragSessionActive ? transition : undefined,
     // v147: 子目录自定义颜色通过 CSS 变量注入，由 Sidebar.css 画成彩色框。
-    ...(directory.color ? { '--directory-accent': directory.color } : {}),
+    // v148: frameColor 已经是「相邻组合」算完的最终颜色。
+    ...(frameColor ? { '--directory-accent': frameColor } : {}),
   } as CSSProperties;
   const setCombinedRef = useCallback((node: HTMLDivElement | null) => {
     localRef.current = node;
@@ -57,7 +62,7 @@ function EditableDirectory({
     <div
       ref={setCombinedRef}
       style={style}
-      className={`side-tab side-tab-${directory.kind ?? 'normal'} ${isActive ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${directory.color ? 'has-custom-color' : ''}`}
+      className={`side-tab side-tab-${directory.kind ?? 'normal'} ${isActive ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${frameColor ? 'has-custom-color' : ''}`}
       data-directory-id={directory.id}
       onClick={() => !editing && setActiveDirectory(directory.id)}
       onDoubleClick={(event) => {
@@ -118,6 +123,15 @@ export function Sidebar({
   const directories = useMemo(() => activeGroup?.directories.slice().sort(byOrder) ?? [], [activeGroup]);
   const sidebarColumns = Math.max(1, Math.min(6, Math.round(activeGroup?.sidebarColumns ?? globalDisplay.sidebarColumns ?? 1)));
   const ids = useMemo(() => directories.map((dir) => dir.id), [directories]);
+  // v148: 相邻组合 —— 左侧子目录按显示顺序分组，组内共用同一基色系。
+  const frameColors = useMemo(() => resolveColorFrameColors(
+    directories.map((directory) => ({ id: directory.id, color: directory.color })),
+    {
+      blend: globalDisplay.colorFrameBlend,
+      groupSize: globalDisplay.colorFrameGroupSize,
+      groupTint: globalDisplay.colorFrameGroupTint,
+    },
+  ), [directories, globalDisplay.colorFrameBlend, globalDisplay.colorFrameGroupSize, globalDisplay.colorFrameGroupTint]);
   const activeDragIdRef = useRef<string | null>(null);
   const activeGroupIdRef = useRef(activeGroup?.id ?? '');
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -246,6 +260,7 @@ export function Sidebar({
               <EditableDirectory
                 directory={directory}
                 count={getDirectoryDisplayCount(directory, directories, startMenuCount, mappedItemsByDirectory[directory.id]?.length ?? 0)}
+                frameColor={frameColors[directory.id]}
                 key={directory.id}
                 onContextMenu={onContextMenuDirectory}
                 dragSessionActive={activeDragId !== null}

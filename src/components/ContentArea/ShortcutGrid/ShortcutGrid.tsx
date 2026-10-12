@@ -25,6 +25,7 @@ import { matchesItemQuery, nextKeyboardItemIndex } from '../../../lib/itemExperi
 import { uiAlert } from '../../../lib/uiDialog';
 import { formatShortcut, shortcutMatchesEvent } from '../../../lib/keyboardShortcuts';
 import { getMappedPath, isMappedDirectory } from '../../../lib/mappedFolder';
+import { resolveColorFrameColors } from '../../../lib/colorFrames';
 import type { MirrorKind } from '../../../lib/folderMirror';
 
 interface ShortcutGridProps {
@@ -108,6 +109,15 @@ export function ShortcutGrid({
     [experience.searchIncludesPath, items, query],
   );
   const ids = useMemo(() => filteredItems.map((item) => item.id), [filteredItems]);
+  // v148: 相邻组合 —— 内容区按显示顺序（含搜索过滤后的顺序）分组，组内共用同一基色系。
+  const frameColors = useMemo(() => resolveColorFrameColors(
+    filteredItems.map((item) => ({ id: item.id, color: item.color })),
+    {
+      blend: display.colorFrameBlend,
+      groupSize: display.colorFrameGroupSize,
+      groupTint: display.colorFrameGroupTint,
+    },
+  ), [filteredItems, display.colorFrameBlend, display.colorFrameGroupSize, display.colorFrameGroupTint]);
   const selectedItemIdSet = useMemo(() => new Set(selectedItemIds), [selectedItemIds]);
   const itemDragActivationConstraint = behavior.launchMode === 'single'
     ? { distance: Math.max(2, Math.min(8, Math.round((behavior.itemDragTolerance ?? 10) / 2))) }
@@ -279,6 +289,7 @@ export function ShortcutGrid({
         display={display}
         behavior={behavior}
         transferStation={transferStation}
+        frameColor={frameColors[item.id]}
         onContextMenu={onContextMenuItem}
       />
     ));

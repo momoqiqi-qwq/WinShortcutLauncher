@@ -231,6 +231,16 @@ export interface DisplaySettings {
   colorFrameColorStrength: number;
   /** v147: 子目录与项目彩色框的形状。 */
   colorFrameShape: 'round' | 'square';
+  /**
+   * v148: 相邻颜色是否组合。
+   * - independent：每一项各自用自己选的颜色（v147 行为）。
+   * - adjacent：同一容器里相邻的若干项并成一组，组内共用同一个基色系。
+   */
+  colorFrameBlend: 'independent' | 'adjacent';
+  /** v148: 相邻组合时「几项并成一组」（2–6）。 */
+  colorFrameGroupSize: number;
+  /** v148: 相邻组合时组内每格的深浅落差；0 表示组内完全同色（0–0.6）。 */
+  colorFrameGroupTint: number;
   sidebarWidth: number;
   sidebarItemHeight: number;
   sidebarItemGap: number;

@@ -78,6 +78,44 @@ export function ColorFrameAppearanceControls({ display, onChange }: ColorFrameAp
         </div>
         <small>只影响已经上色的子目录和项目；没上色的仍按「子目录圆角」和默认卡片圆角显示。</small>
       </div>
+
+      <div className="field-row">
+        <label>相邻颜色</label>
+        <div className="segmented segmented-wide">
+          <button type="button" className={display.colorFrameBlend !== 'adjacent' ? 'active' : ''} onClick={() => onChange({ colorFrameBlend: 'independent' })}>各自独立</button>
+          <button type="button" className={display.colorFrameBlend === 'adjacent' ? 'active' : ''} onClick={() => onChange({ colorFrameBlend: 'adjacent' })}>相邻组合</button>
+        </div>
+        <small>
+          选「相邻组合」后，同一处相邻的若干个子目录（或若干个项目）会并成一组，组内取第一个已上色的颜色作基色，
+          其余成员用它的同色系深浅；没上色的项不会凭空变色。
+        </small>
+      </div>
+
+      {display.colorFrameBlend === 'adjacent' && (
+        <>
+          <SettingsSliderRow
+            label="每组项数"
+            min={2}
+            max={6}
+            step={1}
+            value={display.colorFrameGroupSize ?? 3}
+            unit="项"
+            onChange={(colorFrameGroupSize) => onChange({ colorFrameGroupSize })}
+          />
+          <SettingsSliderRow
+            label="组内深浅落差"
+            min={0}
+            max={60}
+            step={1}
+            value={Math.round((display.colorFrameGroupTint ?? 0.22) * 100)}
+            unit="%"
+            onChange={(value) => onChange({ colorFrameGroupTint: value / 100 })}
+          />
+          <p className="settings-hint color-frame-blend-hint">
+            落差 0% 时组内完全同色 —— 相邻几项看起来就是一个整体色块；调大则同色系逐格变浅，形成一条色带。
+          </p>
+        </>
+      )}
     </div>
   );
 }

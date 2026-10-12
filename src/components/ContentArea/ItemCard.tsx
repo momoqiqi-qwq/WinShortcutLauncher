@@ -22,6 +22,8 @@ interface ItemCardProps {
   display: DisplaySettings;
   behavior: BehaviorSettings;
   transferStation: TransferStationSettings;
+  /** v148: 相邻组合后的实际渲染色（independent 模式下就是 item.color）。 */
+  frameColor?: string;
   onContextMenu: (itemId: string, x: number, y: number) => void;
 }
 
@@ -57,7 +59,7 @@ function FallbackIcon({ type, size }: { type: ShortcutItem['type']; size: number
   return <FileIcon size={size} />;
 }
 
-function ItemCardComponent({ item, selected, display, behavior, transferStation, onContextMenu }: ItemCardProps) {
+function ItemCardComponent({ item, selected, display, behavior, transferStation, frameColor, onContextMenu }: ItemCardProps) {
   const selectItem = useAppStore((state) => state.selectItem);
   const clearSelection = useAppStore((state) => state.clearSelection);
   const multiSelectMode = useAppStore((state) => state.multiSelectMode);
@@ -167,7 +169,8 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
     '--label-chars': display.charsPerLine,
     '--label-font-size': display.fontSize,
     // v147: 项目自定义颜色通过 CSS 变量注入，由 ItemCard.css 画成彩色框。
-    ...(item.color ? { '--item-accent': item.color } : {})
+    // v148: frameColor 已经是「相邻组合」算完的最终颜色。
+    ...(frameColor ? { '--item-accent': frameColor } : {})
   } as CSSProperties;
 
   useEffect(() => {
@@ -368,7 +371,7 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
     <div
       ref={setCardNodeRef}
       style={style}
-      className={`item-card ${selected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${item.pinned ? 'pinned' : ''} ${multiSelectMode ? 'multi-select-item' : ''} ${display.showFullItemName ? 'full-item-name' : ''} ${item.color ? 'has-custom-color' : ''}`}
+      className={`item-card ${selected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${item.pinned ? 'pinned' : ''} ${multiSelectMode ? 'multi-select-item' : ''} ${display.showFullItemName ? 'full-item-name' : ''} ${frameColor ? 'has-custom-color' : ''}`}
       title={[buildItemTooltip(item, itemTooltipMode), interactionHint].filter(Boolean).join('\n')}
       data-item-id={item.id}
       aria-selected={selected}
@@ -423,6 +426,7 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
 function areItemCardPropsEqual(previous: ItemCardProps, next: ItemCardProps) {
   return previous.item === next.item
     && previous.selected === next.selected
+    && previous.frameColor === next.frameColor
     && previous.onContextMenu === next.onContextMenu
     && previous.transferStation.dragToShortcutFolders === next.transferStation.dragToShortcutFolders
     && previous.display.sortMode === next.display.sortMode
