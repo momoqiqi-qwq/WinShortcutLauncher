@@ -7,7 +7,7 @@ import {
   snapshotDirectory,
   snapshotGroup,
 } from '../../../lib/navigationClipboard';
-import type { Directory } from '../../../types';
+import type { Directory, Group } from '../../../types';
 import { getFirstDirectory, normalizeGroups } from '../normalizers';
 import type { AppSliceCreator, NavigationActions } from '../types';
 
@@ -17,10 +17,24 @@ function withGroupSidebarColumns<T extends { sidebarColumns?: number }>(group: T
   return rest as T;
 }
 
-function withGroupColor<T extends { color?: string }>(group: T, color?: string): T {
-  if (color) return { ...group, color };
-  const { color: _removed, ...rest } = group;
+/** v147: 父目录 / 子目录 / 项目共用同一套「有颜色就写入、没颜色就删字段」的写法。 */
+function withColor<T extends { color?: string }>(target: T, color?: string): T {
+  if (color) return { ...target, color };
+  const { color: _removed, ...rest } = target;
   return rest as T;
+}
+
+/** 在所有父目录的所有子目录里替换某个子目录，同时保持没有命中的父目录引用不变。 */
+function mapDirectories(groups: Group[], mapper: (directory: Directory) => Directory): Group[] {
+  return groups.map((group) => {
+    let changed = false;
+    const directories = group.directories.map((directory) => {
+      const next = mapper(directory);
+      if (next !== directory) changed = true;
+      return next;
+    });
+    return changed ? { ...group, directories } : group;
+  });
 }
 
 export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, get) => ({
@@ -45,14 +59,48 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
     groups: state.groups.map((group) => (group.id === groupId ? { ...group, name } : group)),
   })),
   setGroupColor: (groupId, color) => set((state) => ({
-    groups: state.groups.map((group) => group.id === groupId ? withGroupColor(group, color) : group),
+    groups: state.groups.map((group) => group.id === groupId ? withColor(group, color) : group),
   })),
   setGroupColors: (colors) => set((state) => ({
     groups: state.groups.map((group) => (
       Object.prototype.hasOwnProperty.call(colors, group.id)
-        ? withGroupColor(group, colors[group.id])
+        ? withColor(group, colors[group.id])
         : group
     )),
+  })),
+  setDirectoryColor: (directoryId, color) => set((state) => ({
+    groups: mapDirectories(state.groups, (directory) => (
+      directory.id === directoryId ? withColor(directory, color) : directory
+    )),
+  })),
+  setDirectoryColors: (colors) => set((state) => ({
+    groups: mapDirectories(state.groups, (directory) => (
+      Object.prototype.hasOwnProperty.call(colors, directory.id)
+        ? withColor(directory, colors[directory.id])
+        : directory
+    )),
+  })),
+  setItemColor: (itemId, color) => set((state) => ({
+    groups: mapDirectories(state.groups, (directory) => {
+      if (!directory.items.some((item) => item.id === itemId)) return directory;
+      return {
+        ...directory,
+        items: directory.items.map((item) => (item.id === itemId ? withColor(item, color) : item)),
+      };
+    }),
+  })),
+  setItemColors: (colors) => set((state) => ({
+    groups: mapDirectories(state.groups, (directory) => {
+      if (!directory.items.some((item) => Object.prototype.hasOwnProperty.call(colors, item.id))) return directory;
+      return {
+        ...directory,
+        items: directory.items.map((item) => (
+          Object.prototype.hasOwnProperty.call(colors, item.id)
+            ? withColor(item, colors[item.id])
+            : item
+        )),
+      };
+    }),
   })),
   setGroupBrowserRoute: (groupId, route) => set((state) => ({
     groups: state.groups.map((group) => group.id === groupId ? { ...group, browserRoute: route } : group),

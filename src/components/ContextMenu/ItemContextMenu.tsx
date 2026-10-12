@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardCopy, ClipboardPaste, Copy, CopyPlus, FolderOpen, ImagePlus, Pencil, Pin, PinOff, RefreshCw, Shield, Sparkles, Trash2, CheckSquare } from 'lucide-react';
+import { ChevronRight, ClipboardCopy, ClipboardPaste, Copy, CopyPlus, FolderOpen, ImagePlus, Palette, Pencil, Pin, PinOff, RefreshCw, Shield, Sparkles, Trash2, CheckSquare } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import type { BrowserRouteOverride, ContextMenuState, ItemClickAction, ShortcutItem, ShortcutType } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -23,7 +23,19 @@ interface ItemContextMenuProps {
   onClose: () => void;
 }
 
-type ItemSubmenu = 'text' | 'copy' | 'move' | null;
+type ItemSubmenu = 'text' | 'copy' | 'move' | 'color' | null;
+
+// v147: 与父目录/子目录背景色共用同一套色板，保证三处观感一致。
+const ITEM_COLOR_PRESETS = [
+  { label: '默认', value: '' },
+  { label: '琥珀', value: '#f59e0b' },
+  { label: '青绿', value: '#10b981' },
+  { label: '天蓝', value: '#0ea5e9' },
+  { label: '紫色', value: '#8b5cf6' },
+  { label: '玫红', value: '#ec4899' },
+  { label: '珊瑚', value: '#f97316' },
+  { label: '石墨', value: '#64748b' },
+] as const;
 
 
 function isAbsoluteLocalPath(value: string) {
@@ -154,6 +166,7 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
   const experience = useAppStore((state) => state.experience);
   const selectItem = useAppStore((state) => state.selectItem);
   const selectItems = useAppStore((state) => state.selectItems);
+  const setItemColors = useAppStore((state) => state.setItemColors);
   const beginMultiSelect = useAppStore((state) => state.beginMultiSelect);
   const deleteSelectedItems = useAppStore((state) => state.deleteSelectedItems);
   const updateItem = useAppStore((state) => state.updateItem);
@@ -297,6 +310,31 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
     duplicateItem(currentItem.id);
     showLauncherNotice(`已创建副本：${currentItem.name}`);
     onClose();
+  }
+
+  /** v147: 给项目上色；多选时整批生效，传空表示回到跟随主题。 */
+  function applyItemColor(color?: string) {
+    const next = color || undefined;
+    setItemColors(Object.fromEntries(actionItemIds.map((id) => [id, next])));
+    showLauncherNotice(next
+      ? `已设置 ${actionCount} 个项目的背景色`
+      : `已让 ${actionCount} 个项目跟随主题`);
+    onClose();
+  }
+
+  async function applyCustomItemColor() {
+    const raw = await uiPrompt('请输入项目颜色（支持 #RGB / #RRGGBB / #RRGGBBAA）', currentItem.color ?? '#8b5cf6');
+    if (raw == null) return;
+    const next = raw.trim();
+    if (!next) {
+      applyItemColor(undefined);
+      return;
+    }
+    if (!/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(next)) {
+      await uiAlert('颜色格式不正确，请输入类似 #8b5cf6 的十六进制颜色。');
+      return;
+    }
+    applyItemColor(next);
   }
 
   function copyActionItems() {
@@ -470,6 +508,41 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
         <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('text')} onClick={() => setOpenSubmenu((value) => value === 'text' ? null : 'text')}>
           <span>文字显示</span><ChevronRight size={14} />
           {openSubmenu === 'text' && <TextDisplaySubmenu item={currentItem} onDone={onClose} />}
+        </div>
+        <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('color')} onClick={() => setOpenSubmenu((value) => value === 'color' ? null : 'color')}>
+          <span>项目背景色{actionCount > 1 ? `（${actionCount} 项）` : ''}</span><ChevronRight size={14} />
+          {openSubmenu === 'color' && (
+            <div className="menu-surface directory-submenu small-submenu">
+              {ITEM_COLOR_PRESETS.map((preset) => (
+                <div
+                  className="menu-item"
+                  key={preset.label}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    applyItemColor(preset.value || undefined);
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: 999,
+                        border: '1px solid color-mix(in srgb, var(--border), transparent 18%)',
+                        background: preset.value || 'linear-gradient(135deg, transparent 0 46%, var(--danger) 46% 54%, transparent 54% 100%)',
+                      }}
+                    />
+                    {preset.label}
+                  </span>
+                  <Palette size={13} />
+                </div>
+              ))}
+              <div className="menu-item" onClick={(event) => { event.stopPropagation(); void applyCustomItemColor(); }}>
+                <span>自定义颜色…</span><Palette size={13} />
+              </div>
+            </div>
+          )}
         </div>
         <div className="menu-separator" />
         <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('copy')} onClick={() => setOpenSubmenu((value) => value === 'copy' ? null : 'copy')}>

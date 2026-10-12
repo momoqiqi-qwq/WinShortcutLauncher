@@ -1,0 +1,14 @@
+.color-frame-appearance-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.color-frame-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.color-frame-preset-row button {
+  flex: 1 1 86px;
+}

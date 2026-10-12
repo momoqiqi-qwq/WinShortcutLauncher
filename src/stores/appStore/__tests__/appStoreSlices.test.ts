@@ -39,6 +39,47 @@ describe('composed app store slices', () => {
     expect(useAppStore.getState().groups.find((group) => group.id === added!.id)?.color).toBe('#f97316');
   });
 
+  it('colors child directories and projects without touching their neighbours', () => {
+    const group = getUserGroup();
+    const directoryId = group.directories[0].id;
+    useAppStore.getState().addItems(group.id, directoryId, [makeItem('item-color', '彩色项目')]);
+    const secondDirectoryId = useAppStore.getState().addDirectory(group.id, '第二页');
+
+    const findDirectory = (id: string) => getUserGroup().directories.find((directory) => directory.id === id);
+    const findItem = (id: string) => getUserGroup().directories
+      .flatMap((directory) => directory.items)
+      .find((item) => item.id === id);
+
+    useAppStore.getState().setDirectoryColor(directoryId, '#10b981');
+    expect(findDirectory(directoryId)?.color).toBe('#10b981');
+    useAppStore.getState().setDirectoryColor(directoryId, undefined);
+    expect(findDirectory(directoryId)?.color).toBeUndefined();
+
+    useAppStore.getState().setDirectoryColors({ [directoryId]: '#0ea5e9', [secondDirectoryId]: '#f97316' });
+    expect(findDirectory(directoryId)?.color).toBe('#0ea5e9');
+    expect(findDirectory(secondDirectoryId)?.color).toBe('#f97316');
+    // 没有出现在入参里的子目录不受影响。
+    expect(getUserGroup().directories.filter((directory) => directory.color).map((directory) => directory.id).sort())
+      .toEqual([directoryId, secondDirectoryId].sort());
+
+    useAppStore.getState().setItemColor('item-color', '#ec4899');
+    expect(findItem('item-color')?.color).toBe('#ec4899');
+    useAppStore.getState().setItemColor('item-color', undefined);
+    expect(findItem('item-color')?.color).toBeUndefined();
+
+    useAppStore.getState().duplicateItem('item-color');
+    const duplicated = getUserGroup().directories
+      .flatMap((directory) => directory.items)
+      .find((item) => item.id !== 'item-color')!.id;
+    useAppStore.getState().setItemColors({ 'item-color': '#8b5cf6', [duplicated]: '#f59e0b' });
+    expect(findItem('item-color')?.color).toBe('#8b5cf6');
+    expect(findItem(duplicated)?.color).toBe('#f59e0b');
+    // 不存在的项目 id 直接跳过，不制造多余的对象替换。
+    const before = getUserGroup();
+    useAppStore.getState().setItemColor('item-not-exist', '#f97316');
+    expect(getUserGroup()).toBe(before);
+  });
+
   it('returns the new directory id so the UI can activate it immediately', () => {
     const group = getUserGroup();
     const directoryId = useAppStore.getState().addDirectory(group.id, '快速创建');

@@ -70,6 +70,8 @@ export const SETTINGS_PINYIN_ALIASES: Readonly<Record<string, readonly string[]>
   "子目录": ["zimulu", "zm"],
   "子目录侧栏宽度、间距和字体": ["zimulucelankuandujianjuheziti", "zmclkdjjhzt"],
   "子目录项目数量": ["zimuluxiangmushuliang", "zmxml"],
+  "子目录与项目彩色框": ["zimuluyuxiangmucaisaikuang", "zmyxmcsk"],
+  "子目录与项目配色": ["zimuluyuxiangmupeise", "zmyxmcps"],
   "字体": ["ziti", "zt"],
   "字体、生效区域与预览": ["zitishengxiaoquyuyuyulan", "ztsxqyyyl"],
   "宽度": ["kuandu", "kd"],

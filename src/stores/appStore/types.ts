@@ -41,6 +41,14 @@ export interface NavigationSlice {
   renameGroup: (groupId: string, name: string) => void;
   setGroupColor: (groupId: string, color?: string) => void;
   setGroupColors: (colors: Record<string, string | undefined>) => void;
+  /** v147: 给单个子目录设置 / 清除彩色框颜色。 */
+  setDirectoryColor: (directoryId: string, color?: string) => void;
+  /** v147: 批量设置子目录颜色；只处理 colors 里出现过的 id。 */
+  setDirectoryColors: (colors: Record<string, string | undefined>) => void;
+  /** v147: 给单个项目设置 / 清除彩色框颜色。 */
+  setItemColor: (itemId: string, color?: string) => void;
+  /** v147: 批量设置项目颜色；只处理 colors 里出现过的 id。 */
+  setItemColors: (colors: Record<string, string | undefined>) => void;
   setGroupBrowserRoute: (groupId: string, route?: import('../../types').BrowserRouteOverride) => void;
   setGroupSidebarColumns: (groupId: string, columns?: number) => void;
   renameDirectory: (directoryId: string, name: string) => void;

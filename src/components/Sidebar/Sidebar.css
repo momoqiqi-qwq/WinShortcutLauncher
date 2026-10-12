@@ -99,6 +99,48 @@
   font-weight: 700;
 }
 
+/* v147: 子目录彩色框 —— 与父目录标签同一套「描边 + 半透明填充」画法。 */
+.side-tab.has-custom-color {
+  border-width: var(--color-frame-border-width, 1px);
+  border-color: color-mix(in srgb, var(--directory-accent, var(--accent)) 44%, var(--border));
+  background: color-mix(in srgb, var(--directory-accent, var(--accent)) var(--color-frame-strength, 17%), var(--panel-2));
+}
+
+.side-tab.has-custom-color:hover {
+  border-color: color-mix(in srgb, var(--directory-accent, var(--accent)) 62%, var(--border));
+  background: color-mix(in srgb, var(--directory-accent, var(--accent)) var(--color-frame-hover-strength, 25%), var(--panel-2));
+}
+
+.side-tab.has-custom-color.active {
+  border-color: var(--directory-accent, var(--accent));
+  background: color-mix(in srgb, var(--directory-accent, var(--accent)) var(--color-frame-hover-strength, 25%), var(--panel-2));
+  color: var(--directory-accent, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--directory-accent, var(--accent)) 22%, transparent);
+}
+
+.side-tab.has-custom-color.active .side-tab-count {
+  background: color-mix(in srgb, var(--directory-accent, var(--accent)), transparent 82%);
+  color: var(--directory-accent, var(--accent));
+}
+
+/* 上了色的镜像子目录，左侧强调条一起换成自定义颜色，避免两套颜色打架。 */
+.side-tab.has-custom-color.side-tab-startMenu::before {
+  background: var(--directory-accent, var(--accent));
+}
+
+.side-tab.has-custom-color.side-tab-mapped::before {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--directory-accent, var(--accent)) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+/* 方形框：只改已上色子目录的圆角，没上色的仍跟随“子目录圆角”设置。 */
+.color-frame-shape-square .side-tab.has-custom-color {
+  border-radius: 6px;
+}
+
 .side-tab.dragging {
   opacity: 0.48;
   cursor: grabbing;

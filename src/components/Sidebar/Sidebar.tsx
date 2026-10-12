@@ -32,7 +32,9 @@ function EditableDirectory({
   const style = {
     transform: dragSessionActive ? CSS.Transform.toString(transform) : undefined,
     transition: dragSessionActive ? transition : undefined,
-  };
+    // v147: 子目录自定义颜色通过 CSS 变量注入，由 Sidebar.css 画成彩色框。
+    ...(directory.color ? { '--directory-accent': directory.color } : {}),
+  } as CSSProperties;
   const setCombinedRef = useCallback((node: HTMLDivElement | null) => {
     localRef.current = node;
     setNodeRef(node);
@@ -55,7 +57,7 @@ function EditableDirectory({
     <div
       ref={setCombinedRef}
       style={style}
-      className={`side-tab side-tab-${directory.kind ?? 'normal'} ${isActive ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
+      className={`side-tab side-tab-${directory.kind ?? 'normal'} ${isActive ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${directory.color ? 'has-custom-color' : ''}`}
       data-directory-id={directory.id}
       onClick={() => !editing && setActiveDirectory(directory.id)}
       onDoubleClick={(event) => {

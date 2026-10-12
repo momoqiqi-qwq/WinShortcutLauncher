@@ -29,6 +29,33 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 78%);
 }
 
+/* v147: 项目彩色框 —— 与父目录标签、子目录同一套「描边 + 半透明填充」画法。 */
+.item-card.has-custom-color {
+  border-width: var(--color-frame-border-width, 1px);
+  border-color: color-mix(in srgb, var(--item-accent, var(--accent)) 44%, var(--border));
+  background: color-mix(in srgb, var(--item-accent, var(--accent)) var(--color-frame-strength, 17%), var(--panel-2));
+}
+
+.item-card.has-custom-color:hover {
+  border-color: color-mix(in srgb, var(--item-accent, var(--accent)) 62%, var(--border));
+  background: color-mix(in srgb, var(--item-accent, var(--accent)) var(--color-frame-hover-strength, 25%), var(--panel-2));
+}
+
+.item-card.has-custom-color.selected {
+  border-color: var(--item-accent, var(--accent));
+  background: color-mix(in srgb, var(--item-accent, var(--accent)) var(--color-frame-hover-strength, 25%), var(--panel-2));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--item-accent, var(--accent)) 22%, transparent);
+}
+
+.item-card.has-custom-color .item-icon {
+  color: var(--item-accent, var(--accent));
+}
+
+/* 方形框：只改已上色项目的圆角，没上色的仍按默认卡片圆角显示。 */
+.color-frame-shape-square .item-card.has-custom-color {
+  border-radius: 8px;
+}
+
 
 /* v130: explicit multi-select mode. Project actions and sorting are paused while active. */
 .item-card.multi-select-item {

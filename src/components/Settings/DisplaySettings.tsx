@@ -10,6 +10,7 @@ import { uiConfirm } from '../../lib/uiDialog';
 import { SettingsSliderRow as SliderRow } from './SettingsSliderRow';
 import { SettingsSurfaceAppearanceControls } from './SettingsSurfaceAppearanceControls';
 import { ParentGroupAppearanceControls } from './ParentGroupAppearanceControls';
+import { ColorFrameAppearanceControls } from './ColorFrameAppearanceControls';
 
 
 const WINDOW_CONTROL_LABELS: Array<{ id: WindowControlId; label: string; hint?: string }> = [
@@ -34,13 +35,14 @@ export type InterfaceSectionId =
   | 'scrollbar'
   | 'sidebar'
   | 'topbar'
+  | 'colorFrame'
   | 'controls'
   | 'background'
   | 'settingsBackground'
   | 'local'
   | 'preview';
 
-const ALL_SECTION_IDS: InterfaceSectionId[] = ['global', 'scale', 'menu', 'scrollbar', 'sidebar', 'topbar', 'controls', 'background', 'settingsBackground', 'local', 'preview'];
+const ALL_SECTION_IDS: InterfaceSectionId[] = ['global', 'scale', 'menu', 'scrollbar', 'sidebar', 'topbar', 'colorFrame', 'controls', 'background', 'settingsBackground', 'local', 'preview'];
 const DEFAULT_COLLAPSED_SECTIONS = new Set<InterfaceSectionId>(ALL_SECTION_IDS);
 
 
@@ -662,6 +664,16 @@ export function DisplaySettings({ requestedSection, onRequestedSectionHandled }:
         onToggle={toggleSection}
       >
         <ParentGroupAppearanceControls display={globalDisplay} onChange={setGlobal} />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        id="colorFrame"
+        title="子目录与项目彩色框"
+        collapsed={collapsedSections.has('colorFrame')}
+        onToggle={toggleSection}
+      >
+        <ColorFrameAppearanceControls display={globalDisplay} onChange={setGlobal} />
+        <p className="settings-hint">在左侧子目录或项目上右键 → “背景色”即可单独上色；也可以到“设置 → 导航”用「子目录与项目配色」一键彩色。</p>
       </CollapsibleSection>
 
       <CollapsibleSection

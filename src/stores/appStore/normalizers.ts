@@ -310,6 +310,9 @@ function normalizeGroupColor(value: unknown): string | undefined {
   return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(color) ? color : undefined;
 }
 
+/** v147: 子目录 / 项目与父目录共用同一套颜色校验规则。 */
+const normalizeAccentColor = normalizeGroupColor;
+
 function inferShortcutType(value: unknown, path: string): ShortcutType {
   if (value === 'file' || value === 'folder' || value === 'url' || value === 'command') return value;
   if (/^(https?:\/\/|mailto:|ftp:\/\/)/i.test(path)) return 'url';
@@ -333,6 +336,7 @@ export function normalizeShortcutItem(value: unknown, fallbackOrder = 0, usedIds
   const doubleClickAction = normalizeItemClickAction(raw.doubleClickAction);
   const rawBatch = asRecord(raw.multiAccountBatch);
   const batchId = cleanText(rawBatch.batchId, '', 240);
+  const color = normalizeAccentColor(raw.color);
   const multiAccountBatch = batchId ? {
     batchId,
     batchName: cleanText(rawBatch.batchName, '多账号批次', 240),
@@ -356,6 +360,7 @@ export function normalizeShortcutItem(value: unknown, fallbackOrder = 0, usedIds
     ...(singleClickAction ? { singleClickAction } : {}),
     ...(doubleClickAction ? { doubleClickAction } : {}),
     ...(multiAccountBatch ? { multiAccountBatch } : {}),
+    ...(color ? { color } : {}),
   };
 }
 
@@ -414,6 +419,7 @@ export function normalizeDirectory(
     ? cleanText(raw.mappedPath ?? raw.mirrorPath ?? raw.folderPath, '', 4096).trim()
     : '';
   const display = normalizeDirectoryDisplay(raw.display);
+  const color = normalizeAccentColor(raw.color);
   return {
     id: normalizedId(raw.id, 'dir', usedDirectoryIds),
     name: cleanText(raw.name ?? raw.title ?? raw.label, '常用', 240),
@@ -423,6 +429,7 @@ export function normalizeDirectory(
     ...(display ? { display } : {}),
     note,
     ...(typeof raw.noteShowLineNumbers === 'boolean' ? { noteShowLineNumbers: raw.noteShowLineNumbers } : {}),
+    ...(color ? { color } : {}),
     items: kind === 'notes' || kind === 'startMenu' || kind === 'mapped' ? [] : items,
   };
 }
@@ -532,6 +539,10 @@ export function normalizeDisplay(value?: unknown): DisplaySettings {
     topTabFontSize: clampDisplayNumber(display?.topTabFontSize, 10, 22, defaultDisplay.topTabFontSize),
     topTabBorderWidth: clampDisplayNumber(display?.topTabBorderWidth, 0, 4, defaultDisplay.topTabBorderWidth),
     topTabColorStrength: clampDisplayNumber(display?.topTabColorStrength, 0.04, 0.55, defaultDisplay.topTabColorStrength),
+    topTabShape: display?.topTabShape === 'square' ? 'square' : 'round',
+    colorFrameBorderWidth: clampDisplayNumber(display?.colorFrameBorderWidth, 0, 4, defaultDisplay.colorFrameBorderWidth),
+    colorFrameColorStrength: clampDisplayNumber(display?.colorFrameColorStrength, 0.04, 0.55, defaultDisplay.colorFrameColorStrength),
+    colorFrameShape: display?.colorFrameShape === 'square' ? 'square' : 'round',
     sidebarColumns: Math.round(clampDisplayNumber(display?.sidebarColumns, 1, 6, defaultDisplay.sidebarColumns)),
     sidebarItemLines: Math.round(clampDisplayNumber(display?.sidebarItemLines, 1, 4, defaultDisplay.sidebarItemLines)),
     sidebarShowFullNames: display?.sidebarShowFullNames === true,

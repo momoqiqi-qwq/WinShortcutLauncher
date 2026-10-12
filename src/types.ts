@@ -171,6 +171,8 @@ export interface ShortcutItem {
   doubleClickAction?: ItemClickAction;
   /** v121: metadata for multi-account batch management. */
   multiAccountBatch?: MultiAccountBatchMeta;
+  /** v147: 项目自定义颜色（彩色框）；未设置时跟随主题。 */
+  color?: string;
 }
 
 export interface TransferItem {
@@ -223,6 +225,12 @@ export interface DisplaySettings {
   topTabBorderWidth: number;
   topTabColorStrength: number;
   topTabShape: 'round' | 'square';
+  /** v147: 子目录与项目彩色框的边框粗细（0–4px）。 */
+  colorFrameBorderWidth: number;
+  /** v147: 子目录与项目彩色框的填充强度（0.04–0.55）。 */
+  colorFrameColorStrength: number;
+  /** v147: 子目录与项目彩色框的形状。 */
+  colorFrameShape: 'round' | 'square';
   sidebarWidth: number;
   sidebarItemHeight: number;
   sidebarItemGap: number;
@@ -310,6 +318,8 @@ export interface Directory {
   note?: string;
   /** 当前便签是否显示行号，仅在 notes.lineNumberScope='current' 时生效。 */
   noteShowLineNumbers?: boolean;
+  /** v147: 子目录自定义颜色（彩色框）；未设置时跟随主题。 */
+  color?: string;
 }
 
 export interface Group {
@@ -433,6 +443,7 @@ export type DirectoryContextMenuItemId =
   | 'moveToGroup'
   | 'paste'
   | 'rename'
+  | 'color'
   | 'merge'
   | 'switchToNotes'
   | 'switchToNormal'

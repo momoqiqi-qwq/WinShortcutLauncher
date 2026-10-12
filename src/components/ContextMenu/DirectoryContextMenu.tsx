@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardPaste, Copy, Eraser, FolderInput, FolderOpen, FolderSymlink, Merge, Pencil, RefreshCw, Repeat2, StickyNote, Trash2 } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Copy, Eraser, FolderInput, FolderOpen, FolderSymlink, Merge, Palette, Pencil, RefreshCw, Repeat2, StickyNote, Trash2 } from 'lucide-react';
 import { useState, type MouseEvent } from 'react';
 import type { ContextMenuState, DirectoryKind } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -12,6 +12,18 @@ import { canPasteDirectoryIntoGroup } from '../../lib/navigationClipboard';
 import { getStartMenuFolder } from '../../lib/startMenu';
 import { getMappedPath, isMappedDirectory, mappedFolderLabel, validateMappedFolder } from '../../lib/mappedFolder';
 
+// v147: 与父目录背景色共用同一套色板，保证三处（父目录/子目录/项目）观感一致。
+const DIRECTORY_COLOR_PRESETS = [
+  { label: '默认', value: '' },
+  { label: '琥珀', value: '#f59e0b' },
+  { label: '青绿', value: '#10b981' },
+  { label: '天蓝', value: '#0ea5e9' },
+  { label: '紫色', value: '#8b5cf6' },
+  { label: '玫红', value: '#ec4899' },
+  { label: '珊瑚', value: '#f97316' },
+  { label: '石墨', value: '#64748b' },
+] as const;
+
 interface DirectoryContextMenuProps {
   menu: Extract<ContextMenuState, { kind: 'directory' }>;
   onClose: () => void;
@@ -20,6 +32,7 @@ interface DirectoryContextMenuProps {
 export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProps) {
   const groups = useAppStore((state) => state.groups);
   const renameDirectory = useAppStore((state) => state.renameDirectory);
+  const setDirectoryColor = useAppStore((state) => state.setDirectoryColor);
   const deleteDirectory = useAppStore((state) => state.deleteDirectory);
   const clearDirectoryItems = useAppStore((state) => state.clearDirectoryItems);
   const mergeDirectory = useAppStore((state) => state.mergeDirectory);
@@ -39,7 +52,7 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   const hiddenItems = new Set(experience.directoryContextMenuHiddenItems ?? []);
   const show = (id: import('../../types').DirectoryContextMenuItemId) => !hiddenItems.has(id);
   const { ref, style, submenuClassName } = useSmartMenuPosition(menu.x, menu.y, 8, 260);
-  const [openSubmenu, setOpenSubmenu] = useState<'merge' | 'move' | null>(null);
+  const [openSubmenu, setOpenSubmenu] = useState<'merge' | 'move' | 'color' | null>(null);
   const group = groups.find((entry) => entry.directories.some((dir) => dir.id === menu.directoryId));
   const directory = group?.directories.find((dir) => dir.id === menu.directoryId);
 
@@ -65,6 +78,27 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
     const next = await uiPrompt('子目录名称', currentDirectory.name);
     if (next?.trim()) renameDirectory(currentDirectory.id, next.trim());
     onClose();
+  }
+
+  /** v147: 给子目录标签上色；传空表示回到跟随主题。 */
+  function applyColor(color?: string) {
+    setDirectoryColor(currentDirectory.id, color || undefined);
+    onClose();
+  }
+
+  async function applyCustomColor() {
+    const raw = await uiPrompt('请输入子目录颜色（支持 #RGB / #RRGGBB / #RRGGBBAA）', currentDirectory.color ?? '#8b5cf6');
+    if (raw == null) return;
+    const next = raw.trim();
+    if (!next) {
+      applyColor(undefined);
+      return;
+    }
+    if (!/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(next)) {
+      await uiAlert('颜色格式不正确，请输入类似 #8b5cf6 的十六进制颜色。');
+      return;
+    }
+    applyColor(next);
   }
 
   async function clear() {
@@ -207,7 +241,7 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   const showStartMenuSection = isStartMenu && (show('refreshStartMenu') || show('openStartMenuFolder'));
   const showMappedSection = isMapped
     && (show('refreshMappedFolder') || show('openMappedFolder') || show('changeMappedFolder'));
-  const showManageSection = show('rename') || show('merge') || show('switchToNotes') || show('switchToNormal');
+  const showManageSection = show('rename') || show('color') || show('merge') || show('switchToNotes') || show('switchToNormal');
   const showDangerSection = show('clear') || show('delete');
   const hasVisibleSection = showClipboardSection || showStartMenuSection || showMappedSection || showManageSection || showDangerSection;
 
@@ -255,6 +289,41 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
       {show('changeMappedFolder') && isMapped && <div className="menu-item" title={mappedRoot || '还没有选择文件夹'} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void changeMappedFolder()}><span>重新选择文件夹</span><FolderSymlink size={15} /></div>}
       {showMappedSection && (showManageSection || showDangerSection) && <div className="menu-separator" />}
       {show('rename') && <div className="menu-item" title={isStartMenu ? '只改启动器里的显示名称，不会重命名系统快捷方式' : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void rename()}><span>重命名子目录</span><Pencil size={15} /></div>}
+      {show('color') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('color')} onClick={() => setOpenSubmenu((value) => value === 'color' ? null : 'color')}>
+        <span>子目录背景色</span><ChevronRight size={14} />
+        {openSubmenu === 'color' && (
+          <div className="menu-surface directory-submenu small-submenu">
+            {DIRECTORY_COLOR_PRESETS.map((preset) => (
+              <div
+                className="menu-item"
+                key={preset.label}
+                onClick={(event: MouseEvent<HTMLDivElement>) => {
+                  event.stopPropagation();
+                  applyColor(preset.value || undefined);
+                }}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: 999,
+                      border: '1px solid color-mix(in srgb, var(--border), transparent 18%)',
+                      background: preset.value || 'linear-gradient(135deg, transparent 0 46%, var(--danger) 46% 54%, transparent 54% 100%)',
+                    }}
+                  />
+                  {preset.label}
+                </span>
+                <Palette size={13} />
+              </div>
+            ))}
+            <div className="menu-item" onClick={(event: MouseEvent<HTMLDivElement>) => { event.stopPropagation(); void applyCustomColor(); }}>
+              <span>自定义颜色…</span><Palette size={13} />
+            </div>
+          </div>
+        )}
+      </div>}
       {show('merge') && <div className={`menu-item with-submenu ${mergeTargets.length === 0 ? 'disabled' : ''}`} onMouseEnter={() => setOpenSubmenu('merge')} onClick={() => mergeTargets.length > 0 && setOpenSubmenu((value) => value === 'merge' ? null : 'merge')}>
         <span>合并到子目录</span><ChevronRight size={14} />
         {openSubmenu === 'merge' && mergeTargets.length > 0 && (

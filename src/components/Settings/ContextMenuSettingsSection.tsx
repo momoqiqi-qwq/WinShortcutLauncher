@@ -23,6 +23,7 @@ const DIRECTORY_LABELS: Record<DirectoryContextMenuItemId, { label: string; hint
   moveToGroup: { label: '移动到父目录', hint: '把当前子目录完整移动到其他父目录。' },
   paste: { label: '粘贴项目', hint: '把内部项目剪贴板内容粘贴到此子目录。' },
   rename: { label: '重命名子目录', hint: '修改当前子目录名称。' },
+  color: { label: '子目录背景色', hint: '给左侧子目录标签设置不同的背景颜色，形成彩色框。' },
   merge: { label: '合并到子目录', hint: '把当前子目录合并到同类型子目录。' },
   switchToNotes: { label: '空子目录切换为便签', hint: '仅空普通子目录可用。' },
   switchToNormal: { label: '便签切换为普通子目录', hint: '把便签恢复为普通子目录。' },

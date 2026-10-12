@@ -1,6 +1,7 @@
 import { FolderPlus, LayoutList, Menu, RotateCcw } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { ParentGroupColorSettings } from './ParentGroupColorSettings';
+import { DirectoryItemColorSettings } from './DirectoryItemColorSettings';
 import { ParentGroupBrowserRoutingSettings } from './ParentGroupBrowserRoutingSettings';
 import { ToggleCard } from './SettingsPrimitives';
 
@@ -63,6 +64,7 @@ export function NavigationSettingsSection() {
       </section>
 
       <ParentGroupColorSettings />
+      <DirectoryItemColorSettings />
       <ParentGroupBrowserRoutingSettings />
     </div>
   );

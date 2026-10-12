@@ -83,6 +83,49 @@ describe('persisted shortcut data normalization', () => {
     expect(groups[1].color).toBeUndefined();
   });
 
+  it('preserves valid child-directory and project colors and drops malformed ones', () => {
+    const groups = normalizeGroups([{
+      id: 'g',
+      name: '工作',
+      directories: [{
+        id: 'd',
+        name: '桌面',
+        color: '#10b981',
+        items: [
+          { id: 'i1', name: 'A', path: 'a.exe', color: '#ec4899' },
+          { id: 'i2', name: 'B', path: 'b.exe', color: 'javascript:bad' },
+          { id: 'i3', name: 'C', path: 'c.exe', color: '#ABCDEF88' },
+        ],
+      }],
+    }]);
+    expect(groups[0].directories[0].color).toBe('#10b981');
+    expect(groups[0].directories[0].items[0].color).toBe('#ec4899');
+    expect(groups[0].directories[0].items[1].color).toBeUndefined();
+    expect(groups[0].directories[0].items[2].color).toBe('#ABCDEF88');
+  });
+
+  it('clamps the expanded child-directory and project color-frame settings', () => {
+    expect(normalizeDisplay({})).toMatchObject({
+      colorFrameBorderWidth: 1,
+      colorFrameColorStrength: 0.17,
+      colorFrameShape: 'round',
+    });
+    expect(normalizeDisplay({
+      colorFrameBorderWidth: 99,
+      colorFrameColorStrength: 9,
+      colorFrameShape: 'square',
+    })).toMatchObject({
+      colorFrameBorderWidth: 4,
+      colorFrameColorStrength: 0.55,
+      colorFrameShape: 'square',
+    });
+    expect(normalizeDisplay({ colorFrameBorderWidth: -3, colorFrameColorStrength: 0 })).toMatchObject({
+      colorFrameBorderWidth: 0,
+      colorFrameColorStrength: 0.04,
+    });
+    expect(normalizeDisplay({ colorFrameShape: 'weird' as never }).colorFrameShape).toBe('round');
+  });
+
   it('clamps the expanded parent-tab appearance settings', () => {
     const display = normalizeDisplay({
       topTabWidth: 999,

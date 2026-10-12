@@ -191,6 +191,9 @@ function App() {
     '--top-tab-color-strength': `${Math.round((display.topTabColorStrength ?? 0.17) * 100)}%`,
     '--top-tab-hover-color-strength': `${Math.min(70, Math.round((display.topTabColorStrength ?? 0.17) * 100) + 8)}%`,
     '--top-tab-radius': display.topTabShape === 'square' ? '8px' : '999px',
+    '--color-frame-border-width': `${display.colorFrameBorderWidth ?? 1}px`,
+    '--color-frame-strength': `${Math.round((display.colorFrameColorStrength ?? 0.17) * 100)}%`,
+    '--color-frame-hover-strength': `${Math.min(70, Math.round((display.colorFrameColorStrength ?? 0.17) * 100) + 8)}%`,
     '--sidebar-width': `${display.sidebarWidth}px`,
     '--sidebar-item-height': `${display.sidebarItemHeight}px`,
     '--sidebar-item-gap': `${display.sidebarItemGap}px`,
@@ -261,7 +264,7 @@ function App() {
 
   return (
     <div
-      className={`app-shell ${display.modernWinUI3Mode ? 'winui3-modern-mode' : ''} ${display.colorfulTextEnabled !== false ? 'colorful-text-enabled' : ''} ${display.backgroundEnabled && display.backgroundImage ? 'app-background-enabled' : ''} ${display.settingsBackgroundEnabled && display.settingsBackgroundImage ? 'settings-background-enabled' : ''} ${display.settingsBackgroundGlassEffect ? 'settings-glass-enabled' : ''} ${experience.reduceMotion ? 'reduce-motion' : ''} ${experience.itemHoverAnimation ? '' : 'no-item-hover'} ${rainbow.enabled ? 'rainbow-enabled' : ''} ${rainbow.enabled && rainbow.borderEnabled ? `rainbow-border rainbow-border-${rainbow.borderMode}` : ''} ${rainbow.enabled && rainbow.textEnabled && rainbow.textOnGroups ? 'rainbow-text-groups' : ''} ${rainbow.enabled && rainbow.textEnabled && rainbow.textOnDirectories ? 'rainbow-text-directories' : ''} ${rainbow.enabled && rainbow.textEnabled && rainbow.textOnSettings ? 'rainbow-text-settings' : ''} ${rainbow.enabled && rainbow.cursorEnabled ? 'rainbow-cursor-enabled' : ''} ${experience.compactContextMenus ? 'compact-context-menus' : ''} ${experience.showContextMenuIcons ? '' : 'hide-context-menu-icons'}` }
+      className={`app-shell ${display.modernWinUI3Mode ? 'winui3-modern-mode' : ''} ${display.colorfulTextEnabled !== false ? 'colorful-text-enabled' : ''} color-frame-shape-${display.colorFrameShape === 'square' ? 'square' : 'round'} ${display.backgroundEnabled && display.backgroundImage ? 'app-background-enabled' : ''} ${display.settingsBackgroundEnabled && display.settingsBackgroundImage ? 'settings-background-enabled' : ''} ${display.settingsBackgroundGlassEffect ? 'settings-glass-enabled' : ''} ${experience.reduceMotion ? 'reduce-motion' : ''} ${experience.itemHoverAnimation ? '' : 'no-item-hover'} ${rainbow.enabled ? 'rainbow-enabled' : ''} ${rainbow.enabled && rainbow.borderEnabled ? `rainbow-border rainbow-border-${rainbow.borderMode}` : ''} ${rainbow.enabled && rainbow.textEnabled && rainbow.textOnGroups ? 'rainbow-text-groups' : ''} ${rainbow.enabled && rainbow.textEnabled && rainbow.textOnDirectories ? 'rainbow-text-directories' : ''} ${rainbow.enabled && rainbow.textEnabled && rainbow.textOnSettings ? 'rainbow-text-settings' : ''} ${rainbow.enabled && rainbow.cursorEnabled ? 'rainbow-cursor-enabled' : ''} ${experience.compactContextMenus ? 'compact-context-menus' : ''} ${experience.showContextMenuIcons ? '' : 'hide-context-menu-icons'}` }
       style={shellStyle}
       onMouseDown={(event) => {
         setContextMenu(null);
