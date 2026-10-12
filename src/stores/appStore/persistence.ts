@@ -127,7 +127,7 @@ const bufferedPersistStorage: any = {
     }
   },
 };
-export const APP_STORE_VERSION = 24;
+export const APP_STORE_VERSION = 25;
 
 type UnknownRecord = Record<string, unknown>;
 

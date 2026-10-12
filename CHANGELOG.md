@@ -4,7 +4,18 @@
 
 ---
 
-## V148（最新）— 子目录与项目的相邻颜色可以并成一组
+## V149（最新）— 用安装包装更新时，更新包默认下到你上次放的地方
+
+- 关于页新增「检查更新」区块：直接查 GitHub 最新 Release（`api.github.com/repos/momoqiqi-qwq/WinShortcutLauncher/releases/latest`），挑出 setup exe，下载完可以一键运行安装包并退出自身。
+- **更新包的默认下载位置自动检测**（本版主线）：按「上次下载目录 → 当前程序所在目录 → 系统下载文件夹 → 临时目录」依次尝试，每一档都要求目录存在且**真的可写**（写探针文件实测，不是只看路径），不合适就往后顺延；界面上直接写明「本次默认位置取自哪里」。
+- **软件装在哪也自动认**：读当前 exe 所在目录，同目录若存在 `uninstall.exe` 判为已安装版本；运行安装包时把该目录作为安装目标一起传给 NSIS（`/D=`）。
+- 记住上次下载位置：`ExperienceSettings` 新增 `installerDownloadDir` 字段（localStorage 版本 24 → 25，`normalizeExperience` 会给旧配置补空值），另外可手动「更改下载位置…」（目录选择框）或「恢复自动检测」（清空该字段）。
+- 不占住进程的安装方式：写一个临时 cmd 脚本，延迟几秒后 `start` 安装包再自删，随后本程序退出 —— 避免安装程序要覆盖一个正在运行的程序。
+- 护栏与细节：文件名取自 Release 资产名并拒绝含 `/`、`\`、`..` 的名字；下载先写 `.part` 再删旧文件改名，失败不留半成品；进度事件 `updater-download-progress` 每读 128 KB 一块、按 512 KB 节流上报；检查和下载分用两个超时（15 秒 / 15 分钟）。
+- 顺手修掉 release 构建链上一个依赖问题：`schemars 0.8.22` 开 `preserve_order` 后按三泛型写法用 `indexmap 1.9.3` 的 `IndexMap`，而该版本默认不带 `std` feature，会报 `error[E0107]: struct takes 3 generic arguments but 2 generic arguments were supplied`；已在 `src-tauri/Cargo.toml` 的 `[build-dependencies]` 显式打开 `indexmap/std`（resolver v2 下主依赖图不管用，必须落在 build 图）。
+- 验证：`cargo check --release --lib` 0 错误；`npx tsc --noEmit` 0 错误；`npx vitest run` **37 文件 / 190 用例全过**（含新增 `src/lib/__tests__/updater.test.ts` 10 用例：版本比较、安装包挑选、字节格式化、来源说明）；`node scripts/verify-source-fixes.mjs` OK。
+
+## V148 — 子目录与项目的相邻颜色可以并成一组
 
 - 新增「相邻组合」模式：左侧子目录列表和内容区项目网格可以按显示顺序**每 N 项并成一组**，组内共用同一个色系，原来各自独立的彩色框能连成一条色带甚至一整块同色区域。
   - 取色规则：组内**第一个已上色的项**的颜色作基色，其余**已上色**成员取该基色的同色系浅色（向白色混）；**没上色的项不参与、也不会被凭空染色**，所以随时能回退到「只有我选过的才上色」。

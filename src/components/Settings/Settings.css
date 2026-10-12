@@ -2211,6 +2211,168 @@ button:disabled,
   color: var(--accent);
 }
 
+/* 「用 setup exe 更新」区块：检测程序位置、记住上次下载目录、下载并运行安装包。 */
+.about-update-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-2), transparent 14%);
+}
+
+.about-update-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.about-update-head h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.about-update-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.about-update-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.about-update-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.about-update-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.about-update-hint {
+  margin: 0;
+}
+
+.about-update-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.about-update-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.about-update-error {
+  margin: 0;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--danger), transparent 70%);
+  border-radius: 9px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger), transparent 92%);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.about-update-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent), transparent 70%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent), transparent 93%);
+}
+
+.about-update-card-title {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.about-update-asset {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.about-update-card .btn-secondary,
+.about-update-card .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-decoration: none;
+}
+
+.about-update-progress {
+  position: relative;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.about-update-progress-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: color-mix(in srgb, var(--accent), transparent 45%);
+  transition: width 0.18s ease;
+}
+
+.about-update-progress-text {
+  position: relative;
+  display: block;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.about-update-saved {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px dashed color-mix(in srgb, var(--border), transparent 20%);
+  border-radius: 10px;
+}
+
+.about-update-saved-path {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.about-spin {
+  animation: about-spin 0.9s linear infinite;
+}
+
+@keyframes about-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .floating-settings-panel.settings-panel-adaptive {
   touch-action: auto;
 }

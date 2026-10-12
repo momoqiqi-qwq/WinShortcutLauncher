@@ -14,6 +14,7 @@ mod folder_mirror;
 mod mapped_folder;
 mod start_menu;
 mod transfer_station;
+mod updater;
 mod window_persistence;
 #[cfg(target_os = "windows")]
 mod windows_registry;
@@ -452,7 +453,11 @@ pub fn run() {
       window_persistence::set_window_persistence_settings,
       window_persistence::save_manual_main_window_state,
       window_persistence::clear_manual_main_window_state,
-      window_persistence::get_window_persistence_status
+      window_persistence::get_window_persistence_status,
+      updater::check_update,
+      updater::get_update_locations,
+      updater::download_installer,
+      updater::launch_installer
     ])
     .build(tauri::generate_context!())
     .expect("error while building tauri application");

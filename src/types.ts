@@ -532,6 +532,8 @@ export interface ExperienceSettings {
   showLaunchNotice: boolean;
   /** 上次运行时的版本号；与当前构建版本不一致时提示「当前版本是 …」。 */
   lastSeenVersion: string;
+  /** 上次下载更新安装包的位置；下次更新默认还下到这里（留空则自动检测程序所在目录）。 */
+  installerDownloadDir: string;
   /** 删除快捷项目前询问确认。 */
   confirmDeleteItems: boolean;
   /** 删除父目录或子目录前询问确认。 */
