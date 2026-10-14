@@ -4,7 +4,35 @@
 
 ---
 
-## V149（最新）— 用安装包装更新时，更新包默认下到你上次放的地方
+## V152（最新）— AGENTS.md 写入「从 GitHub 检查更新并落地便捷版 exe」流程
+
+- 纯文档改动，代码与构建产物不变；按规范照常升版本号（4 处版本号 + Cargo.lock 同步 0.1.152）。
+- `AGENTS.md` 新增一节「更新：先看 GitHub 有没有新版，有就下载并落到便捷版 exe」：查 `releases/latest` → 取 `browser_download_url` 下载 NSIS 安装包 → 7z 解出裸 `shortcut-launcher.exe` → **替换便捷版 exe（改名换新，运行中也安全）** → sha256 校验 → 提醒重启生效。
+- 🔴 明确**便捷版唯一有效位置**：`C:\Users\yile\DeskBox\DeskBox\Yue launcher.exe`；并把「不是桌面」写死 —— `C:\Users\yile\Desktop\Yue launcher.exe` 是 V135 前后的旧位置，本机已不存在。附三步核对法（全盘搜索 / 运行中进程 `ExecutablePath` / 开始菜单 `.lnk` 目标）。
+- 本次实测证据：`releases/latest` = **v0.1.146**，本机工作树已 0.1.151（**Releases 落后于本地源码是常态**）；本地 `Yue launcher_0.1.151_x64-setup.exe` 解出 `shortcut-launcher.exe` 17,699,840 字节 ver=0.1.151；GitHub v0.1.146 资产（4,686,159 字节）解出 17,353,216 字节 ver=0.1.146。
+- 顺带修正 `yue-launcher-build-release` 技能文档里残留的「部署到桌面」旧路径（改为 DeskBox），避免照着往桌面写文件。
+
+## V151 — 启动恢复路径去掉重复的全树规范化
+
+- **问题**：`src/stores/appStore/normalizers.ts` 的 `getFirstDirectory()` 只是想读「第一个分组 → 该分组第一个子目录」的两个 id，却会先跑一遍 `normalizeGroups()` 把整棵分组树重新规范化；而它的四个热路径调用点**传进去的本来就是 `normalizeGroups()` 的输出**，等于对同一份数据连续规范化两次。
+- **实测（4000 个快捷项，20 次平均）**：`normalizeGroups` 3.916 ms/次，`getFirstDirectory` 2.975 ms/次，`restorePersistedState` 全程 7.006 ms —— `getFirstDirectory` 单独占了启动恢复的 **42.5%**。
+- **修法**：`getFirstDirectory(groups, options?)` 新增 `{ normalized: true }` 快速路径，直接读已规范化树的 `groups[0].directories[0].id`；不传该选项时行为与以前完全一致（仍先规范化，兼容未规范化的原始数据）。`normalizeGroups` 末尾走 `reindex(sort(byOrder))`，输出必定有序且 order 被重置为 0..n-1，所以下标 `[0]` 就是规范化意义上的第一个，取值与慢路径等价。
+- **优化后（同一台机器、同一载荷）**：快速路径 **0.004 ms**（慢路径 4.095 ms，约千倍），`restorePersistedState` 由 7.006 ms 降到 **4.377 ms**（约 −37%）；启动恢复的开销此时几乎只剩那唯一一次 `normalizeGroups`（restore/normalize 比值 0.83x）。
+- **生效范围**：`src/stores/appStore/persistence.ts`（启动恢复 `restorePersistedState`）、`src/stores/appStore/slices/navigationSlice.ts`（`deleteGroup` 删分组、`moveDirectoryToGroup` 移动子目录）、`src/stores/appStore/slices/configSlice.ts`（`importConfig` 导入配置）四处改走快速路径；`cloneConfig()` 那两个调用点（`configSlice.resetAll` / `appStore.ts` 初始化）只有 49 个默认项且各执行一次，保持原样不动。
+- **回归保护**：新增 `src/stores/appStore/__tests__/perfBaseline.test.ts`，既锁住「快速路径与慢路径结果完全一致」（含空数组、缺字段等边界回退），也记录启动恢复的耗时基线。
+- 改动文件：`src/stores/appStore/normalizers.ts`、`src/stores/appStore/persistence.ts`、`src/stores/appStore/slices/navigationSlice.ts`、`src/stores/appStore/slices/configSlice.ts`、`src/stores/appStore/__tests__/perfBaseline.test.ts`（新增）。
+
+## V150 — 便签子目录可以直接拖入网址和文字
+
+- **便签子目录现在能接收拖入**：以前拖拽只认普通子目录和镜像子目录（开始菜单 / 映射文件夹），拖到便签上没有任何反应；本版把便签也加入可接收目标，侧栏的便签项和内容区的便签编辑区都能落点。
+- **文字（微信 / QQ 会话文本）直接进便签**：Windows 原生拖拽层新增原始文本读取（`CF_UNICODETEXT` → `text/unicode` → `text/plain` → `text/x-moz-text-internal`，ANSI 兜底放最后），WebView 内拖拽则走 `DataTransfer`（多来源时取最长的一段，只有 HTML 时先剥标签转纯文本）。
+- **新内容自动隔一行**：`src/lib/noteDrop.ts` 的 `appendNoteText()` 会先把已有正文尾部的空白收干净，再以「空一行」拼接新内容；空便签直接落内容，空白内容不写入。统一换行、清掉 NUL、去首尾空行，单次最多写入 20000 字符。
+- **网址也是文字**：拖进便签的网址按原样追加（不再弹「添加快捷项目」/ 改名对话框，也不会生成 `.url`），便签里就是一行可复制的地址。
+- **不会覆盖正在输入的内容**：便签为性能把输入留在本地草稿、空闲 450ms 才落盘，拖拽是直接写 store，所以新增草稿桥 `src/lib/noteDraftBridge.ts`：写入前先 `flush` 打开中的草稿，写入后把 store 新正文同步回编辑器草稿（同步时清掉待执行的自动保存定时器）。
+- 改动文件：`src-tauri/src/native_browser_drop.rs`（载荷新增 `text`）、`src/lib/nativeExternalDrop.ts`、`src/lib/browserDrop.ts`（`extractDroppedPlainText` / `extractDroppedPlainTextAsync`、`stripHtmlToText`）、`src/lib/noteDrop.ts`（新增）、`src/lib/noteDraftBridge.ts`（新增）、`src/hooks/useWebsiteDropController.ts`（便签目标判定与追加）、`src/stores/appStore/slices/settingsSlice.ts` + `types.ts`（`appendDirectoryNote`）、`src/components/ContentArea/ContentArea.tsx`（便签区挂 `data-directory-id`）、`src/components/ContentArea/NoteEditor/useNoteEditorController.ts`（草稿注册与外部同步）。
+- 验证：`npx tsc --noEmit` 0 错误；`npx vitest run` **38 文件 / 196 用例全过**（含新增 `src/lib/__tests__/noteDrop.test.ts` 6 用例：换行归一、空白丢弃、空便签直接落、自动隔一行、空内容不写、超长截断）。
+
+## V149 — 用安装包装更新时，更新包默认下到你上次放的地方
 
 - 关于页新增「检查更新」区块：直接查 GitHub 最新 Release（`api.github.com/repos/momoqiqi-qwq/WinShortcutLauncher/releases/latest`），挑出 setup exe，下载完可以一键运行安装包并退出自身。
 - **更新包的默认下载位置自动检测**（本版主线）：按「上次下载目录 → 当前程序所在目录 → 系统下载文件夹 → 临时目录」依次尝试，每一档都要求目录存在且**真的可写**（写探针文件实测，不是只看路径），不合适就往后顺延；界面上直接写明「本次默认位置取自哪里」。
