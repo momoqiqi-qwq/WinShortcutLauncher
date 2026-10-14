@@ -117,7 +117,7 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
   deleteGroup: (groupId) => set((state) => {
     if (state.groups.length <= 1) return state;
     const nextGroups = normalizeGroups(state.groups.filter((group) => group.id !== groupId));
-    const firstNext = getFirstDirectory(nextGroups);
+    const firstNext = getFirstDirectory(nextGroups, { normalized: true });
     return {
       groups: nextGroups,
       activeGroupId: state.activeGroupId === groupId ? firstNext.groupId : state.activeGroupId,
@@ -358,7 +358,7 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
         ),
     );
     const nextTarget = groups.find((group) => group.id === targetGroupId);
-    const fallbackDir = nextTarget?.directories[0]?.id ?? getFirstDirectory(groups).directoryId;
+    const fallbackDir = nextTarget?.directories[0]?.id ?? getFirstDirectory(groups, { normalized: true }).directoryId;
     return {
       groups,
       activeGroupId: state.activeGroupId === sourceGroupId ? targetGroupId : state.activeGroupId,

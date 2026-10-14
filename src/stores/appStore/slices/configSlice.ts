@@ -36,7 +36,7 @@ export const createConfigSlice: AppSliceCreator<ConfigSlice> = (set, get) => ({
   importConfig: (configValue) => set(() => {
     const config = asRecord(configValue);
     const groups = normalizeGroups(config.groups, cloneConfig().groups);
-    const first = getFirstDirectory(groups);
+    const first = getFirstDirectory(groups, { normalized: true });
     return {
       groups,
       theme: typeof config.theme === 'string' && config.theme.trim() ? config.theme.trim() : 'dark-soft',

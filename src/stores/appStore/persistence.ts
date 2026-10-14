@@ -167,7 +167,7 @@ export function restorePersistedState(savedValue: unknown, current?: AppState) {
       : current?.browserRouter;
   const fallbackGroups = current?.groups ?? cloneConfig().groups;
   const groups = normalizeGroups(saved.groups, fallbackGroups);
-  const first = getFirstDirectory(groups);
+  const first = getFirstDirectory(groups, { normalized: true });
   const experience = normalizeExperience((saved.experience ?? current?.experience) as never);
   const remembered = experience.rememberLastPage
     ? resolveActiveLocation(groups, saved.activeGroupId ?? current?.activeGroupId, saved.activeDirectoryId ?? current?.activeDirectoryId)

@@ -479,7 +479,28 @@ export function normalizeGroups(groups: unknown, fallbackGroups?: unknown): Grou
   return reindex(normalized.sort(byOrder));
 }
 
-export function getFirstDirectory(groups: unknown): { groupId: string; directoryId: string } {
+/**
+ * Read the first location of a group tree (first group → that group's first directory).
+ *
+ * By default the input is passed through `normalizeGroups`, so raw persisted or imported
+ * data is safe to hand in. Callers that *already* hold `normalizeGroups` output should pass
+ * `{ normalized: true }` — otherwise the whole tree gets normalized a second time just to
+ * read two ids (measured ~3 ms on a 4000-item config, ~42% of the startup restore cost).
+ *
+ * The fast path is equivalent because `normalizeGroups` ends with `reindex(sort(byOrder))`:
+ * its output is ordered and re-indexed from 0, so index 0 is the first group / directory.
+ * If the shape is unexpected it falls back to the defensive path.
+ */
+export function getFirstDirectory(
+  groups: unknown,
+  options?: { normalized?: boolean },
+): { groupId: string; directoryId: string } {
+  if (options?.normalized) {
+    const list = Array.isArray(groups) ? groups as Group[] : [];
+    const group = list[0];
+    const directory = group?.directories?.[0];
+    if (group?.id && directory?.id) return { groupId: group.id, directoryId: directory.id };
+  }
   const sortedGroups = normalizeGroups(groups);
   const group = sortedGroups[0];
   const dir = group.directories[0];
