@@ -392,6 +392,75 @@ export async function extractDroppedWebLinkAsync(dataTransfer: DataTransfer | nu
   return extractDroppedWebLink(facade);
 }
 
+const PLAIN_TEXT_TYPES = [
+  'text/unicode',
+  'text/plain',
+  'text/x-moz-text-internal',
+  'text/x-moz-url-desc',
+];
+
+function stripHtmlToText(html: string) {
+  if (!html) return '';
+  const withoutBlocks = html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<[^>]*>/g, '');
+  return decodeHtmlText(withoutBlocks)
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * v150: 便签拖入要的是原始文字（微信 / QQ 会话文本），不能只认网址。
+ * 拖拽源常同时给 unicode / plain / html 几份，取最长的一段（通常是完整正文）。
+ */
+export function extractDroppedPlainText(dataTransfer: DataTransfer | null): string {
+  if (!dataTransfer) return '';
+  const candidates: string[] = [];
+  for (const type of PLAIN_TEXT_TYPES) {
+    for (const alias of [type, type.toUpperCase()]) {
+      const value = getTransferText(dataTransfer, alias);
+      if (value && value.trim()) candidates.push(value);
+    }
+  }
+  if (candidates.length === 0) {
+    for (const alias of ['text/html', 'HTML Format']) {
+      const plain = stripHtmlToText(getTransferText(dataTransfer, alias));
+      if (plain) {
+        candidates.push(plain);
+        break;
+      }
+    }
+  }
+  return candidates.sort((left, right) => right.length - left.length)[0] || '';
+}
+
+/** getAsString 兜底：部分 Gecko/WebView2 拖拽只在 drop 时才交出字符串。 */
+export async function extractDroppedPlainTextAsync(dataTransfer: DataTransfer | null): Promise<string> {
+  const direct = extractDroppedPlainText(dataTransfer);
+  if (direct) return direct;
+  if (!dataTransfer) return '';
+  const itemValues = await readStringDataTransferItems(dataTransfer);
+  if (itemValues.size === 0) return '';
+  const candidates: string[] = [];
+  for (const type of PLAIN_TEXT_TYPES) {
+    const value = itemValues.get(type) || itemValues.get(type.toLowerCase());
+    if (value && value.trim()) candidates.push(value);
+  }
+  if (candidates.length === 0) {
+    for (const type of ['text/html', 'HTML Format']) {
+      const plain = stripHtmlToText(itemValues.get(type) || itemValues.get(type.toLowerCase()) || '');
+      if (plain) {
+        candidates.push(plain);
+        break;
+      }
+    }
+  }
+  return candidates.sort((left, right) => right.length - left.length)[0] || '';
+}
+
 export function extractDroppedFilePaths(dataTransfer: DataTransfer | null): string[] {
   if (!dataTransfer?.files || dataTransfer.files.length === 0) return [];
   return Array.from(dataTransfer.files)

@@ -63,6 +63,8 @@ export function ContentArea({ onContextMenuItem, onContextMenuArea }: ContentAre
     <main
       className={`content-area ${isNotesDirectory ? 'notes-area' : ''} ${multiSelectMode ? 'multi-select-active' : ''}`}
       style={areaStyle}
+      // v150: 便签区域也挂目录 id，拖进来的文字/网址才知道往哪个便签里落。
+      data-directory-id={isNotesDirectory ? activeDirectory.id : undefined}
       onMouseDown={(event) => {
         const target = event.target as HTMLElement;
         if (

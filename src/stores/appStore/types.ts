@@ -122,6 +122,8 @@ export interface SettingsSlice {
   updateDirectoryDisplay: (directoryId: string, settings: DirectoryDisplaySettings) => void;
   clearDirectoryDisplay: (directoryId: string) => void;
   setDirectoryNote: (directoryId: string, note: string) => void;
+  /** v150: 把外部拖入的文字 / 网址追加到便签，已有内容时自动隔一行。 */
+  appendDirectoryNote: (directoryId: string, text: string) => void;
   setDirectoryNoteLineNumbers: (directoryId: string, show: boolean) => void;
   resetSettingsOnly: () => void;
 }

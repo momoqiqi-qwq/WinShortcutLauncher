@@ -18,6 +18,7 @@ import {
   insertNoteSeparatorAtLine,
   makeNoteSeparator,
 } from '../../../lib/noteEditor';
+import { registerActiveNoteFlush } from '../../../lib/noteDraftBridge';
 
 interface NoteEditorControllerProps {
   directory: Directory;
@@ -96,6 +97,21 @@ export function useNoteEditorController({ directory }: NoteEditorControllerProps
     setSaveStatus('saved');
     setNoteMenu(null);
   }, [directory.id]);
+
+  // v150: 拖入便签前需要先把草稿落盘，否则拖拽写入的内容会被自动保存覆盖。
+  useEffect(() => registerActiveNoteFlush(directory.id, commitDraft), [directory.id, commitDraft]);
+
+  // v150: 外部（拖拽）直接写 store 后，把新正文同步进草稿，避免 450ms 后的自动保存把它冲掉。
+  useEffect(() => {
+    const incoming = directory.note ?? '';
+    if (incoming === lastCommittedRef.current) return;
+    clearSaveTimer();
+    directoryIdRef.current = directory.id;
+    draftRef.current = incoming;
+    lastCommittedRef.current = incoming;
+    setDraftNote(incoming);
+    setSaveStatus('saved');
+  }, [directory.id, directory.note, clearSaveTimer]);
 
   function getTextLineCount(value = draftRef.current) {
     return getNoteLineCount(value);

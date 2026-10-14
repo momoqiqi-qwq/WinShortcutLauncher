@@ -1,6 +1,7 @@
 import { defaultExperience, normalizeExperience } from '../../../lib/experienceSettings';
 import { defaultShortcutSettings, normalizeShortcutSettings } from '../../../lib/keyboardShortcuts';
 import { defaultBrowserRouter, normalizeBrowserRouter } from '../../../lib/browserRouter';
+import { appendNoteText } from '../../../lib/noteDrop';
 import {
   DEFAULT_GLOBAL_SEARCH_SETTINGS,
   DEFAULT_IMAGE_BROWSER_SETTINGS,
@@ -103,6 +104,15 @@ export const createSettingsSlice: AppSliceCreator<SettingsSlice> = (set) => ({
     groups: state.groups.map((group) => ({
       ...group,
       directories: group.directories.map((dir) => (dir.id === directoryId ? { ...dir, note } : dir)),
+    })),
+  })),
+  /** v150: 外部（拖拽）追加内容到便签；已有正文时自动隔一行。 */
+  appendDirectoryNote: (directoryId, text) => set((state) => ({
+    groups: state.groups.map((group) => ({
+      ...group,
+      directories: group.directories.map((dir) => (
+        dir.id === directoryId ? { ...dir, note: appendNoteText(dir.note ?? '', text) } : dir
+      )),
     })),
   })),
   setDirectoryNoteLineNumbers: (directoryId, show) => set((state) => ({

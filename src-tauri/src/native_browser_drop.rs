@@ -39,6 +39,8 @@ const DRAG_STATE_EVENT: &str = "native-external-drag-state";
 struct NativeExternalDropPayload {
   url: Option<String>,
   title: Option<String>,
+  /// v150: 原始拖入文字（微信/QQ 会话文本等），便签目录直接把它落进便签。
+  text: Option<String>,
   paths: Vec<String>,
   formats: Vec<String>,
   x: i32,
@@ -307,6 +309,35 @@ fn extract_url_and_title(data_obj: &IDataObject) -> (Option<String>, Option<Stri
   (None, title)
 }
 
+/// v150: 便签拖入要的是原始文字，不能只认网址。
+/// 优先 CF_UNICODETEXT（编码正确且最完整），再退回注册剪贴板格式里最长的一段。
+fn extract_plain_text(data_obj: &IDataObject) -> Option<String> {
+  if let Some(text) = read_text(data_obj, CF_UNICODETEXT.0, TextEncoding::Utf16) {
+    return Some(text);
+  }
+
+  let formats = known_registered_formats();
+  let mut candidates: Vec<String> = Vec::new();
+  for name in [
+    "text/unicode",
+    "text/plain",
+    "text/x-moz-text-internal",
+    "text/x-moz-url-desc",
+  ] {
+    if let Some(format) = formats.iter().find(|format| format.name == name) {
+      if let Some(text) = read_text(data_obj, format.id, format.encoding) {
+        candidates.push(text);
+      }
+    }
+  }
+  if let Some(text) = candidates.into_iter().max_by_key(|value| value.chars().count()) {
+    return Some(text);
+  }
+
+  // ANSI 兜底放最后：中文可能乱码，只在没有任何 Unicode 来源时使用。
+  read_text(data_obj, CF_TEXT.0, TextEncoding::Bytes)
+}
+
 unsafe fn extract_paths(data_obj: &IDataObject) -> Vec<String> {
   let format = format_etc(CF_HDROP.0);
   let Ok(mut medium) = data_obj.GetData(&format) else {
@@ -454,11 +485,13 @@ impl IDropTarget_Impl for NativeBrowserDropTarget_Impl {
     let formats = available_format_names(data_obj);
     let paths = unsafe { extract_paths(data_obj) };
     let (url, title) = extract_url_and_title(data_obj);
+    let text = extract_plain_text(data_obj);
     let effect = unsafe { *self.cursor_effect.get() };
 
     let payload = NativeExternalDropPayload {
       url,
       title,
+      text,
       paths,
       formats,
       x: client_point.x,
