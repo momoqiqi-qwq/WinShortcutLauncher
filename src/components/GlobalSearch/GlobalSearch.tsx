@@ -7,7 +7,7 @@ import { GlobalSearchModal } from './GlobalSearchModal';
 import { uiAlert, uiConfirm } from '../../lib/uiDialog';
 import { launchShortcutItem } from '../../lib/launchShortcut';
 import { buildPaletteEntries, type PaletteEntry } from '../../lib/commandPalette';
-import { requestSettingsTab } from '../../lib/settingsCatalog';
+import { requestSettingsItem, requestSettingsTab } from '../../lib/settingsCatalog';
 import { showLauncherNotice } from '../../lib/notify';
 import { usePresenceTransition } from '../../hooks/usePresenceTransition';
 
@@ -51,6 +51,21 @@ function GlobalSearchContent({ open, onClose, closing }: GlobalSearchProps) {
     window.setTimeout(() => requestSettingsTab(tab), 0);
   }
 
+  /**
+   * v154: 命中具体设置项时带着 section / focusText / targetId 一起打开设置，
+   * 直接展开对应折叠区并高亮那个控件，而不是只把用户丢到分类首页。
+   */
+  function openSettingsEntry(entry: PaletteEntry) {
+    setSettingsOpen(true);
+    const request = {
+      tab: entry.settingTab ?? 'general',
+      section: entry.settingSection,
+      focusText: entry.settingFocusText,
+      targetId: entry.settingTargetId,
+    };
+    window.setTimeout(() => requestSettingsItem(request), 0);
+  }
+
   async function exportConfiguration() {
     const target = await save({ title: '导出配置备份', defaultPath: 'yue-launcher-config.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
     if (!target) return false;
@@ -65,7 +80,7 @@ function GlobalSearchContent({ open, onClose, closing }: GlobalSearchProps) {
 
   async function navigateEntry(entry: PaletteEntry) {
     if (!entry.settingTab) return;
-    openSettings(entry.settingTab);
+    openSettingsEntry(entry);
     recordCommandUsage(entry.usageKey);
     onClose();
   }
@@ -81,7 +96,7 @@ function GlobalSearchContent({ open, onClose, closing }: GlobalSearchProps) {
       } else if (entry.kind === 'directory' || entry.kind === 'note') {
         locate(entry.groupId, entry.directoryId);
       } else if (entry.kind === 'setting') {
-        openSettings(entry.settingTab ?? 'general');
+        openSettingsEntry(entry);
       } else if (entry.kind === 'theme' && entry.value) {
         setTheme(entry.value);
         showLauncherNotice(`已${entry.title}`);

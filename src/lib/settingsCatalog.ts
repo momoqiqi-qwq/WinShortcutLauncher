@@ -35,6 +35,9 @@ export const SETTINGS_TAB_EVENT = 'yue:open-settings-tab';
 export interface SettingsOpenRequest {
   tab: SettingsTabId;
   section?: string;
+  /** v154: 命中具体设置项时一并带上搜索框文本与控件锚点，落地后自动展开折叠区并高亮定位。 */
+  focusText?: string;
+  targetId?: string;
 }
 
 export function requestSettingsTab(tab: SettingsTabId) {
@@ -43,4 +46,12 @@ export function requestSettingsTab(tab: SettingsTabId) {
 
 export function requestSettingsSection(tab: SettingsTabId, section: string) {
   window.dispatchEvent(new CustomEvent<SettingsOpenRequest>(SETTINGS_TAB_EVENT, { detail: { tab, section } }));
+}
+
+/**
+ * v154: 从全局命令面板等外部入口直接定位到某个具体设置项（分类 + 折叠区 + 控件）。
+ * 与设置页内搜索 `openSearchResult()` 走同一套 section / focusText / targetId 定位机制。
+ */
+export function requestSettingsItem(request: SettingsOpenRequest) {
+  window.dispatchEvent(new CustomEvent<SettingsOpenRequest>(SETTINGS_TAB_EVENT, { detail: request }));
 }

@@ -154,8 +154,9 @@ export function SettingsPanel() {
       requestedNavigationRef.current = !useAppStore.getState().settingsOpen;
       setSettingsFilter('');
       setRequestedSection(request.section ?? null);
-      setRequestedFocusText(null);
-      setRequestedTargetId(null);
+      // v154: 外部入口（全局命令面板）可以直接带上具体设置项，落到分类后继续展开折叠区并高亮控件。
+      setRequestedFocusText(request.focusText ?? null);
+      setRequestedTargetId(request.targetId ?? null);
       setActiveTab(tab);
       setSettingsOpen(true);
     }

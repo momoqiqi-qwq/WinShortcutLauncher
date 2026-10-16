@@ -26,6 +26,7 @@ import { uiAlert } from '../../../lib/uiDialog';
 import { formatShortcut, shortcutMatchesEvent } from '../../../lib/keyboardShortcuts';
 import { getMappedPath, isMappedDirectory } from '../../../lib/mappedFolder';
 import { resolveColorFrameColors } from '../../../lib/colorFrames';
+import { getEffectiveCardMinHeight, getEffectiveCardWidth } from '../../../lib/cardMetrics';
 import type { MirrorKind } from '../../../lib/folderMirror';
 
 interface ShortcutGridProps {
@@ -353,14 +354,9 @@ export function ShortcutGrid({
 }
 
 export function getContentAreaStyle(display: DisplaySettings, behavior: ReturnType<typeof useAppStore.getState>['behavior']) {
-  const cardWidth = Math.max(
-    display.itemWidth,
-    display.viewMode === 'compact' ? display.iconSize + 28 : display.iconSize + 46,
-  );
-  const minHeight = Math.max(
-    display.itemHeight,
-    display.iconSize + display.labelLines * display.fontSize * 1.4 + 28,
-  );
+  // v154: 卡片宽度同时受「每行字数」约束，否则 .item-label 的 max-width 会被卡片内容宽夹住。
+  const cardWidth = getEffectiveCardWidth(display);
+  const minHeight = getEffectiveCardMinHeight(display);
   return {
     '--item-card-width': `${cardWidth}px`,
     '--item-icon-size': `${display.iconSize}px`,

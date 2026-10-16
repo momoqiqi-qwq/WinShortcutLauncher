@@ -109,7 +109,8 @@
 .preview-card {
   margin-top: 14px;
   width: 128px;
-  padding: 10px 8px;
+  /* v154: 与 .item-card 的内边距保持一致，预览里的换行位置才等于内容区的真实效果。 */
+  padding: 8px 6px;
   border-radius: 16px;
   background: var(--panel-2);
   display: flex;

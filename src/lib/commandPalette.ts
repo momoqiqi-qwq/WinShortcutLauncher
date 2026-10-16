@@ -2,6 +2,7 @@ import type { CommandUsage, Group, SettingsTabId, ShortcutItem } from '../types'
 import type { GlobalSearchSettings } from '../utils/v16Types';
 import { FONT_PRESETS } from './fontCatalog';
 import { SETTINGS_CATALOG } from './settingsCatalog';
+import { SETTINGS_SEARCH_ITEMS } from './settingsSearchIndex';
 import { themes } from '../themes';
 import { normalizeSearchText, toFullPinyin, toPinyinInitials as toSharedPinyinInitials } from './pinyinSearch';
 
@@ -24,6 +25,10 @@ export interface PaletteEntry {
   directoryName?: string;
   item?: ShortcutItem;
   settingTab?: SettingsTabId;
+  /** v154: 细粒度设置项的定位信息，命中后直接落到分类 + 折叠区 + 控件。 */
+  settingSection?: string;
+  settingFocusText?: string;
+  settingTargetId?: string;
   value?: string;
   useCount?: number;
   recentAt?: number;
@@ -244,6 +249,26 @@ export function buildPaletteEntries(
         keywords: ['设置', ...setting.keywords],
         usageKey: `setting:${setting.id}`,
         settingTab: setting.id,
+      });
+    }
+
+    // v154: 设置页的细粒度搜索索引并入命令面板。
+    // 以前这里只有 20 条「打开设置：xx」的分类条目，设置页能搜到的具体开关（每行字数、窗口贴边隐藏、
+    // 清空中转站前确认……）在右上角搜索里搜不到；现在与设置页同一份索引，命中后直接落到那个控件。
+    const tabLabels = new Map(SETTINGS_CATALOG.map((entry) => [entry.id, entry.label]));
+    for (const item of SETTINGS_SEARCH_ITEMS) {
+      entries.push({
+        id: `setting-item:${item.id}`,
+        kind: 'setting',
+        title: item.label,
+        subtitle: `设置 · ${tabLabels.get(item.tab) ?? '设置'}`,
+        detail: item.description,
+        keywords: ['设置', ...item.keywords, ...(item.focusText ? [item.focusText] : [])],
+        usageKey: `setting-item:${item.id}`,
+        settingTab: item.tab,
+        settingSection: item.section,
+        settingFocusText: item.focusText ?? item.label,
+        settingTargetId: item.targetId,
       });
     }
   }

@@ -118,6 +118,11 @@ const checks = [
   ['src/components/ContextMenu/ItemContextMenu.tsx', /显示完整名称[\s\S]*?globalDisplay\.showFullItemName/, 'v153 item context menu must expose 显示完整名称 bound to showFullItemName'],
   ['src/lib/experienceSettings.ts', /'rename', 'color', 'fullNames', 'merge'/, 'v153 the directory context menu must register the hideable fullNames entry'],
   ['src/components/Settings/ContextMenuSettingsSection.tsx', /fullNames: \{ label: '显示完整名称'/, 'v153 context menu settings must list the fullNames entry'],
+  ['src/lib/cardMetrics.ts', /export function getLabelDrivenCardWidth/, 'v154 the per-line character count must be able to widen the item card'],
+  ['src/components/ContentArea/ShortcutGrid/ShortcutGrid.tsx', /getEffectiveCardWidth\(display\)/, 'v154 the content grid must use the character-count aware card width'],
+  ['src/lib/commandPalette.ts', /SETTINGS_SEARCH_ITEMS[\s\S]*?settingTargetId: item\.targetId/, 'v154 the command palette must merge the fine-grained settings search index'],
+  ['src/components/GlobalSearch/GlobalSearch.tsx', /requestSettingsItem\(request\)/, 'v154 palette hits must open settings at the matched control'],
+  ['src/components/Settings/SettingsPanel.tsx', /setRequestedFocusText\(request\.focusText \?\? null\)/, 'v154 settings must honour focusText/targetId coming from the palette'],
 ];
 
 const forbidden = [

@@ -11,6 +11,7 @@ import { SettingsSliderRow as SliderRow } from './SettingsSliderRow';
 import { SettingsSurfaceAppearanceControls } from './SettingsSurfaceAppearanceControls';
 import { ParentGroupAppearanceControls } from './ParentGroupAppearanceControls';
 import { ColorFrameAppearanceControls } from './ColorFrameAppearanceControls';
+import { getEffectiveCardMinHeight, getEffectiveCardWidth } from '../../lib/cardMetrics';
 
 
 const WINDOW_CONTROL_LABELS: Array<{ id: WindowControlId; label: string; hint?: string }> = [
@@ -982,7 +983,8 @@ export function DisplaySettings({ requestedSection, onRequestedSectionHandled }:
         collapsed={collapsedSections.has('preview')}
         onToggle={toggleSection}
       >
-        <div className="preview-card" style={{ width: localDisplay.itemWidth, minHeight: localDisplay.itemHeight }}>
+        {/* v154: 预览卡片与内容区共用同一套宽高推导，「每行字数」在预览里也能看到真实效果。 */}
+        <div className="preview-card" style={{ width: getEffectiveCardWidth(localDisplay), minHeight: getEffectiveCardMinHeight(localDisplay) }}>
           <div className="preview-icon" style={{ width: localDisplay.iconSize, height: localDisplay.iconSize }}>⌘</div>
           <div
             className="item-label"

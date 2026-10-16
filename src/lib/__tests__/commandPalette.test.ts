@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_GLOBAL_SEARCH_SETTINGS } from '../../utils/v16Types';
 import { buildPaletteEntries, searchPaletteEntries, toPinyinInitials } from '../commandPalette';
+import { searchSettingsItems } from '../settingsSearchIndex';
 import type { Group } from '../../types';
 import { systemToolsGroup } from '../../data/systemTools';
 
@@ -110,6 +111,54 @@ describe('command palette search', () => {
       'command:export-config': { count: 10, lastUsedAt: Date.now() },
     });
     expect(results.slice(0, 2).map((entry) => entry.id)).toContain('command:export-config');
+  });
+});
+
+describe('global palette covers the settings-page search index', () => {
+  it('exposes the fine-grained settings items together with their jump target', () => {
+    const entries = buildPaletteEntries(groups, DEFAULT_GLOBAL_SEARCH_SETTINGS);
+    const byId = new Map(entries.map((entry) => [entry.id, entry]));
+    const wrap = byId.get('setting-item:item-name-wrap');
+    expect(wrap?.kind).toBe('setting');
+    expect(wrap?.settingTab).toBe('font');
+    expect(wrap?.settingTargetId).toBe('font-chars-per-line');
+    expect(wrap?.settingFocusText).toBe('每行字数');
+    expect(byId.get('setting-item:item-name-full')?.settingTargetId).toBe('font-show-full-item-name');
+    expect(byId.get('setting-item:sidebar-name-full')?.settingTargetId).toBe('font-show-full-sidebar-names');
+  });
+
+  it('finds every settings item the settings page can find', () => {
+    // v154 回归：右上角搜索过去只有 20 条「打开设置：xx」分类条目，
+    // 设置页能搜到的具体开关（换行字数、完整显示名称、贴边隐藏……）在这里一条都搜不到。
+    const entries = buildPaletteEntries(groups, DEFAULT_GLOBAL_SEARCH_SETTINGS);
+    for (const query of ['换行', '完整显示项目名称', '贴边隐藏', '右键']) {
+      // 设置页的前几条命中里，凡是有跳转锚点的具体设置项，命令面板都必须能搜到。
+      const settingsHits = searchSettingsItems(query, 4).filter((item) => item.targetId);
+      expect(settingsHits.length, `设置页应能搜到带锚点的设置项：${query}`).toBeGreaterThan(0);
+      const paletteTargets = searchPaletteEntries(entries, query, DEFAULT_GLOBAL_SEARCH_SETTINGS, {})
+        .map((entry) => entry.settingTargetId)
+        .filter((value): value is string => Boolean(value));
+      for (const hit of settingsHits) {
+        expect(paletteTargets, `命令面板应能搜到 ${query} → ${hit.id}`).toContain(hit.targetId as string);
+      }
+    }
+  });
+
+  it('also resolves the slider caption the settings page cannot match', () => {
+    // 设置页只搜 label / description / keywords，「每行字数」是 focusText，那边搜不到；
+    // 命令面板把它并进 keywords，于是搜滑块上的原话也能直接跳到那个滑块。
+    const entries = buildPaletteEntries(groups, DEFAULT_GLOBAL_SEARCH_SETTINGS);
+    const targets = searchPaletteEntries(entries, '每行字数', DEFAULT_GLOBAL_SEARCH_SETTINGS, {})
+      .map((entry) => entry.settingTargetId)
+      .filter((value): value is string => Boolean(value));
+    expect(targets).toContain('font-chars-per-line');
+  });
+
+  it('keeps the coarse 打开设置 entries reachable without a jump target', () => {
+    const entries = buildPaletteEntries(groups, DEFAULT_GLOBAL_SEARCH_SETTINGS);
+    const behavior = entries.find((entry) => entry.id === 'setting:behavior');
+    expect(behavior?.settingTab).toBe('behavior');
+    expect(behavior?.settingTargetId).toBeUndefined();
   });
 });
 

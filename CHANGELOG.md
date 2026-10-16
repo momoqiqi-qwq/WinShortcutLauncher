@@ -4,7 +4,38 @@
 
 ---
 
-## V153（最新）— 右键菜单新增「显示完整名称」
+## V154（最新）— 修复「每行字数」换行失效与全局搜索搜不到设置项
+
+### 1. 「每行字数（换行）」在 8 以上完全没反应
+
+- **现象**：设置 → 字体 → 项目名称显示 里的滑块「每行字数（换行）」（范围 4–20，默认 8）从 8 往右拉到 20，卡片上的名称换行位置一动不动，看起来就是「多字（更大字数）换行没有效果」。
+- **根因**：`.item-label` 的换行只靠 `max-width: calc(var(--label-chars, 8) * 1em)`。默认卡片宽 108px、内边距 `8px 6px`，名称可用宽只有 96px，而 12px 字号下一个汉字正好 1em = 12px，**物理上限约 8 个字**；字号更大时更少。于是 charsPerLine ≥ 8 之后 max-width 永远被卡片内容宽夹住，滑块后 13/17 的行程（8 → 20）全部无效。用无头 Chrome 复刻真实 CSS 实测：4 → 48px、6 → 72px 生效；8/10/12/16 全部被夹到 84px（实际只排 7 个字）。
+- **修复**：新增 `src/lib/cardMetrics.ts`，把「每行字数」换算成卡片最小宽度，再与用户设置的占位宽度、视图模式最小宽度取最大值：
+  - `getLabelDrivenCardWidth(display)` = `charsPerLine × fontSize + 12`（卡片左右内边距）；「完整显示项目名称」开启（`labelLines < 1`）时返回 0，不参与计算。
+  - `getEffectiveCardWidth(display)` = `max(itemWidth, 视图模式最小宽度, 每行字数所需宽度)`，`getEffectiveCardMinHeight()` 同理。
+  - 内容区网格（`ShortcutGrid` 注入 `--item-card-width` / `--item-card-min-height`）与 设置 → 显示 的实时预览卡片（`DisplaySettings`）共用这两个函数，预览与实际完全一致；`.preview-card` 内边距同步为 `8px 6px`，与 `.item-card` 对齐。
+- **效果**：4–20 每一档都真实生效（20 字 → 卡片 252px），长名称按设定字数换行，不再被卡片宽度悄悄夹断。
+
+### 2. 右上角搜索搜不到「设置里的搜索」能搜到的内容
+
+- **现象**：设置面板里搜「换行」「完整显示项目名称」「窗口贴边隐藏」能搜到具体开关；界面右上角的搜索（全局命令面板，Ctrl+K）搜同样的词什么都搜不到。
+- **根因**：两套索引各自独立。设置面板用 `src/lib/settingsSearchIndex.ts` 的 `SETTINGS_SEARCH_ITEMS`（49 条细粒度设置项，带 label / description / keywords / focusText / targetId）；命令面板只用 `src/lib/settingsCatalog.ts` 的 `SETTINGS_CATALOG`（20 条「打开设置：xx」分类条目）。而且命中后只能打开分类标签页，无法定位到具体设置项 —— `SettingsPanel` 收到外部请求时会把 `focusText` / `targetId` 强制清空。
+- **修复**：
+  - `commandPalette.ts`：`includeSettings` 分支在原有分类条目之外，并入 `SETTINGS_SEARCH_ITEMS` 生成细粒度条目（`setting-item:<id>`，标题为设置项名、副标题为「设置 · 分类」、detail 为描述、keywords 追加 `focusText`）；`PaletteEntry` 新增 `settingSection` / `settingFocusText` / `settingTargetId` 三个跳转字段。
+  - `settingsCatalog.ts`：新增 `requestSettingsItem(request)`；`SettingsOpenRequest` 增加 `focusText` / `targetId`。
+  - `GlobalSearch.tsx`：新增 `openSettingsEntry(entry)`，回车与点击都带着 section / focusText / targetId 打开设置。
+  - `SettingsPanel.tsx`：监听设置打开请求时不再清空 `focusText` / `targetId`，改为沿用请求里的值，于是命中后会自动展开对应折叠区、滚动到并高亮那个控件（复用设置页内搜索的同一套定位机制）。
+- **附带**：「每行字数」的滑块标题原本不在设置页的可搜字段里（只搜 label / description / keywords），命令面板已把 `focusText` 并入 keywords，搜「每行字数」也能直达。
+
+### 回归保护与验证
+
+- 新增 `src/lib/__tests__/cardMetrics.test.ts`：断言字数换算、视图模式最小宽度、`max(itemWidth, …)` 取舍，并逐档校验 **4–20 每一档的标签可用宽都 ≥ 字数 × 字号**（这条断言就是「8 以上失效」的回归网）。
+- `src/lib/__tests__/commandPalette.test.ts` 新增一组用例：细粒度设置条目带正确跳转字段；设置页前几条带锚点的命中项，命令面板都能搜到（覆盖「换行 / 完整显示项目名称 / 贴边隐藏 / 右键」）；粗粒度的「打开设置：xx」条目保持不变。
+- `scripts/verify-source-fixes.mjs` 增加 5 条 v154 断言（卡片宽度换算、命令面板并入设置索引、面板携带跳转锚点、设置面板沿用 focusText）。
+- `npx tsc --noEmit` 0 错误；`npx vitest run` 41 个文件 / 215 个用例全通过。
+- 改动文件：`src/lib/cardMetrics.ts`（新增）、`src/lib/__tests__/cardMetrics.test.ts`（新增）、`src/components/ContentArea/ShortcutGrid/ShortcutGrid.tsx`、`src/components/Settings/DisplaySettings.tsx`、`src/components/Settings/Settings.css`、`src/lib/commandPalette.ts`、`src/lib/settingsCatalog.ts`、`src/components/GlobalSearch/GlobalSearch.tsx`、`src/components/Settings/SettingsPanel.tsx`、`src/lib/settingsSearchIndex.ts`、`src/lib/__tests__/commandPalette.test.ts`、`scripts/verify-source-fixes.mjs`。
+
+## V153 — 右键菜单新增「显示完整名称」
 
 - **子目录右键菜单**：管理区新增「显示完整名称」开关（位置在「子目录背景色」与「合并到子目录」之间），开启后左侧子目录名称完整换行显示，不再按行数省略。
 - **项目右键菜单**：在「文字显示」子菜单下方新增「显示完整名称」开关，开启后项目卡片名称不再按最大显示行数截断，完整换行显示。
