@@ -114,6 +114,10 @@ const checks = [
   ['src-tauri/src/commands.rs', /pub async fn load_config/, 'v146 config reads must not run on the main thread'],
   ['src-tauri/src/transfer_station.rs', /pub async fn copy_transfer_paths_to_folder/, 'v146 transfer-station copies must not run on the main thread'],
   ['src-tauri/src/legacy_import.rs', /pub async fn import_legacy_db_config/, 'v146 legacy imports must not run on the main thread'],
+  ['src/components/ContextMenu/DirectoryContextMenu.tsx', /显示完整名称[\s\S]*?display\.sidebarShowFullNames/, 'v153 subdirectory context menu must expose 显示完整名称 bound to sidebarShowFullNames'],
+  ['src/components/ContextMenu/ItemContextMenu.tsx', /显示完整名称[\s\S]*?globalDisplay\.showFullItemName/, 'v153 item context menu must expose 显示完整名称 bound to showFullItemName'],
+  ['src/lib/experienceSettings.ts', /'rename', 'color', 'fullNames', 'merge'/, 'v153 the directory context menu must register the hideable fullNames entry'],
+  ['src/components/Settings/ContextMenuSettingsSection.tsx', /fullNames: \{ label: '显示完整名称'/, 'v153 context menu settings must list the fullNames entry'],
 ];
 
 const forbidden = [

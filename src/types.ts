@@ -454,6 +454,7 @@ export type DirectoryContextMenuItemId =
   | 'paste'
   | 'rename'
   | 'color'
+  | 'fullNames'
   | 'merge'
   | 'switchToNotes'
   | 'switchToNormal'

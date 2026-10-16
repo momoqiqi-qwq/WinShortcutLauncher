@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardPaste, Copy, Eraser, FolderInput, FolderOpen, FolderSymlink, Merge, Palette, Pencil, RefreshCw, Repeat2, StickyNote, Trash2 } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Copy, Eraser, FolderInput, FolderOpen, FolderSymlink, Merge, Palette, Pencil, RefreshCw, Repeat2, StickyNote, Trash2, Type } from 'lucide-react';
 import { useState, type MouseEvent } from 'react';
 import type { ContextMenuState, DirectoryKind } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -44,6 +44,9 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   const pasteDirectoryToGroup = useAppStore((state) => state.pasteDirectoryToGroup);
   const moveDirectoryToGroup = useAppStore((state) => state.moveDirectoryToGroup);
   const experience = useAppStore((state) => state.experience);
+  // v153: 子目录右键也能直接切换“显示完整名称”，与空白处菜单 / 设置-字体共用同一份 display 开关。
+  const display = useAppStore((state) => state.display);
+  const updateDisplay = useAppStore((state) => state.updateDisplay);
   const refreshStartMenu = useAppStore((state) => state.refreshStartMenu);
   const startMenuFolder = useAppStore((state) => state.startMenuFolder);
   const refreshMappedFolder = useAppStore((state) => state.refreshMappedFolder);
@@ -236,12 +239,20 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
     onClose();
   }
 
+  // v153: 子目录右键直接切换“显示完整名称”，与空白处右键菜单、设置-字体共用同一份 display 开关。
+  function toggleFullNames() {
+    const next = !(display.sidebarShowFullNames === true);
+    updateDisplay({ sidebarShowFullNames: next });
+    showLauncherNotice(next ? '子目录名称将完整换行显示' : '子目录名称恢复按行数省略');
+    onClose();
+  }
+
   const canPaste = currentKind === 'normal' && itemClipboard.length > 0;
   const showClipboardSection = show('copyDirectory') || show('pasteDirectory') || show('moveToGroup') || show('paste');
   const showStartMenuSection = isStartMenu && (show('refreshStartMenu') || show('openStartMenuFolder'));
   const showMappedSection = isMapped
     && (show('refreshMappedFolder') || show('openMappedFolder') || show('changeMappedFolder'));
-  const showManageSection = show('rename') || show('color') || show('merge') || show('switchToNotes') || show('switchToNormal');
+  const showManageSection = show('rename') || show('color') || show('fullNames') || show('merge') || show('switchToNotes') || show('switchToNormal');
   const showDangerSection = show('clear') || show('delete');
   const hasVisibleSection = showClipboardSection || showStartMenuSection || showMappedSection || showManageSection || showDangerSection;
 
@@ -324,6 +335,7 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
           </div>
         )}
       </div>}
+      {show('fullNames') && <div className="menu-item" title="开启后左侧子目录名称完整换行显示，不再按行数省略；等同 设置-字体 里的“完整显示子目录名称”" onMouseEnter={() => setOpenSubmenu(null)} onClick={toggleFullNames}><span>显示完整名称</span>{display.sidebarShowFullNames ? <span>✓</span> : <Type size={15} />}</div>}
       {show('merge') && <div className={`menu-item with-submenu ${mergeTargets.length === 0 ? 'disabled' : ''}`} onMouseEnter={() => setOpenSubmenu('merge')} onClick={() => mergeTargets.length > 0 && setOpenSubmenu((value) => value === 'merge' ? null : 'merge')}>
         <span>合并到子目录</span><ChevronRight size={14} />
         {openSubmenu === 'merge' && mergeTargets.length > 0 && (

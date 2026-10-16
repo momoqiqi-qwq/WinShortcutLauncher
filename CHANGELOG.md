@@ -4,7 +4,19 @@
 
 ---
 
-## V152（最新）— AGENTS.md 写入「从 GitHub 检查更新并落地便捷版 exe」流程
+## V153（最新）— 右键菜单新增「显示完整名称」
+
+- **子目录右键菜单**：管理区新增「显示完整名称」开关（位置在「子目录背景色」与「合并到子目录」之间），开启后左侧子目录名称完整换行显示，不再按行数省略。
+- **项目右键菜单**：在「文字显示」子菜单下方新增「显示完整名称」开关，开启后项目卡片名称不再按最大显示行数截断，完整换行显示。
+- 两处都直接切换既有的全局 display 设置（子目录 → `display.sidebarShowFullNames`，项目 → `display.showFullItemName`），与 设置-字体、空白处右键菜单**共用同一份状态**：任意一处改动，其它入口立刻同步显示 ✓，不必重启。
+- 切换后弹出轻提示（`showLauncherNotice`）：开启提示「…将完整换行显示」，关闭提示「…恢复按行数省略」。
+- 子目录菜单项已纳入右键菜单自定义体系：`DirectoryContextMenuItemId` 新增 `'fullNames'`，`DIRECTORY_CONTEXT_MENU_IDS` 与 设置-界面-右键菜单 的「子目录右键菜单」列表同步出现「显示完整名称」，可以像其它菜单项一样勾掉隐藏。
+- 设置搜索：`item-name-full` / `sidebar-name-full` 两条结果补充「右键」「显示完整名称」关键词，搜「右键」即可找到这两个开关。
+- **回归保护**：新增 `src/lib/__tests__/contextMenuFullNames.test.ts`（断言两个菜单都暴露该开关、且分别绑定到对应 display 字段）；`scripts/verify-source-fixes.mjs` 与 `src-tauri/build.rs` 各加 v153 断言；`src/lib/__tests__/experienceSettings.test.ts` 的目录菜单 id 数组同步插入 `'fullNames'`。
+- 新增 GitHub Actions 回归工作流 `.github/workflows/regression.yml`：`npm run verify`（测试 + 前端构建）与 Windows 上的 `npm run test` + `cargo check`。
+- 改动文件：`src/components/ContextMenu/DirectoryContextMenu.tsx`、`src/components/ContextMenu/ItemContextMenu.tsx`、`src/types.ts`、`src/lib/experienceSettings.ts`、`src/components/Settings/ContextMenuSettingsSection.tsx`、`src/lib/settingsSearchIndex.ts`、`src/lib/__tests__/contextMenuFullNames.test.ts`（新增）、`src/lib/__tests__/experienceSettings.test.ts`、`scripts/verify-source-fixes.mjs`、`src-tauri/build.rs`。
+
+## V152 — AGENTS.md 写入「从 GitHub 检查更新并落地便捷版 exe」流程
 
 - 纯文档改动，代码与构建产物不变；按规范照常升版本号（4 处版本号 + Cargo.lock 同步 0.1.152）。
 - `AGENTS.md` 新增一节「更新：先看 GitHub 有没有新版，有就下载并落到便捷版 exe」：查 `releases/latest` → 取 `browser_download_url` 下载 NSIS 安装包 → 7z 解出裸 `shortcut-launcher.exe` → **替换便捷版 exe（改名换新，运行中也安全）** → sha256 校验 → 提醒重启生效。

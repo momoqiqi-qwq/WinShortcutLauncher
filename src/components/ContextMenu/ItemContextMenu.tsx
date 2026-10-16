@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardCopy, ClipboardPaste, Copy, CopyPlus, FolderOpen, ImagePlus, Palette, Pencil, Pin, PinOff, RefreshCw, Shield, Sparkles, Trash2, CheckSquare } from 'lucide-react';
+import { ChevronRight, ClipboardCopy, ClipboardPaste, Copy, CopyPlus, FolderOpen, ImagePlus, Palette, Pencil, Pin, PinOff, RefreshCw, Shield, Sparkles, Trash2, CheckSquare, Type } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import type { BrowserRouteOverride, ContextMenuState, ItemClickAction, ShortcutItem, ShortcutType } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -164,6 +164,8 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
   const activeDirectory = useAppStore((state) => state.getActiveDirectory());
   const globalDisplay = useAppStore((state) => state.display);
   const experience = useAppStore((state) => state.experience);
+  // v153: 项目右键也能直接切换“显示完整名称”，与 设置-字体 / 空白处菜单共用同一份 display 开关。
+  const updateDisplay = useAppStore((state) => state.updateDisplay);
   const selectItem = useAppStore((state) => state.selectItem);
   const selectItems = useAppStore((state) => state.selectItems);
   const setItemColors = useAppStore((state) => state.setItemColors);
@@ -303,6 +305,14 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
   function togglePinned() {
     updateItem(currentItem.id, { pinned: !currentItem.pinned });
     showLauncherNotice(currentItem.pinned ? `已取消固定：${currentItem.name}` : `已固定到前面：${currentItem.name}`);
+    onClose();
+  }
+
+  // v153: 切换全局“显示完整名称”（项目卡片名称不再按最大显示行数截断）。
+  function toggleFullItemName() {
+    const next = !(globalDisplay.showFullItemName === true);
+    updateDisplay({ showFullItemName: next });
+    showLauncherNotice(next ? '项目名称将完整换行显示' : '项目名称恢复按行数省略');
     onClose();
   }
 
@@ -509,6 +519,7 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
           <span>文字显示</span><ChevronRight size={14} />
           {openSubmenu === 'text' && <TextDisplaySubmenu item={currentItem} onDone={onClose} />}
         </div>
+        <div className="menu-item" title="开启后项目名称完整换行显示，不再按最大显示行数截断（全局设置，等同 设置-字体 里的“完整显示项目名称”）" onMouseEnter={() => setOpenSubmenu(null)} onClick={toggleFullItemName}><span>显示完整名称</span>{globalDisplay.showFullItemName ? <span>✓</span> : <Type size={14} />}</div>
         <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('color')} onClick={() => setOpenSubmenu((value) => value === 'color' ? null : 'color')}>
           <span>项目背景色{actionCount > 1 ? `（${actionCount} 项）` : ''}</span><ChevronRight size={14} />
           {openSubmenu === 'color' && (

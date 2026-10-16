@@ -24,6 +24,7 @@ const DIRECTORY_LABELS: Record<DirectoryContextMenuItemId, { label: string; hint
   paste: { label: '粘贴项目', hint: '把内部项目剪贴板内容粘贴到此子目录。' },
   rename: { label: '重命名子目录', hint: '修改当前子目录名称。' },
   color: { label: '子目录背景色', hint: '给左侧子目录标签设置不同的背景颜色，形成彩色框。' },
+  fullNames: { label: '显示完整名称', hint: '开启后左侧子目录名称完整换行显示，不再按行数省略（等同 设置-字体 里的“完整显示子目录名称”）。' },
   merge: { label: '合并到子目录', hint: '把当前子目录合并到同类型子目录。' },
   switchToNotes: { label: '空子目录切换为便签', hint: '仅空普通子目录可用。' },
   switchToNormal: { label: '便签切换为普通子目录', hint: '把便签恢复为普通子目录。' },

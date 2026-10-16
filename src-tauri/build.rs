@@ -225,6 +225,13 @@ fn verify_persistent_windows_fixes() {
   forbid(&item_menu, "取消选择此项", "v130 removes the old per-item deselect menu command");
   forbid(&item_menu, "清除多选", "v130 removes the old clear-multi-select menu command");
 
+  // V153：右键菜单里的“显示完整名称”。子目录菜单与项目菜单都必须有该开关，
+  // 且都指向同一份全局 display 设置（子目录 → sidebarShowFullNames，项目 → showFullItemName）。
+  require(&directory_menu, "显示完整名称", "v153 subdirectory context menu exposes 显示完整名称");
+  require(&directory_menu, "sidebarShowFullNames", "v153 subdirectory 显示完整名称 binds to display.sidebarShowFullNames");
+  require(&item_menu, "显示完整名称", "v153 project context menu exposes 显示完整名称");
+  require(&item_menu, "showFullItemName", "v153 project 显示完整名称 binds to display.showFullItemName");
+
   // V145：映射文件夹卡顿。三条不变量必须同时成立，否则卡顿会回来：
   // 1) 重活命令必须是 async（Tauri 里同步命令跑在主线程上）；
   // 2) 图标走原生提取，不再每个图标起一个 PowerShell 进程；
