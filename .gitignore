@@ -7,7 +7,7 @@ dist/
 
 # Rust (Tauri backend)
 src-tauri/target/
-Cargo.lock
+# v159: 应用程序要提交 Cargo.lock，保证本地与 CI 用同一套依赖版本（见 Cargo.toml 里 indexmap 的注释）
 
 # Tauri build outputs
 *.tauri

@@ -82,8 +82,13 @@ fn copy_transfer_paths_to_folder_blocking(paths: Vec<String>, folder: String, ac
   Ok(())
 }
 
+/// v159: 网络路径上的 `is_dir` / `is_file` 可能卡住数秒，放到阻塞线程池。
 #[tauri::command]
-pub fn get_path_kind(path: String) -> Result<String, String> {
+pub async fn get_path_kind(path: String) -> Result<String, String> {
+  crate::blocking::offload(move || path_kind_blocking(path)).await
+}
+
+fn path_kind_blocking(path: String) -> Result<String, String> {
   let p = PathBuf::from(path);
   if p.is_dir() { Ok("folder".to_string()) }
   else if p.is_file() { Ok("file".to_string()) }

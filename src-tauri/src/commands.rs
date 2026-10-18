@@ -139,6 +139,8 @@ fn split_command_line(value: &str) -> (String, Option<String>) {
 #[cfg(target_os = "windows")]
 fn shell_execute(file: &str, args: Option<&str>, as_admin: bool) -> Result<(), String> {
   use std::{ffi::OsStr, os::windows::ffi::OsStrExt, ptr};
+  // v159: 现在会在阻塞线程池里调用；ShellExecuteW 可能经 COM 激活 shell 扩展，先进 STA 公寓。
+  let _apartment = crate::blocking::ComApartment::new();
   use windows_sys::Win32::UI::Shell::ShellExecuteW;
   use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
@@ -608,9 +610,14 @@ fn launch_browser_target(target: &BrowserLaunchTarget, url: &str, as_admin: bool
   command.spawn().map(|_| ()).map_err(|error| error.to_string())
 }
 
+/// v159: 会真的拉起浏览器进程，别占着主线程。
 #[tauri::command]
-pub fn test_browser_target(target: BrowserLaunchTarget) -> Result<String, String> {
-  launch_browser_target(&target, "about:blank", false)?;
+pub async fn test_browser_target(target: BrowserLaunchTarget) -> Result<String, String> {
+  crate::blocking::offload(move || test_browser_target_blocking(&target)).await
+}
+
+fn test_browser_target_blocking(target: &BrowserLaunchTarget) -> Result<String, String> {
+  launch_browser_target(target, "about:blank", false)?;
   let browser_name = target.browser_name.as_deref().filter(|value| !value.trim().is_empty()).unwrap_or("指定浏览器");
   let profile_name = target.profile_name.as_deref().filter(|value| !value.trim().is_empty());
   Ok(match profile_name {
@@ -698,8 +705,26 @@ pub fn read_url_shortcut(path: String) -> Result<String, String> {
   Err("未在 .url 文件中找到网址".to_string())
 }
 
+/// v159: 启动项目放到阻塞线程池执行。
+/// `Path::exists()` 碰到断开的网络盘 / 休眠的移动硬盘可能卡住数秒到数十秒，
+/// 以管理员身份启动时 `ShellExecuteW("runas")` 还要等 UAC 确认框关掉才返回 ——
+/// 以前这些都发生在主线程上，期间整个界面冻住。
 #[tauri::command]
-pub fn launch_item(
+pub async fn launch_item(
+  path: String,
+  as_admin: bool,
+  url_open_mode: Option<String>,
+  specified_browser_id: Option<String>,
+  specified_profile_id: Option<String>,
+  custom_browsers: Option<Vec<CustomBrowserInput>>,
+) -> Result<(), String> {
+  crate::blocking::offload(move || {
+    launch_item_blocking(path, as_admin, url_open_mode, specified_browser_id, specified_profile_id, custom_browsers)
+  })
+  .await
+}
+
+fn launch_item_blocking(
   path: String,
   as_admin: bool,
   url_open_mode: Option<String>,
@@ -740,13 +765,18 @@ pub fn launch_item(
   shell_execute(&file, args.as_deref(), as_admin)
 }
 
+/// v159: `is_dir()` 碰到断开的网络盘可能卡住数秒，放到阻塞线程池。
 #[tauri::command]
-pub fn open_file_location(path: String) -> Result<(), String> {
-  let target = Path::new(&path);
+pub async fn open_file_location(path: String) -> Result<(), String> {
+  crate::blocking::offload(move || open_file_location_blocking(&path)).await
+}
+
+fn open_file_location_blocking(path: &str) -> Result<(), String> {
+  let target = Path::new(path);
   let arg = if target.is_dir() {
-    quote_for_explorer(&path)
+    quote_for_explorer(path)
   } else {
-    format!("/select,{}", quote_for_explorer(&path))
+    format!("/select,{}", quote_for_explorer(path))
   };
 
   Command::new("explorer.exe")

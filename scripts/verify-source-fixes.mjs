@@ -133,6 +133,13 @@ const checks = [
   ['src/edge-strip.tsx', /listen<EdgeStripStyle>\(EDGE_STRIP_STYLE_EVENT/, 'v158 the edge strip must receive its style by event'],
   ['src/App.tsx', /useEdgeStripStyleSync\(\)/, 'v158 the main window must push the edge strip style'],
   ['vite.config.ts', /process\.env\.TAURI_ENV_PLATFORM/, 'v158 vite must read the Tauri v2 platform variable'],
+  ['src-tauri/src/commands.rs', /pub async fn launch_item/, 'v159 launching items must not run on the main thread'],
+  ['src-tauri/src/commands.rs', /pub async fn open_file_location/, 'v159 opening a file location must not run on the main thread'],
+  ['src-tauri/src/commands.rs', /pub async fn test_browser_target/, 'v159 testing a browser target must not run on the main thread'],
+  ['src-tauri/src/transfer_station.rs', /pub async fn get_path_kind/, 'v159 path probing must not run on the main thread'],
+  ['src-tauri/src/commands.rs', /fn shell_execute[\s\S]*?ComApartment::new\(\)[\s\S]*?ShellExecuteW\(/, 'v159 ShellExecuteW must run inside a COM apartment'],
+  ['src-tauri/Cargo.toml', /\[profile\.release\][\s\S]*?lto = true/, 'v159 release builds must enable LTO'],
+  ['src-tauri/Cargo.lock', /name = "tauri"/, 'v159 Cargo.lock must be committed'],
 ];
 
 const forbidden = [
@@ -154,6 +161,8 @@ const forbidden = [
   ['src/edge-strip.tsx', /setInterval\(/, 'v158 the edge strip must not poll localStorage'],
   ['src/App.tsx', /useAppStore\(\(state\) => state\.groups\)/, 'v158 App must not subscribe to the whole groups tree'],
   ['vite.config.ts', /process\.env\.TAURI_(?:PLATFORM|DEBUG)\b/, 'v158 Tauri v1 env names are never set by the v2 CLI'],
+  ['.gitignore', /^Cargo\.lock\s*$/m, 'v159 Cargo.lock must not be ignored'],
+  ['src-tauri/Cargo.toml', /panic\s*=\s*"abort"/, 'v159 a panicking command must not take the whole app down'],
 ];
 
 const failures = [];

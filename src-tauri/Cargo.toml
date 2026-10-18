@@ -1,6 +1,6 @@
 [package]
 name = "shortcut-launcher"
-version = "0.1.158"
+version = "0.1.159"
 description = "Windows desktop shortcut launcher built with Tauri 2, React and TypeScript"
 authors = ["Ava Wright"]
 edition = "2021"
@@ -36,3 +36,11 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphic
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_SystemServices", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 windows-core = "0.61"
+
+# v159: 发布构建优化。整程序 LTO + 单代码生成单元让编译器跨 crate 内联、裁掉没用到的代码，
+# 产物更小也更快，代价是 release 编译变慢；strip 去掉符号表。
+# 刻意不改 panic 策略（保持 unwind）：命令里万一 panic，只会让那一次调用失败；改成 abort 会直接带走整个程序。
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

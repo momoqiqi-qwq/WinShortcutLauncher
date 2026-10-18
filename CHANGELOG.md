@@ -4,7 +4,43 @@
 
 ---
 
-## V158（最新）— 去掉触发条轮询、收紧根组件订阅、修正 Vite 的 Tauri v2 环境变量
+## V159（最新）— 阻塞命令移出主线程、发布构建开启 LTO、提交 Cargo.lock
+
+> 后端稳定性 / 构建修复，界面与功能不变。
+
+### 1. 四个同步命令移出主线程
+
+Tauri 里不带 `async` 的命令跑在**主线程**上（见 `src-tauri/src/blocking.rs` 的说明）。以下命令以前是同步的，会在主线程上做可能卡住的事：
+
+| 命令 | 可能卡住的地方 |
+| --- | --- |
+| `launch_item` | `Path::exists()` 碰到断开的网络盘 / 休眠硬盘可能卡数秒到数十秒；以管理员身份启动时 `ShellExecuteW("runas")` 要等 UAC 确认框关掉才返回 |
+| `open_file_location` | `is_dir()` 同上 |
+| `get_path_kind`（`transfer_station.rs`） | `is_dir()` / `is_file()` 同上 |
+| `test_browser_target` | 实际拉起浏览器进程 |
+
+- 全部改成 `async`，原函数体改名为 `*_blocking`，经 `crate::blocking::offload` 放到阻塞线程池执行；前端 `invoke` 调用方式不变。
+- `ShellExecuteW` 可能经 COM 激活 shell 扩展，阻塞线程池默认没有 COM 公寓，所以 `shell_execute` 进来先建 STA 公寓。
+- 原来 `icon_native.rs` 私有的 `ComApartment` 守卫挪到 `blocking.rs` 共用，并按 `ShellExecute` 文档加上 `COINIT_DISABLE_OLE1DDE`。
+
+### 2. 发布构建开启 LTO
+
+- `Cargo.toml` 新增 `[profile.release]`：`lto = true`、`codegen-units = 1`、`strip = true`。产物更小、运行更快，代价是 release 编译变慢。
+- 刻意**不**设 `panic = "abort"`：命令里万一 panic，只让那一次调用失败，不会带走整个程序（`verify-source-fixes` 加了禁止断言）。
+
+### 3. 提交 `Cargo.lock`
+
+- `.gitignore` 去掉 `Cargo.lock`，`src-tauri/Cargo.lock` 纳入版本管理。应用程序应该锁定依赖版本 —— `Cargo.toml` 里已经有一段专门为 indexmap 版本组合打的补丁，说明依赖一漂就会编译失败；V153 新增的 GitHub Actions 每次都会重新解析依赖，迟早踩坑。
+
+### 验证
+
+- `cargo clippy --all-targets` 通过，无新增 warning（仍是既有的 25 条）；`cargo test --lib`、`npx tsc --noEmit`、`npx vitest run`（42 个文件 / 224 个用例）通过。
+- `node scripts/verify-source-fixes.mjs` 新增 7 条必须 / 2 条禁止断言（四个命令必须 async、`ShellExecuteW` 必须在 COM 公寓内、release 必须 LTO、必须提交 `Cargo.lock`；`.gitignore` 不得忽略 `Cargo.lock`、不得 `panic = "abort"`），输出 `OK`。
+- `npx tauri build --no-bundle` 通过：release 编译 8 分 12 秒，`shortcut-launcher.exe` 从 17,693,184 字节降到 **16,046,080 字节（-1.57 MB，约 -9.3%）**。
+
+---
+
+## V158 — 去掉触发条轮询、收紧根组件订阅、修正 Vite 的 Tauri v2 环境变量
 
 > 纯性能 / 构建修复，界面与功能不变。
 

@@ -26,36 +26,13 @@ use windows::Win32::Graphics::Gdi::{
   BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
 };
 use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
-use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+use crate::blocking::ComApartment;
 use windows::Win32::UI::Shell::{
   ExtractIconExW, SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
   DestroyIcon, DrawIconEx, GetIconInfo, DI_NORMAL, HICON, ICONINFO,
 };
-
-/// 一次 COM 初始化的配对守卫。
-///
-/// `SHGetFileInfoW` 会加载 shell 扩展，按文档要求线程上必须有 COM 公寓。
-/// 命令已经挪到 tokio 的阻塞线程池上执行，那些线程默认没有初始化 COM，
-/// 所以每次进来自己初始化一次；只有 `CoInitializeEx` 成功（含 `S_FALSE`）才需要配对释放，
-/// `RPC_E_CHANGED_MODE` 这种失败不能去 `CoUninitialize`。
-struct ComApartment(bool);
-
-impl ComApartment {
-  fn new() -> Self {
-    let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-    Self(hr.is_ok())
-  }
-}
-
-impl Drop for ComApartment {
-  fn drop(&mut self) {
-    if self.0 {
-      unsafe { CoUninitialize() };
-    }
-  }
-}
 
 /// 解析 `路径,索引` / `路径;索引` / `路径#索引` 这种带图标下标的写法。
 ///
