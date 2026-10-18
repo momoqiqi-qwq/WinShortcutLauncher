@@ -140,6 +140,13 @@ const checks = [
   ['src-tauri/src/commands.rs', /fn shell_execute[\s\S]*?ComApartment::new\(\)[\s\S]*?ShellExecuteW\(/, 'v159 ShellExecuteW must run inside a COM apartment'],
   ['src-tauri/Cargo.toml', /\[profile\.release\][\s\S]*?lto = true/, 'v159 release builds must enable LTO'],
   ['src-tauri/Cargo.lock', /name = "tauri"/, 'v159 Cargo.lock must be committed'],
+  ['src-tauri/src/edge_dock_native.rs', /fn window_iconic[\s\S]*?IsIconic/, 'v160 edge dock must detect a minimized main window'],
+  ['src-tauri/src/edge_dock_native.rs', /if window_iconic\(cached_main\)/, 'v160 edge loop must not read geometry while the main window is minimized'],
+  ['src-tauri/src/edge_dock_native.rs', /still_edge_hidden\(edge, actual, hide_mon\)/, 'v160 AutoHidden must reconcile with the real window geometry'],
+  ['src-tauri/src/edge_dock_native.rs', /impl Drop for AnimationGuard/, 'v160 the animation flag must be cleared by a drop guard'],
+  ['src-tauri/src/edge_dock_native.rs', /fn find_own_window_by_title[\s\S]*?GetCurrentProcessId/, 'v160 window lookup must be limited to this process'],
+  ['src-tauri/src/edge_dock_native.rs', /catch_unwind/, 'v160 the native edge loop must restart after a panic'],
+  ['src-tauri/src/edge_dock_native.rs', /AnimateWindow\(hwnd, ms, aw_show_flag\(edge\)\) == 0/, 'v160 a failed cross-thread AnimateWindow must fall back to ShowWindow'],
 ];
 
 const forbidden = [
@@ -163,6 +170,9 @@ const forbidden = [
   ['vite.config.ts', /process\.env\.TAURI_(?:PLATFORM|DEBUG)\b/, 'v158 Tauri v1 env names are never set by the v2 CLI'],
   ['.gitignore', /^Cargo\.lock\s*$/m, 'v159 Cargo.lock must not be ignored'],
   ['src-tauri/Cargo.toml', /panic\s*=\s*"abort"/, 'v159 a panicking command must not take the whole app down'],
+  ['src-tauri/src/edge_dock_native.rs', /FindWindowW\(/, 'v160 edge dock must not grab same-titled windows from other processes'],
+  ['src-tauri/src/edge_dock_native.rs', /fn now_millis/, 'v160 the suspend timer must use a monotonic clock'],
+  ['src-tauri/src/edge_dock_native.rs', /last_good_visible_rect = Some\(/, 'v160 the last good rect must be filtered by remember_good'],
 ];
 
 const failures = [];

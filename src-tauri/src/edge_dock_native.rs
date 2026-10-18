@@ -1,22 +1,25 @@
 use serde::Deserialize;
-use std::ptr::null;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
+use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromRect, MONITORINFO, MONITOR_DEFAULTTONEAREST};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-  AnimateWindow, FindWindowW, GetCursorPos, GetWindowLongW, GetWindowRect, IsWindowVisible,
-  SetLayeredWindowAttributes, SetWindowLongW, SetWindowPos, ShowWindow, AW_BLEND, AW_HIDE,
-  AW_HOR_NEGATIVE, AW_HOR_POSITIVE, AW_SLIDE, AW_VER_NEGATIVE, AW_VER_POSITIVE, GWL_EXSTYLE,
-  HWND_TOPMOST, LWA_ALPHA, SW_HIDE, SW_SHOWNA, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+  AnimateWindow, EnumWindows, GetCursorPos, GetWindowLongW, GetWindowRect, GetWindowTextW,
+  GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, SetLayeredWindowAttributes,
+  SetWindowLongW, SetWindowPos, ShowWindow, AW_BLEND, AW_HIDE, AW_HOR_NEGATIVE, AW_HOR_POSITIVE,
+  AW_SLIDE, AW_VER_NEGATIVE, AW_VER_POSITIVE, GWL_EXSTYLE, HWND_TOPMOST, LWA_ALPHA, SW_HIDE,
+  SW_SHOWNA, SW_SHOWNOACTIVATE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
   SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, WS_EX_APPWINDOW, WS_EX_LAYERED,
   WS_EX_TOOLWINDOW,
 };
@@ -133,6 +136,18 @@ static EXTERNAL_SHOW_RESET: AtomicBool = AtomicBool::new(false);
 static WAKE_REQUIRES_POINTER_VISIT: AtomicBool = AtomicBool::new(false);
 static CONFIG_VERSION: AtomicU64 = AtomicU64::new(1);
 static SETTINGS: OnceLock<Arc<Mutex<NativeEdgeOptions>>> = OnceLock::new();
+// v160: 动画代号与开始时间。旧动画线程结束时只清自己那一代的标志，超时后由主循环兜底复位。
+static ANIMATION_GENERATION: AtomicU64 = AtomicU64::new(0);
+static ANIMATION_STARTED_MS: AtomicU64 = AtomicU64::new(0);
+// v160: Tauri 交给我们的真实窗口句柄（0 表示还不知道，回退到按标题 + 本进程查找）。
+static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
+static STRIP_HWND: AtomicIsize = AtomicIsize::new(0);
+static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
+static MONO_EPOCH: OnceLock<Instant> = OnceLock::new();
+
+/// 动画超过这个时长仍未结束，视为卡死并强制复位，避免整个贴边状态机永久停摆。
+const ANIMATION_STALE_MS: u64 = 3000;
+const LOG_MAX_BYTES: u64 = 512 * 1024;
 
 fn settings() -> Arc<Mutex<NativeEdgeOptions>> {
   SETTINGS
@@ -140,27 +155,172 @@ fn settings() -> Arc<Mutex<NativeEdgeOptions>> {
     .clone()
 }
 
-fn now_millis() -> u64 {
-  SystemTime::now()
-    .duration_since(UNIX_EPOCH)
-    .map(|d| d.as_millis() as u64)
-    .unwrap_or(0)
+/// 读配置时容忍锁中毒：中毒只说明别处 panic 过，数据本身仍可用。
+fn lock_settings(config: &Mutex<NativeEdgeOptions>) -> MutexGuard<'_, NativeEdgeOptions> {
+  config.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// 单调时钟毫秒数（进程内）。系统时间被校准/休眠唤醒回拨时不会让挂起计时失效或卡住。
+fn mono_millis() -> u64 {
+  // 起点往前拨一小时，保证"现在减去某个过去时刻"的比较永远不会因为起点太近而失真。
+  MONO_EPOCH
+    .get_or_init(|| Instant::now().checked_sub(Duration::from_secs(3600)).unwrap_or_else(Instant::now))
+    .elapsed()
+    .as_millis() as u64
 }
 
 fn native_suspended() -> bool {
   let until = NATIVE_SUSPEND_UNTIL_MS.load(Ordering::SeqCst);
-  until > now_millis()
+  until > mono_millis()
+}
+
+fn utc_timestamp() -> String {
+  let ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+  let secs = ms.div_euclid(1000);
+  let days = secs.div_euclid(86_400);
+  let sod = secs.rem_euclid(86_400);
+  // civil_from_days (Howard Hinnant)
+  let z = days + 719_468;
+  let era = z.div_euclid(146_097);
+  let doe = z - era * 146_097;
+  let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+  let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  let mp = (5 * doy + 2) / 153;
+  let d = doy - (153 * mp + 2) / 5 + 1;
+  let m = if mp < 10 { mp + 3 } else { mp - 9 };
+  let y = yoe + era * 400 + i64::from(m <= 2);
+  format!(
+    "{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}.{:03}Z",
+    sod / 3600,
+    (sod / 60) % 60,
+    sod % 60,
+    ms.rem_euclid(1000)
+  )
+}
+
+/// 贴边诊断日志：只记状态切换和异常，不记每一帧。超过上限时轮转为 .old。
+fn edge_log(message: &str) {
+  use std::io::Write;
+  let Some(path) = LOG_PATH.get() else { return; };
+  if let Ok(meta) = std::fs::metadata(path) {
+    if meta.len() > LOG_MAX_BYTES {
+      let _ = std::fs::rename(path, path.with_extension("log.old"));
+    }
+  }
+  if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    let _ = writeln!(file, "{} {}", utc_timestamp(), message);
+  }
 }
 
 #[cfg(target_os = "windows")]
-fn wide_null(s: &str) -> Vec<u16> {
-  s.encode_utf16().chain(std::iter::once(0)).collect()
+struct OwnWindowSearch {
+  title: Vec<u16>,
+  pid: u32,
+  found: HWND,
 }
 
 #[cfg(target_os = "windows")]
-fn find_window_by_title(title: &str) -> HWND {
-  let title = wide_null(title);
-  unsafe { FindWindowW(null(), title.as_ptr()) }
+unsafe extern "system" fn own_window_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+  let search = &mut *(lparam as *mut OwnWindowSearch);
+  let mut pid = 0u32;
+  GetWindowThreadProcessId(hwnd, &mut pid);
+  if pid != search.pid {
+    return 1;
+  }
+  let mut buf = [0u16; 128];
+  let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+  if len > 0 && buf[..len as usize] == search.title[..] {
+    search.found = hwnd;
+    return 0;
+  }
+  1
+}
+
+/// 只在本进程的顶层窗口里按标题查找。FindWindowW 会匹配任意进程里同名的第一个窗口，
+/// 旧版本残留实例、同名资源管理器窗口都可能被误抓，导致状态机操作错窗口。
+#[cfg(target_os = "windows")]
+fn find_own_window_by_title(title: &str) -> HWND {
+  let mut search = OwnWindowSearch {
+    title: title.encode_utf16().collect(),
+    pid: unsafe { GetCurrentProcessId() },
+    found: std::ptr::null_mut(),
+  };
+  unsafe {
+    EnumWindows(Some(own_window_enum_proc), &mut search as *mut OwnWindowSearch as LPARAM);
+  }
+  search.found
+}
+
+#[cfg(target_os = "windows")]
+fn window_alive(hwnd: HWND) -> bool {
+  !hwnd.is_null() && unsafe { IsWindow(hwnd) } != 0
+}
+
+/// 优先用 Tauri 提供的真实句柄；句柄失效或尚未登记时回退到本进程内按标题查找。
+#[cfg(target_os = "windows")]
+fn resolve_window(stored: &AtomicIsize, title: &str) -> HWND {
+  let known = stored.load(Ordering::SeqCst) as HWND;
+  if window_alive(known) {
+    return known;
+  }
+  let found = find_own_window_by_title(title);
+  if !found.is_null() {
+    stored.store(found as isize, Ordering::SeqCst);
+  }
+  found
+}
+
+#[cfg(target_os = "windows")]
+fn window_iconic(hwnd: HWND) -> bool {
+  !hwnd.is_null() && unsafe { IsIconic(hwnd) } != 0
+}
+
+#[cfg(target_os = "windows")]
+fn window_visible(hwnd: HWND) -> bool {
+  !hwnd.is_null() && unsafe { IsWindowVisible(hwnd) } != 0
+}
+
+/// 可以当作"上次正常可见位置"保存的矩形：最小化后的小标题条（约 160x28）等异常尺寸一律拒收，
+/// 否则它会污染恢复位置，之后每次"恢复"都恢复成一个小条。
+#[cfg(target_os = "windows")]
+fn plausible_visible_rect(rect: SimpleRect) -> bool {
+  rect.w >= 260 && rect.h >= 180
+}
+
+#[cfg(target_os = "windows")]
+fn remember_good(slot: &mut Option<SimpleRect>, rect: SimpleRect) {
+  if plausible_visible_rect(rect) {
+    *slot = Some(rect);
+  }
+}
+
+/// 窗口在某条边上伸出显示器的像素数。
+#[cfg(target_os = "windows")]
+fn edge_overflow(edge: Edge, rect: SimpleRect, mon: SimpleRect) -> i32 {
+  match edge {
+    Edge::Left => mon.x - rect.x,
+    Edge::Right => rect.right() - mon.right(),
+    Edge::Top => mon.y - rect.y,
+    Edge::Bottom => rect.bottom() - mon.bottom(),
+  }
+}
+
+/// 窗口是否仍处于"藏在这条边外面"的状态：伸出去的部分至少占该方向尺寸的一半。
+#[cfg(target_os = "windows")]
+fn still_edge_hidden(edge: Edge, rect: SimpleRect, mon: SimpleRect) -> bool {
+  let span = match edge {
+    Edge::Left | Edge::Right => rect.w,
+    Edge::Top | Edge::Bottom => rect.h,
+  };
+  span > 0 && edge_overflow(edge, rect, mon) * 2 >= span
+}
+
+#[cfg(target_os = "windows")]
+fn rect_moved(a: SimpleRect, b: SimpleRect, tolerance: i32) -> bool {
+  (a.x - b.x).abs() > tolerance
+    || (a.y - b.y).abs() > tolerance
+    || (a.w - b.w).abs() > tolerance
+    || (a.h - b.h).abs() > tolerance
 }
 
 #[cfg(target_os = "windows")]
@@ -367,7 +527,6 @@ fn aw_show_flag(edge: Edge) -> u32 {
 }
 
 #[cfg(target_os = "windows")]
-
 fn keep_out_of_taskbar(hwnd: HWND) {
   if hwnd.is_null() { return; }
   unsafe {
@@ -400,12 +559,14 @@ fn move_window(hwnd: HWND, rect: SimpleRect, topmost: bool, show: bool) {
 
 #[cfg(target_os = "windows")]
 fn show_strip(strip: HWND, rect: SimpleRect) {
+  if strip.is_null() { return; }
   move_window(strip, rect, true, true);
   unsafe { ShowWindow(strip, SW_SHOWNA); }
 }
 
 #[cfg(target_os = "windows")]
 fn hide_strip(strip: HWND) {
+  if strip.is_null() { return; }
   unsafe { ShowWindow(strip, SW_HIDE); }
 }
 
@@ -619,10 +780,10 @@ fn animate_hide_impl(hwnd: HWND, edge: Edge, rect: SimpleRect, ms: u32, style: &
       SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
     },
     _ => unsafe {
-      if ms <= 10 {
+      // AnimateWindow 只能由窗口所属线程调用；这里在动画线程上调用会直接失败（返回 0）。
+      // 失败时必须兜底隐藏，否则窗口留在原地、状态机却以为已隐藏。
+      if ms <= 10 || AnimateWindow(hwnd, ms, aw_hide_flag(edge)) == 0 {
         ShowWindow(hwnd, SW_HIDE);
-      } else {
-        AnimateWindow(hwnd, ms, aw_hide_flag(edge));
       }
     },
   }
@@ -684,19 +845,45 @@ fn animate_show_impl(hwnd: HWND, edge: Edge, rect: SimpleRect, ms: u32, style: &
     _ => {
       move_window(hwnd, rect, true, false);
       unsafe {
-        if ms <= 10 {
+        // 同上：跨线程 AnimateWindow 失败时兜底显示，避免"从触发条出不来"。
+        if ms <= 10 || AnimateWindow(hwnd, ms, aw_show_flag(edge)) == 0 {
           ShowWindow(hwnd, SW_SHOWNA);
-        } else {
-          AnimateWindow(hwnd, ms, aw_show_flag(edge));
         }
       }
     }
   }
 }
 
+/// 动画结束（包括 panic 展开）时清除"动画进行中"标志。只清自己这一代，
+/// 这样一个被判定为超时、后来才返回的旧动画线程不会误清新动画的标志。
+#[cfg(target_os = "windows")]
+struct AnimationGuard {
+  generation: u64,
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for AnimationGuard {
+  fn drop(&mut self) {
+    if ANIMATION_GENERATION.load(Ordering::SeqCst) == self.generation {
+      ANIMATION_RUNNING.store(false, Ordering::SeqCst);
+    }
+  }
+}
+
 #[cfg(target_os = "windows")]
 fn animation_busy() -> bool {
-  ANIMATION_RUNNING.load(Ordering::SeqCst)
+  if !ANIMATION_RUNNING.load(Ordering::SeqCst) {
+    return false;
+  }
+  let started = ANIMATION_STARTED_MS.load(Ordering::SeqCst);
+  if mono_millis().saturating_sub(started) > ANIMATION_STALE_MS {
+    // 动画线程卡在跨线程 SetWindowPos 等调用里迟迟不返回：放弃等待，让状态机继续工作。
+    ANIMATION_GENERATION.fetch_add(1, Ordering::SeqCst);
+    ANIMATION_RUNNING.store(false, Ordering::SeqCst);
+    edge_log("animation exceeded watchdog limit; flag force-reset");
+    return false;
+  }
+  true
 }
 
 #[cfg(target_os = "windows")]
@@ -704,17 +891,21 @@ fn start_animation<F>(task: F) -> bool
 where
   F: FnOnce() + Send + 'static,
 {
-  if ANIMATION_RUNNING.swap(true, Ordering::SeqCst) {
+  if animation_busy() || ANIMATION_RUNNING.swap(true, Ordering::SeqCst) {
     return false;
   }
+  let generation = ANIMATION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+  ANIMATION_STARTED_MS.store(mono_millis(), Ordering::SeqCst);
   let result = thread::Builder::new()
     .name("native-edge-animation".into())
     .spawn(move || {
+      let _guard = AnimationGuard { generation };
       task();
-      ANIMATION_RUNNING.store(false, Ordering::SeqCst);
     });
   if result.is_err() {
-    ANIMATION_RUNNING.store(false, Ordering::SeqCst);
+    if ANIMATION_GENERATION.load(Ordering::SeqCst) == generation {
+      ANIMATION_RUNNING.store(false, Ordering::SeqCst);
+    }
     return false;
   }
   true
@@ -761,6 +952,17 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
     AutoHidden { edge: Edge, restore_rect: SimpleRect, hidden_rect: SimpleRect, visible_rect: SimpleRect, must_exit_visible: bool },
   }
 
+  impl Mode {
+    fn tag(&self) -> &'static str {
+      match self {
+        Mode::Visible => "Visible",
+        Mode::Hidden { .. } => "Hidden",
+        Mode::OpenedByStrip { .. } => "OpenedByStrip",
+        Mode::AutoHidden { .. } => "AutoHidden",
+      }
+    }
+  }
+
   let mut mode = Mode::Visible;
   let mut last_edge: Option<Edge> = None;
   let mut dock_since: Option<Instant> = None;
@@ -774,15 +976,30 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
   let mut reveal_hold_until: Option<Instant> = None;
   let mut reveal_requires_cursor_exit = false;
   let mut wake_requires_pointer_visit = false;
+  let mut last_mode_tag = mode.tag();
+  let mut last_redock: Option<Instant> = None;
 
   loop {
-    let cfg = config.lock().map(|g| g.clone()).unwrap_or_default();
+    let cfg = lock_settings(&config).clone();
 
-    if last_lookup.elapsed() > Duration::from_millis(700) || cached_main.is_null() || cached_strip.is_null() {
-      cached_main = find_window_by_title("Yue launcher");
+    let lookup_due = last_lookup.elapsed() > Duration::from_millis(700)
+      || (!window_alive(cached_main) && last_lookup.elapsed() > Duration::from_millis(50));
+    if lookup_due {
+      let main = resolve_window(&MAIN_HWND, "Yue launcher");
+      let strip = resolve_window(&STRIP_HWND, "edge-strip");
+      if main != cached_main || strip != cached_strip {
+        edge_log(&format!("window handles main={:?} strip={:?}", main, strip));
+      }
+      cached_main = main;
+      cached_strip = strip;
       if !cached_main.is_null() { keep_out_of_taskbar(cached_main); }
-      cached_strip = find_window_by_title("edge-strip");
       last_lookup = Instant::now();
+    }
+
+    let tag = mode.tag();
+    if tag != last_mode_tag {
+      edge_log(&format!("mode {last_mode_tag} -> {tag}"));
+      last_mode_tag = tag;
     }
 
     // When the app is explicitly hidden to the system tray, edge docking must stay dormant.
@@ -827,12 +1044,12 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
           Mode::Hidden { main_rect, .. } => {
             move_window(cached_main, main_rect, true, true);
             unsafe { ShowWindow(cached_main, SW_SHOWNA); }
-            last_good_visible_rect = Some(main_rect);
+            remember_good(&mut last_good_visible_rect, main_rect);
           }
           Mode::AutoHidden { restore_rect, .. } => {
             move_window(cached_main, restore_rect, true, true);
             unsafe { ShowWindow(cached_main, SW_SHOWNA); }
-            last_good_visible_rect = Some(restore_rect);
+            remember_good(&mut last_good_visible_rect, restore_rect);
           }
           _ => {
             unsafe { ShowWindow(cached_main, SW_SHOWNA); }
@@ -857,21 +1074,23 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
       continue;
     }
 
-    if !cfg.enabled || cfg.paused || cached_main.is_null() || cached_strip.is_null() {
+    // 主窗口条模式不需要独立的 edge-strip 窗口；它缺失时不应让整个贴边功能停摆。
+    let strip_missing = cached_strip.is_null() && !cfg.use_main_window_strip;
+    if !cfg.enabled || cfg.paused || cached_main.is_null() || strip_missing {
       if !cached_strip.is_null() { hide_strip(cached_strip); }
       match mode {
         Mode::Hidden { main_rect, .. } => {
           if !cached_main.is_null() {
             move_window(cached_main, main_rect, true, true);
             unsafe { ShowWindow(cached_main, SW_SHOWNA); }
-            last_good_visible_rect = Some(main_rect);
+            remember_good(&mut last_good_visible_rect, main_rect);
           }
         }
         Mode::AutoHidden { restore_rect, .. } => {
           if !cached_main.is_null() {
             move_window(cached_main, restore_rect, true, true);
             unsafe { ShowWindow(cached_main, SW_SHOWNA); }
-            last_good_visible_rect = Some(restore_rect);
+            remember_good(&mut last_good_visible_rect, restore_rect);
           }
         }
         _ => {}
@@ -884,6 +1103,64 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
       reveal_hold_until = None;
       reveal_requires_cursor_exit = false;
       thread::sleep(Duration::from_millis(80));
+      continue;
+    }
+
+    // v160: 最小化（Win+D / Win+M / 显示桌面 / 最小化按钮）时 GetWindowRect 返回的是工作区左下角
+    // 约 160x28 的小标题条，SetWindowPos 和 SW_SHOWNA 也都无法把窗口还原。旧逻辑把这个小条当成
+    // 真实位置，于是"出不来、不再隐藏、越界不回弹"。最小化期间绝不读取/保存它的几何信息。
+    if window_iconic(cached_main) {
+      if animation_busy() {
+        thread::sleep(Duration::from_millis(16));
+        continue;
+      }
+      let docked = !matches!(mode, Mode::Visible);
+      let fighting = last_redock.is_some_and(|t| t.elapsed() < Duration::from_millis(1500));
+      if docked && !fighting {
+        // 已经贴边时"最小化"没有意义：不激活地还原，放回贴边隐藏状态。
+        last_redock = Some(Instant::now());
+        let cursor = cursor_pos();
+        unsafe { ShowWindow(cached_main, SW_SHOWNOACTIVATE); }
+        match mode {
+          Mode::AutoHidden { edge, restore_rect, hidden_rect, visible_rect, .. } => {
+            move_window(cached_main, hidden_rect, true, true);
+            let inside = cursor.is_some_and(|(x, y)| visible_rect.contains(x, y));
+            mode = Mode::AutoHidden { edge, restore_rect, hidden_rect, visible_rect, must_exit_visible: inside || edge == Edge::Bottom };
+          }
+          Mode::Hidden { edge, main_rect, strip_rect, .. } => {
+            force_hide_and_park(cached_main, edge, main_rect, cfg.ghost_frame_fix);
+            unsafe { ShowWindow(cached_main, SW_HIDE); }
+            if !cached_strip.is_null() { show_strip(cached_strip, strip_rect); }
+            let inside = cursor.is_some_and(|(x, y)| strip_rect.contains(x, y));
+            mode = Mode::Hidden { edge, main_rect, strip_rect, must_exit_strip: inside };
+          }
+          Mode::OpenedByStrip { edge, main_rect, .. } => {
+            // 放回展开位置；指针不在窗口内时，下一轮会按正常的离开逻辑收回到边缘。
+            move_window(cached_main, main_rect, true, true);
+            reveal_hold_until = None;
+            reveal_requires_cursor_exit = false;
+            mode = Mode::OpenedByStrip { edge, main_rect, shown_at: Instant::now(), entered_main: true };
+          }
+          Mode::Visible => {}
+        }
+        edge_log(&format!("main window minimized while docked ({}); restored to dock state", mode.tag()));
+      } else {
+        // 正常显示时的最小化是用户的明确意图：保持最小化，状态机休眠，窗口被还原后再按真实位置接管。
+        if docked {
+          edge_log("main window minimized again right after re-dock; leaving it minimized");
+        }
+        if !cached_strip.is_null() { hide_strip(cached_strip); }
+        mode = Mode::Visible;
+        dock_since = None;
+        last_edge = None;
+        auto_overflow_edge = None;
+        auto_overflow_since = None;
+        reveal_hold_until = None;
+        reveal_requires_cursor_exit = false;
+        thread::sleep(Duration::from_millis(50));
+        continue;
+      }
+      thread::sleep(Duration::from_millis(16));
       continue;
     }
 
@@ -900,7 +1177,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
           hide_strip(cached_strip);
           let from = rect_from_hwnd(cached_main).unwrap_or(hidden_rect);
           if start_position_slide(cached_main, from, restore_rect, AUTO_BOUNCE_MS) {
-            last_good_visible_rect = Some(restore_rect);
+            remember_good(&mut last_good_visible_rect, restore_rect);
             reveal_hold_until = Some(Instant::now() + Duration::from_millis(1800));
             reveal_requires_cursor_exit = true;
             mode = Mode::OpenedByStrip { edge, main_rect: restore_rect, shown_at: Instant::now(), entered_main: false };
@@ -937,6 +1214,24 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
 
     match mode {
       Mode::Hidden { edge, main_rect, strip_rect, mut must_exit_strip } => {
+        // v160: 状态与现实对账。主窗口被外部显示出来（例如从别的入口还原）时，旧的隐藏状态已失效。
+        if window_visible(cached_main) {
+          hide_strip(cached_strip);
+          if let Some(actual) = rect_from_hwnd(cached_main) {
+            remember_good(&mut last_good_visible_rect, actual);
+          }
+          edge_log("Hidden: main window is visible externally; resync to Visible");
+          mode = Mode::Visible;
+          dock_since = None;
+          last_edge = None;
+          auto_overflow_edge = None;
+          auto_overflow_since = None;
+          continue;
+        }
+        if !cached_strip.is_null() && !window_visible(cached_strip) {
+          show_strip(cached_strip, strip_rect);
+          edge_log("Hidden: edge strip was hidden externally; re-shown");
+        }
         let inside_strip = strip_rect.contains(cx, cy);
         if !inside_strip {
           must_exit_strip = false;
@@ -956,6 +1251,51 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
         }
       }
       Mode::AutoHidden { edge, restore_rect, hidden_rect, visible_rect, mut must_exit_visible } => {
+        // v160: 状态与现实对账。显示器重排、DPI 变化、从最小化小条还原、其它程序挪窗口，
+        // 都会让窗口不在我们以为的隐藏位置上；旧逻辑永远不再检查，于是卡死在"已隐藏"。
+        if !window_visible(cached_main) {
+          edge_log("AutoHidden: main window is no longer visible; resync to Visible");
+          mode = Mode::Visible;
+          dock_since = None;
+          last_edge = None;
+          auto_overflow_edge = None;
+          auto_overflow_since = None;
+          continue;
+        }
+        if let Some(actual) = rect_from_hwnd(cached_main) {
+          if rect_moved(actual, hidden_rect, 2) {
+            let base_mon = edge_detection_monitor_rect(restore_rect, cfg.ignore_taskbar);
+            let hide_mon = hide_monitor_rect_for(edge, restore_rect, base_mon);
+            if still_edge_hidden(edge, actual, hide_mon) {
+              // 仍藏在同一条边外，只是被系统挪了一点：采用新位置，避免和系统来回抢。
+              let visible = match edge {
+                Edge::Left | Edge::Right => visible_rect.w,
+                Edge::Top | Edge::Bottom => visible_rect.h,
+              };
+              let new_visible_rect = auto_visible_rect_for(edge, actual, hide_mon, visible);
+              edge_log(&format!("AutoHidden: window shifted to {:?}; adopted", actual));
+              mode = Mode::AutoHidden {
+                edge,
+                restore_rect,
+                hidden_rect: actual,
+                visible_rect: new_visible_rect,
+                must_exit_visible: must_exit_visible || new_visible_rect.contains(cx, cy),
+              };
+            } else {
+              // 窗口已被带回屏幕内：放弃旧隐藏状态，按真实位置回到正常显示，隐藏/回弹逻辑随之恢复。
+              hide_strip(cached_strip);
+              remember_good(&mut last_good_visible_rect, actual);
+              edge_log(&format!("AutoHidden: window back on screen at {:?}; resync to Visible", actual));
+              mode = Mode::Visible;
+              dock_since = None;
+              last_edge = None;
+              auto_overflow_edge = None;
+              auto_overflow_since = None;
+            }
+            thread::sleep(Duration::from_millis(8));
+            continue;
+          }
+        }
         let inside_visible = visible_rect.contains(cx, cy);
         if !inside_visible {
           must_exit_visible = false;
@@ -964,7 +1304,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
           hide_strip(cached_strip);
           let from = rect_from_hwnd(cached_main).unwrap_or(hidden_rect);
           if start_position_slide(cached_main, from, restore_rect, AUTO_BOUNCE_MS) {
-            last_good_visible_rect = Some(restore_rect);
+            remember_good(&mut last_good_visible_rect, restore_rect);
             reveal_hold_until = Some(Instant::now() + Duration::from_millis(1800));
             reveal_requires_cursor_exit = true;
             mode = Mode::OpenedByStrip { edge, main_rect: restore_rect, shown_at: Instant::now(), entered_main: true };
@@ -980,6 +1320,12 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
         }
       }
       Mode::OpenedByStrip { edge, main_rect, shown_at, mut entered_main } => {
+        if !window_visible(cached_main) {
+          hide_strip(cached_strip);
+          edge_log("OpenedByStrip: main window is no longer visible; resync to Visible");
+          mode = Mode::Visible;
+          continue;
+        }
         let current_rect = rect_from_hwnd(cached_main).unwrap_or(main_rect);
         let mon = edge_detection_monitor_rect(current_rect, cfg.ignore_taskbar);
         let current_edge = detect_edge(current_rect, mon, cfg.edge_tolerance);
@@ -988,7 +1334,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
         if current_edge != Some(edge) {
           hide_strip(cached_strip);
           mode = Mode::Visible;
-          last_good_visible_rect = Some(current_rect);
+          remember_good(&mut last_good_visible_rect, current_rect);
           reveal_hold_until = Some(Instant::now() + Duration::from_millis(1400));
           reveal_requires_cursor_exit = true;
           dock_since = None;
@@ -1008,7 +1354,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
         if inside_main {
           entered_main = true;
           wake_requires_pointer_visit = false;
-          last_good_visible_rect = Some(current_rect);
+          remember_good(&mut last_good_visible_rect, current_rect);
         }
 
         // 触发条展开后，鼠标仍停在窗口内时绝不再次隐藏；必须先离开主窗口。
@@ -1081,7 +1427,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
             last_edge = None;
           }
         } else {
-          last_good_visible_rect = Some(main_rect);
+          remember_good(&mut last_good_visible_rect, main_rect);
         }
         let mon = edge_detection_monitor_rect(main_rect, cfg.ignore_taskbar);
         let inside_main = main_rect.contains(cx, cy);
@@ -1148,7 +1494,7 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
                     } else {
                       start_snap_back_slide(cached_main, main_rect, restore_rect, ms);
                     }
-                    last_good_visible_rect = Some(restore_rect);
+                    remember_good(&mut last_good_visible_rect, restore_rect);
                     reveal_hold_until = Some(Instant::now() + Duration::from_millis(900));
                     reveal_requires_cursor_exit = true;
                   }
@@ -1287,22 +1633,71 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
   }
 }
 
-#[tauri::command]
-pub fn edge_native_configure(options: NativeEdgeOptions) -> Result<(), String> {
-  let config = settings();
-  if let Ok(mut guard) = config.lock() {
-    *guard = options;
+/// 状态机线程的外壳：内部 panic 时记日志并在短暂退避后重启，而不是让贴边功能永久失效。
+#[cfg(target_os = "windows")]
+fn run_native_loop_supervised(config: Arc<Mutex<NativeEdgeOptions>>) {
+  let mut restarts: u32 = 0;
+  loop {
+    let cfg = config.clone();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || native_loop(cfg)));
+    match result {
+      Ok(()) => return,
+      Err(payload) => {
+        let reason = payload
+          .downcast_ref::<&str>()
+          .map(|s| s.to_string())
+          .or_else(|| payload.downcast_ref::<String>().cloned())
+          .unwrap_or_else(|| "unknown panic".into());
+        restarts = restarts.saturating_add(1);
+        edge_log(&format!("native loop panicked ({reason}); restart #{restarts}"));
+        ANIMATION_GENERATION.fetch_add(1, Ordering::SeqCst);
+        ANIMATION_RUNNING.store(false, Ordering::SeqCst);
+        thread::sleep(Duration::from_millis(if restarts > 5 { 2000 } else { 300 }));
+      }
+    }
   }
+}
+
+#[cfg(target_os = "windows")]
+fn register_window_handles(app: &tauri::AppHandle) {
+  use tauri::Manager;
+  for (label, slot) in [("main", &MAIN_HWND), ("edge-strip", &STRIP_HWND)] {
+    if let Some(window) = app.get_webview_window(label) {
+      if let Ok(hwnd) = window.hwnd() {
+        slot.store(hwnd.0 as isize, Ordering::SeqCst);
+      }
+    }
+  }
+}
+
+#[tauri::command]
+pub fn edge_native_configure(app: tauri::AppHandle, options: NativeEdgeOptions) -> Result<(), String> {
+  let config = settings();
+  *lock_settings(&config) = options;
   CONFIG_VERSION.fetch_add(1, Ordering::SeqCst);
+
+  if LOG_PATH.get().is_none() {
+    use tauri::Manager;
+    if let Ok(dir) = app.path().app_log_dir() {
+      if std::fs::create_dir_all(&dir).is_ok() {
+        let _ = LOG_PATH.set(dir.join("edge-dock.log"));
+      }
+    }
+  }
 
   #[cfg(target_os = "windows")]
   {
+    register_window_handles(&app);
     if !STARTED.swap(true, Ordering::SeqCst) {
+      edge_log(&format!("native edge dock starting (v{})", env!("CARGO_PKG_VERSION")));
       let cfg = config.clone();
-      thread::Builder::new()
+      if let Err(e) = thread::Builder::new()
         .name("native-edge-dock".into())
-        .spawn(move || native_loop(cfg))
-        .map_err(|e| e.to_string())?;
+        .spawn(move || run_native_loop_supervised(cfg))
+      {
+        STARTED.store(false, Ordering::SeqCst);
+        return Err(e.to_string());
+      }
     }
   }
   Ok(())
@@ -1324,7 +1719,7 @@ pub fn prepare_tray_show(ms: u64) {
   EXTERNAL_SHOW_RESET.store(true, Ordering::SeqCst);
   WAKE_REQUIRES_POINTER_VISIT.store(true, Ordering::SeqCst);
   FORCE_SHOW.store(false, Ordering::SeqCst);
-  let until = now_millis().saturating_add(ms.max(250));
+  let until = mono_millis().saturating_add(ms.max(250));
   NATIVE_SUSPEND_UNTIL_MS.store(until, Ordering::SeqCst);
 }
 
@@ -1337,8 +1732,104 @@ pub fn edge_native_force_show() -> Result<(), String> {
 
 #[tauri::command]
 pub fn edge_native_suspend(ms: u64) -> Result<(), String> {
-  let until = now_millis().saturating_add(ms.max(50));
+  let until = mono_millis().saturating_add(ms.max(50));
   NATIVE_SUSPEND_UNTIL_MS.store(until, Ordering::SeqCst);
   FORCE_SHOW.store(true, Ordering::SeqCst);
   Ok(())
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+  use super::*;
+
+  fn r(x: i32, y: i32, w: i32, h: i32) -> SimpleRect {
+    SimpleRect { x, y, w, h }
+  }
+
+  #[test]
+  fn minimized_stub_is_not_a_plausible_visible_rect() {
+    // 实机取证：110% 缩放下最小化的工具窗口小标题条是 176x30。
+    assert!(!plausible_visible_rect(r(0, 1482, 176, 30)));
+    assert!(plausible_visible_rect(r(1373, 303, 1196, 889)));
+  }
+
+  #[test]
+  fn remember_good_rejects_tiny_rects() {
+    let good = r(100, 100, 1196, 889);
+    let mut slot = Some(good);
+    remember_good(&mut slot, r(0, 1482, 176, 30));
+    assert_eq!(slot.map(|g| (g.x, g.w)), Some((100, 1196)));
+    remember_good(&mut slot, r(5, 6, 900, 700));
+    assert_eq!(slot.map(|g| (g.x, g.w)), Some((5, 900)));
+  }
+
+  #[test]
+  fn still_edge_hidden_distinguishes_hidden_from_restored() {
+    let work = r(0, 44, 2560, 1468);
+    let full = r(0, 0, 2560, 1600);
+    let window = r(1373, 303, 1196, 889);
+    // 右边缘隐藏：只露 5px。
+    let hidden_right = auto_hidden_rect_for(Edge::Right, window, work, 5);
+    assert!(still_edge_hidden(Edge::Right, hidden_right, work));
+    // 被还原回屏幕内。
+    assert!(!still_edge_hidden(Edge::Right, window, work));
+    // 底边隐藏使用整块显示器矩形。
+    let bottom_restore = r(400, 600, 1196, 889);
+    let hidden_bottom = auto_hidden_rect_for(Edge::Bottom, bottom_restore, full, 5);
+    assert!(still_edge_hidden(Edge::Bottom, hidden_bottom, full));
+    // 系统把隐藏窗口往里挪了几十像素（DPI/显示器重排），仍算隐藏。
+    let shifted = SimpleRect { x: hidden_right.x - 40, ..hidden_right };
+    assert!(still_edge_hidden(Edge::Right, shifted, work));
+  }
+
+  #[test]
+  fn rect_moved_respects_tolerance() {
+    let a = r(10, 10, 100, 100);
+    assert!(!rect_moved(a, r(12, 8, 101, 99), 2));
+    assert!(rect_moved(a, r(13, 10, 100, 100), 2));
+    assert!(rect_moved(a, r(10, 10, 100, 70), 2));
+  }
+
+  #[test]
+  fn suspend_uses_monotonic_clock() {
+    NATIVE_SUSPEND_UNTIL_MS.store(mono_millis() + 60_000, Ordering::SeqCst);
+    assert!(native_suspended());
+    NATIVE_SUSPEND_UNTIL_MS.store(0, Ordering::SeqCst);
+    assert!(!native_suspended());
+  }
+
+  #[test]
+  fn animation_flag_is_cleared_by_guard_and_watchdog() {
+    // 正常结束（含 panic 展开）由守卫清除。
+    assert!(start_animation(|| {}));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while animation_busy() && Instant::now() < deadline {
+      thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!animation_busy());
+
+    assert!(start_animation(|| panic!("boom")));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while animation_busy() && Instant::now() < deadline {
+      thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!animation_busy());
+
+    // 卡死的动画：超过看门狗时长后强制复位。
+    ANIMATION_RUNNING.store(true, Ordering::SeqCst);
+    ANIMATION_STARTED_MS.store(mono_millis() - ANIMATION_STALE_MS - 1000, Ordering::SeqCst);
+    assert!(!animation_busy());
+    // 新动画开始后仍算忙碌。
+    ANIMATION_RUNNING.store(true, Ordering::SeqCst);
+    ANIMATION_STARTED_MS.store(mono_millis(), Ordering::SeqCst);
+    assert!(animation_busy());
+    ANIMATION_RUNNING.store(false, Ordering::SeqCst);
+  }
+
+  #[test]
+  fn utc_timestamp_has_expected_shape() {
+    let ts = utc_timestamp();
+    assert_eq!(ts.len(), "2026-10-18 07:00:00.000Z".len());
+    assert!(ts.ends_with('Z'));
+  }
 }
