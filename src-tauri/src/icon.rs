@@ -19,7 +19,7 @@ fn resolve_readable_icon_path(path: &str) -> PathBuf {
     return candidate;
   }
 
-  let relative_candidate = trimmed.trim_start_matches(|ch| ch == '/' || ch == '\\');
+  let relative_candidate = trimmed.trim_start_matches(['/', '\\']);
 
   if let Ok(current_dir) = env::current_dir() {
     let joined = current_dir.join(trimmed);
@@ -177,7 +177,7 @@ pub async fn read_icon_as_data_url(path: String) -> Result<String, String> {
 }
 
 fn read_icon_file_as_data_url(path: &str) -> Result<String, String> {
-  let resolved_path = resolve_readable_icon_path(&path);
+  let resolved_path = resolve_readable_icon_path(path);
   let bytes = fs::read(&resolved_path).map_err(|error| error.to_string())?;
   let extension = resolved_path
     .extension()

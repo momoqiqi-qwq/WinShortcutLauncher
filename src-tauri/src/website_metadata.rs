@@ -6,7 +6,10 @@ use std::{
   env, fs,
   io::Read,
   path::{Path, PathBuf},
-  sync::{Arc, Condvar, Mutex, OnceLock},
+  sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Condvar, Mutex, OnceLock,
+  },
   time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -15,6 +18,10 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const TITLE_CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 /// v156：抓标题失败后短时间内直接返回失败，别让同一个死站反复吃掉 6 秒。
 const TITLE_FAILURE_TTL: Duration = Duration::from_secs(60);
+/// v161：失败黑名单的上限。条目本身 60 秒就过期，这里只是防止批量导入大量死链时无限增长。
+const TITLE_FAILURE_MAX_ENTRIES: usize = 512;
+/// v161：标题缓存落盘时最多保留的条目数（按保存时间取最新）。
+const TITLE_CACHE_MAX_ENTRIES: usize = 4000;
 const MAX_TITLE_HTML_BYTES: u64 = 512 * 1024;
 /// v156：边收边解析的读块大小。<title> 基本都在第一块里。
 const TITLE_CHUNK_BYTES: usize = 8 * 1024;
@@ -52,6 +59,10 @@ static TITLE_IN_FLIGHT: OnceLock<InFlightMap> = OnceLock::new();
 static FAVICON_IN_FLIGHT: OnceLock<InFlightMap> = OnceLock::new();
 /// v156：网址 → 最近一次抓标题失败的时间戳（毫秒），短期黑名单。
 static TITLE_FAILURE: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+/// v161：标题缓存每改一次加一；落盘时只写比上次落盘更新的快照，避免旧快照覆盖新快照。
+static TITLE_CACHE_GENERATION: AtomicU64 = AtomicU64::new(0);
+/// v161：串行化落盘（临时文件 + 改名），并记录已经写到磁盘的代号。
+static TITLE_CACHE_PERSISTED: Mutex<u64> = Mutex::new(0);
 
 fn http_client() -> Result<&'static Client, String> {
   if let Some(client) = HTTP_CLIENT.get() {
@@ -112,21 +123,55 @@ fn title_cache() -> &'static Mutex<HashMap<String, TitleCacheEntry>> {
   })
 }
 
-fn persist_title_cache(cache: &HashMap<String, TitleCacheEntry>) {
-  let path = title_cache_path();
-  let Some(parent) = path.parent() else { return; };
-  if fs::create_dir_all(parent).is_err() {
+/// v161：持有缓存锁时只做内存操作，拿到快照后立即放锁，再在锁外写盘。
+/// 以前在 `title_cache()` 锁里直接 `fs::write`，磁盘慢（杀软扫描、网络盘、休眠硬盘）时
+/// 所有查标题的线程都会排队等这把锁。
+fn snapshot_title_cache(cache: &HashMap<String, TitleCacheEntry>) -> (u64, HashMap<String, TitleCacheEntry>) {
+  let generation = TITLE_CACHE_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+  (generation, prune_title_cache(cache, now_ms()))
+}
+
+/// 去掉过期 / 空标题条目，并把总数限制在 `TITLE_CACHE_MAX_ENTRIES`（保留最新的）。
+fn prune_title_cache(cache: &HashMap<String, TitleCacheEntry>, now: u64) -> HashMap<String, TitleCacheEntry> {
+  let max_age = TITLE_CACHE_TTL.as_millis() as u64;
+  let mut live: Vec<(&String, &TitleCacheEntry)> = cache
+    .iter()
+    .filter(|(_, entry)| now.saturating_sub(entry.saved_at_ms) <= max_age && !entry.title.trim().is_empty())
+    .collect();
+  if live.len() > TITLE_CACHE_MAX_ENTRIES {
+    live.sort_by_key(|(_, entry)| std::cmp::Reverse(entry.saved_at_ms));
+    live.truncate(TITLE_CACHE_MAX_ENTRIES);
+  }
+  live.into_iter().map(|(url, entry)| (url.clone(), entry.clone())).collect()
+}
+
+fn persist_title_snapshot(generation: u64, snapshot: &HashMap<String, TitleCacheEntry>) {
+  let mut persisted = TITLE_CACHE_PERSISTED.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  if generation <= *persisted {
+    // 已经有更新的快照落过盘了。
     return;
   }
-  let Ok(raw) = serde_json::to_vec(cache) else { return; };
+  if write_title_cache_file(snapshot) {
+    *persisted = generation;
+  }
+}
+
+fn write_title_cache_file(cache: &HashMap<String, TitleCacheEntry>) -> bool {
+  let path = title_cache_path();
+  let Some(parent) = path.parent() else { return false; };
+  if fs::create_dir_all(parent).is_err() {
+    return false;
+  }
+  let Ok(raw) = serde_json::to_vec(cache) else { return false; };
   let temp = path.with_extension("json.tmp");
   if fs::write(&temp, raw).is_err() {
-    return;
+    return false;
   }
   if fs::rename(&temp, &path).is_err() {
     let _ = fs::remove_file(&path);
-    let _ = fs::rename(&temp, &path);
+    return fs::rename(&temp, &path).is_ok();
   }
+  true
 }
 
 fn normalize_url(value: &str) -> Result<String, String> {
@@ -212,7 +257,7 @@ fn cached_favicon_for_domain(dir: &Path, cache_domain: &str) -> Option<PathBuf> 
     let modified = entry.metadata().and_then(|meta| meta.modified()).unwrap_or(UNIX_EPOCH);
     candidates.push((modified, path));
   }
-  candidates.sort_by(|left, right| right.0.cmp(&left.0));
+  candidates.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
   candidates.into_iter().map(|(_, path)| path).next()
 }
 
@@ -366,7 +411,7 @@ fn charset_from_content_type(content_type: &str) -> Option<String> {
   let position = lower.find("charset=")?;
   let rest = lower[position + "charset=".len()..].trim_start_matches(['"', '\'']);
   let label = rest
-    .split(|value: char| value == '"' || value == '\'' || value == ';' || value == ' ' || value == ',')
+    .split(['"', '\'', ';', ' ', ','])
     .next()
     .unwrap_or("")
     .trim();
@@ -378,7 +423,7 @@ fn sniff_charset(head: &[u8]) -> Option<String> {
   let position = text.find("charset=")?;
   let rest = text[position + "charset=".len()..].trim_start_matches(['"', '\'']);
   let label = rest
-    .split(|value: char| value == '"' || value == '\'' || value == ';' || value == ' ' || value == '/' || value == '>')
+    .split(['"', '\'', ';', ' ', '/', '>'])
     .next()
     .unwrap_or("")
     .trim();
@@ -483,8 +528,8 @@ fn get_cached_title(url: &str) -> Option<String> {
   let mut cache = title_cache().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
   let entry = cache.get(url)?.clone();
   if now.saturating_sub(entry.saved_at_ms) > max_age {
+    // 只从内存里删；过期条目会在下次落盘时被 prune_title_cache 过滤掉，这里不必为它单独写盘。
     cache.remove(url);
-    persist_title_cache(&cache);
     return None;
   }
   Some(entry.title)
@@ -495,11 +540,14 @@ fn store_cached_titles(entries: Vec<(String, String)>) {
     return;
   }
   let saved_at_ms = now_ms();
-  let mut cache = title_cache().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-  for (url, title) in entries {
-    cache.insert(url, TitleCacheEntry { title, saved_at_ms });
-  }
-  persist_title_cache(&cache);
+  let (generation, snapshot) = {
+    let mut cache = title_cache().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    for (url, title) in entries {
+      cache.insert(url, TitleCacheEntry { title, saved_at_ms });
+    }
+    snapshot_title_cache(&cache)
+  };
+  persist_title_snapshot(generation, &snapshot);
 }
 
 fn title_failures() -> &'static Mutex<HashMap<String, u64>> {
@@ -521,8 +569,22 @@ fn title_recently_failed(url: &str) -> bool {
 }
 
 fn mark_title_failure(url: &str) {
+  let now = now_ms();
   let mut failures = title_failures().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-  failures.insert(url.to_string(), now_ms());
+  failures.insert(url.to_string(), now);
+  prune_title_failures(&mut failures, now);
+}
+
+/// v161：以前过期条目只有在同一个网址再次被查询时才删除，从没再查过的死链会一直留在内存里。
+fn prune_title_failures(failures: &mut HashMap<String, u64>, now: u64) {
+  let ttl = TITLE_FAILURE_TTL.as_millis() as u64;
+  failures.retain(|_, at| now.saturating_sub(*at) <= ttl);
+  if failures.len() > TITLE_FAILURE_MAX_ENTRIES {
+    let mut stamps: Vec<u64> = failures.values().copied().collect();
+    stamps.sort_unstable_by(|a, b| b.cmp(a));
+    let cutoff = stamps[TITLE_FAILURE_MAX_ENTRIES - 1];
+    failures.retain(|_, at| *at >= cutoff);
+  }
 }
 
 fn clear_title_failure(url: &str) {
@@ -562,9 +624,10 @@ pub fn prefetch_title(url: &str) {
   if get_cached_title(&normalized).is_some() || title_recently_failed(&normalized) {
     return;
   }
-  let _ = tauri::async_runtime::spawn_blocking(move || {
+  // 只是预热缓存，不等结果：丢掉 JoinHandle 即可让任务在后台跑完。
+  drop(tauri::async_runtime::spawn_blocking(move || {
     let _ = fetch_website_title_blocking(normalized);
-  });
+  }));
 }
 
 fn favicon_extension(content_type: &str, candidate: &str) -> &'static str {
@@ -713,4 +776,53 @@ pub async fn test_favicon_sources(domain: String) -> Result<Vec<FaviconTestResul
   })
   .await
   .map_err(|error| error.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn entry(title: &str, saved_at_ms: u64) -> TitleCacheEntry {
+    TitleCacheEntry { title: title.to_string(), saved_at_ms }
+  }
+
+  #[test]
+  fn prune_title_cache_drops_expired_and_blank_entries() {
+    let now = TITLE_CACHE_TTL.as_millis() as u64 * 3;
+    let mut cache = HashMap::new();
+    cache.insert("fresh".to_string(), entry("Fresh", now - 1000));
+    cache.insert("old".to_string(), entry("Old", now - TITLE_CACHE_TTL.as_millis() as u64 - 1));
+    cache.insert("blank".to_string(), entry("   ", now));
+    let pruned = prune_title_cache(&cache, now);
+    assert_eq!(pruned.len(), 1);
+    assert!(pruned.contains_key("fresh"));
+  }
+
+  #[test]
+  fn prune_title_cache_keeps_newest_when_over_capacity() {
+    let now = 10_000_000;
+    let mut cache = HashMap::new();
+    for i in 0..(TITLE_CACHE_MAX_ENTRIES + 10) {
+      cache.insert(format!("u{i}"), entry("t", now - 100_000 + i as u64));
+    }
+    let pruned = prune_title_cache(&cache, now);
+    assert_eq!(pruned.len(), TITLE_CACHE_MAX_ENTRIES);
+    assert!(!pruned.contains_key("u0"));
+    assert!(pruned.contains_key(&format!("u{}", TITLE_CACHE_MAX_ENTRIES + 9)));
+  }
+
+  #[test]
+  fn prune_title_failures_drops_expired_and_caps_size() {
+    let ttl = TITLE_FAILURE_TTL.as_millis() as u64;
+    let now = ttl * 10;
+    let mut failures = HashMap::new();
+    failures.insert("expired".to_string(), now - ttl - 1);
+    for i in 0..(TITLE_FAILURE_MAX_ENTRIES + 20) {
+      failures.insert(format!("f{i}"), now - 1000 + i as u64);
+    }
+    prune_title_failures(&mut failures, now);
+    assert!(!failures.contains_key("expired"));
+    assert_eq!(failures.len(), TITLE_FAILURE_MAX_ENTRIES);
+    assert!(failures.contains_key(&format!("f{}", TITLE_FAILURE_MAX_ENTRIES + 19)));
+  }
 }

@@ -1079,19 +1079,15 @@ fn native_loop(config: Arc<Mutex<NativeEdgeOptions>>) {
     if !cfg.enabled || cfg.paused || cached_main.is_null() || strip_missing {
       if !cached_strip.is_null() { hide_strip(cached_strip); }
       match mode {
-        Mode::Hidden { main_rect, .. } => {
-          if !cached_main.is_null() {
-            move_window(cached_main, main_rect, true, true);
-            unsafe { ShowWindow(cached_main, SW_SHOWNA); }
-            remember_good(&mut last_good_visible_rect, main_rect);
-          }
+        Mode::Hidden { main_rect, .. } if !cached_main.is_null() => {
+          move_window(cached_main, main_rect, true, true);
+          unsafe { ShowWindow(cached_main, SW_SHOWNA); }
+          remember_good(&mut last_good_visible_rect, main_rect);
         }
-        Mode::AutoHidden { restore_rect, .. } => {
-          if !cached_main.is_null() {
-            move_window(cached_main, restore_rect, true, true);
-            unsafe { ShowWindow(cached_main, SW_SHOWNA); }
-            remember_good(&mut last_good_visible_rect, restore_rect);
-          }
+        Mode::AutoHidden { restore_rect, .. } if !cached_main.is_null() => {
+          move_window(cached_main, restore_rect, true, true);
+          unsafe { ShowWindow(cached_main, SW_SHOWNA); }
+          remember_good(&mut last_good_visible_rect, restore_rect);
         }
         _ => {}
       }

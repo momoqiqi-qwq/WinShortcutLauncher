@@ -60,10 +60,13 @@ pub struct CustomBrowserInput {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserLaunchTarget {
+  // 前端会一并传来，后端目前只用可执行文件 / 配置目录启动；保留字段以便日志和以后按 id 匹配。
+  #[allow(dead_code)]
   pub browser_id: Option<String>,
   pub browser_name: Option<String>,
   pub executable: String,
   pub engine: String,
+  #[allow(dead_code)]
   pub profile_id: Option<String>,
   pub profile_name: Option<String>,
   pub profile_path: Option<String>,
@@ -123,10 +126,10 @@ pub async fn resolve_lnk(path: String) -> Result<String, String> {
 
 fn split_command_line(value: &str) -> (String, Option<String>) {
   let trimmed = value.trim();
-  if trimmed.starts_with('"') {
-    if let Some(end) = trimmed[1..].find('"') {
-      let file = trimmed[1..=end].to_string();
-      let rest = trimmed[end + 2..].trim();
+  if let Some(unquoted) = trimmed.strip_prefix('"') {
+    if let Some(end) = unquoted.find('"') {
+      let file = unquoted[..end].to_string();
+      let rest = unquoted[end + 1..].trim();
       return (file, (!rest.is_empty()).then(|| rest.to_string()));
     }
   }
@@ -345,7 +348,7 @@ fn parse_gecko_profiles_ini(root: &Path) -> Vec<BrowserProfileInfo> {
   let mut profile_path = String::new();
   let mut relative = true;
 
-  let mut flush = |section: &str, name: &mut String, profile_path: &mut String, relative: &mut bool, profiles: &mut Vec<BrowserProfileInfo>| {
+  let flush = |section: &str, name: &mut String, profile_path: &mut String, relative: &mut bool, profiles: &mut Vec<BrowserProfileInfo>| {
     if !section.to_ascii_lowercase().starts_with("profile") || profile_path.trim().is_empty() {
       name.clear();
       profile_path.clear();
@@ -418,7 +421,7 @@ fn scan_gecko_profiles(root: &Path) -> Vec<BrowserProfileInfo> {
       });
     }
   }
-  result.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+  result.sort_by_key(|profile| profile.name.to_ascii_lowercase());
   result
 }
 
@@ -431,6 +434,9 @@ fn scan_profiles(engine: &str, root: Option<&Path>) -> Vec<BrowserProfileInfo> {
   }
 }
 
+/// (id, 显示名, 可执行文件名, 候选安装路径, 用户数据根目录)
+type BrowserSpec = (&'static str, &'static str, &'static str, Vec<PathBuf>, Option<PathBuf>);
+
 fn built_in_browser_entries() -> Vec<BrowserCatalogEntry> {
   let local = env::var_os("LOCALAPPDATA").map(PathBuf::from);
   let roaming = env::var_os("APPDATA").map(PathBuf::from);
@@ -439,7 +445,7 @@ fn built_in_browser_entries() -> Vec<BrowserCatalogEntry> {
   let user_profile = env::var_os("USERPROFILE").map(PathBuf::from);
   let mut entries = Vec::new();
 
-  let specs: Vec<(&str, &str, &str, Vec<PathBuf>, Option<PathBuf>)> = vec![
+  let specs: Vec<BrowserSpec> = vec![
     (
       "chrome", "Google Chrome", "chrome.exe",
       [

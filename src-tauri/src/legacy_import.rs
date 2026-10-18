@@ -14,7 +14,9 @@ struct LegacyGroupRow {
   content: Option<String>,
 }
 
+// work_dir / is_admin / remark 是旧库的列，导入时目前用不上，但保留以便完整读出一行、方便排查。
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct LegacyLinkRow {
   id: i64,
   name: String,
@@ -507,7 +509,7 @@ fn build_config(link_path: &Path, icon_path: Option<PathBuf>) -> Result<AppConfi
       }
     }
 
-    if top.content.as_deref().unwrap_or("").trim().len() > 0 && looks_like_note_group(top, links_by_parent.get(&top.id).map(|items| items.len()).unwrap_or(0)) {
+    if !top.content.as_deref().unwrap_or("").trim().is_empty() && looks_like_note_group(top, links_by_parent.get(&top.id).map(|items| items.len()).unwrap_or(0)) {
       directories.push(DirectoryOut {
         id: format!("legacy_dir_{}_note", sanitize_id_part(top.id)),
         name: if directories.is_empty() { top.name.trim().to_string() } else { "便签".to_string() },

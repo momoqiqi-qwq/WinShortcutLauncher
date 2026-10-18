@@ -363,11 +363,10 @@ fn download_blocking(app: &AppHandle, url: &str, target: &Path) -> Result<String
         .map_err(|error| format!("写入安装包失败：{error}"))?;
       received += read as u64;
 
-      let percent = if total > 0 {
-        ((received.saturating_mul(100)) / total).min(100) as u32
-      } else {
-        0
-      };
+      let percent = received
+        .saturating_mul(100)
+        .checked_div(total)
+        .map_or(0, |value| value.min(100) as u32);
       if percent != last_percent || received.saturating_sub(last_emit_bytes) >= PROGRESS_MIN_BYTES {
         last_percent = percent;
         last_emit_bytes = received;

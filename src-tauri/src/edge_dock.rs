@@ -32,6 +32,8 @@ pub fn edge_cancel_animation() {
   let _ = next_animation_token();
 }
 
+// Tauri 命令的参数就是前端 invoke 的字段，拆成结构体会改变调用约定。
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn edge_animate_window(
   app: AppHandle,

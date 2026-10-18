@@ -147,6 +147,8 @@ const checks = [
   ['src-tauri/src/edge_dock_native.rs', /fn find_own_window_by_title[\s\S]*?GetCurrentProcessId/, 'v160 window lookup must be limited to this process'],
   ['src-tauri/src/edge_dock_native.rs', /catch_unwind/, 'v160 the native edge loop must restart after a panic'],
   ['src-tauri/src/edge_dock_native.rs', /AnimateWindow\(hwnd, ms, aw_show_flag\(edge\)\) == 0/, 'v160 a failed cross-thread AnimateWindow must fall back to ShowWindow'],
+  ['src-tauri/src/website_metadata.rs', /fn persist_title_snapshot/, 'v161 the title cache must be written outside the cache lock'],
+  ['src-tauri/src/website_metadata.rs', /fn prune_title_failures/, 'v161 the title failure blacklist must be pruned'],
 ];
 
 const forbidden = [
@@ -173,6 +175,7 @@ const forbidden = [
   ['src-tauri/src/edge_dock_native.rs', /FindWindowW\(/, 'v160 edge dock must not grab same-titled windows from other processes'],
   ['src-tauri/src/edge_dock_native.rs', /fn now_millis/, 'v160 the suspend timer must use a monotonic clock'],
   ['src-tauri/src/edge_dock_native.rs', /last_good_visible_rect = Some\(/, 'v160 the last good rect must be filtered by remember_good'],
+  ['src-tauri/src/website_metadata.rs', /persist_title_cache\(&cache\)/, 'v161 never write the title cache file while holding its lock'],
 ];
 
 const failures = [];

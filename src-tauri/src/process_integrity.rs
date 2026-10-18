@@ -3,7 +3,7 @@ use std::{
   env,
   ffi::{c_void, OsStr, OsString},
   mem::{size_of, zeroed},
-  os::windows::ffi::{OsStrExt, OsStringExt},
+  os::windows::ffi::OsStrExt,
   ptr::{null, null_mut},
 };
 
@@ -152,7 +152,7 @@ fn current_integrity_rid() -> Result<u32, String> {
 fn build_status(rid: u32) -> ProcessIntegrityStatus {
   // Keep the launcher on the same standard Medium band as Explorer and normal browsers.
   // Medium Plus is intentionally treated as elevated for cross-process drag/drop purposes.
-  let is_medium = rid >= SECURITY_MANDATORY_MEDIUM_RID && rid < SECURITY_MANDATORY_MEDIUM_PLUS_RID;
+  let is_medium = (SECURITY_MANDATORY_MEDIUM_RID..SECURITY_MANDATORY_MEDIUM_PLUS_RID).contains(&rid);
   let is_above_medium = rid >= SECURITY_MANDATORY_MEDIUM_PLUS_RID;
   let level = integrity_label(rid).to_string();
   let message = if is_medium {
@@ -213,16 +213,16 @@ fn quote_windows_arg_wide(value: &OsStr) -> Vec<u16> {
       continue;
     }
     if unit == 0x0022 {
-      output.extend(std::iter::repeat(0x005c).take(backslashes * 2 + 1));
+      output.extend(std::iter::repeat_n(0x005c, backslashes * 2 + 1));
       output.push(0x0022);
       backslashes = 0;
       continue;
     }
-    output.extend(std::iter::repeat(0x005c).take(backslashes));
+    output.extend(std::iter::repeat_n(0x005c, backslashes));
     backslashes = 0;
     output.push(unit);
   }
-  output.extend(std::iter::repeat(0x005c).take(backslashes * 2));
+  output.extend(std::iter::repeat_n(0x005c, backslashes * 2));
   output.push(0x0022);
   output
 }

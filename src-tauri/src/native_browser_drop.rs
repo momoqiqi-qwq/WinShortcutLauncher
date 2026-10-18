@@ -173,8 +173,8 @@ unsafe fn read_hglobal_bytes(data_obj: &IDataObject, id: u16) -> Option<Vec<u8>>
 
 fn decode_utf16(bytes: &[u8]) -> String {
   let mut words = Vec::with_capacity(bytes.len() / 2);
-  for pair in bytes.chunks_exact(2) {
-    let value = u16::from_le_bytes([pair[0], pair[1]]);
+  for pair in bytes.as_chunks::<2>().0 {
+    let value = u16::from_le_bytes(*pair);
     if value == 0 {
       break;
     }
@@ -192,7 +192,9 @@ fn decode_auto(bytes: &[u8]) -> String {
   if bytes.len() >= 4 {
     let pairs = bytes.len() / 2;
     let zero_high_bytes = bytes
-      .chunks_exact(2)
+      .as_chunks::<2>()
+      .0
+      .iter()
       .take(32)
       .filter(|pair| pair[1] == 0)
       .count();
