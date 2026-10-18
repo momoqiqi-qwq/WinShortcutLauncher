@@ -24,3 +24,18 @@ describe('favicon domain normalization', () => {
     expect(url).not.toContain('gist.github.com');
   });
 });
+
+describe('hosted platform cache domains', () => {
+  it('keeps each hosted subdomain as its own site', () => {
+    // GitHub Pages 每个子域是独立站点，共用 github.io 的缓存会拿到 GitHub 的图标。
+    expect(domainFromUrl('https://treapgogo.github.io/deepseek-whale-girl/')).toBe('treapgogo.github.io');
+    expect(domainFromUrl('https://momoqiqi.github.io/x')).toBe('momoqiqi.github.io');
+    expect(baseDomainFromHost('proj.vercel.app')).toBe('proj.vercel.app');
+  });
+
+  it('falls back to a network icon for the page provider', () => {
+    const url = buildOnlineFaviconUrl('https://treapgogo.github.io/deepseek-whale-girl/', 'page');
+    expect(url).toContain('helperservice.getquicker.cn');
+    expect(url).toContain('treapgogo.github.io');
+  });
+});

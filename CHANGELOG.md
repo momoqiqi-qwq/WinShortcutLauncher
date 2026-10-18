@@ -4,7 +4,36 @@
 
 ---
 
-## V162（最新）— 设置 / 搜索 / 中转站 / 图片浏览器按需加载，主包瘦身 38%；自动保存内容未变不再写盘
+## V163（最新）— 网站自带图标优先：页面有专门图标就用专门的，不再被平台通用图标顶掉
+
+> 修 `treapgogo.github.io/deepseek-whale-girl/` 这类「页面明明有自己的 logo，却显示 GitHub 图标」。
+
+### 1. 新增 `page` 图标源并排在第一位（`src-tauri/src/website_metadata.rs`）
+
+- 新增 `fetch_page_declared_icon`：抓一次页面 HTML，按优先级从 `<link rel="icon|shortcut icon">`、`apple-touch-icon`、`og:image` 中取图标地址（相对路径按页面 URL 解析，支持 `data:` 内联图标），都失败才继续 Quicker / favicon.im 等第三方来源。
+- `favicon_provider_order` 的 `auto` 顺序改为 `page` → `quicker` → …；显式选了 `page` 就只抓页面，不会再让别的来源抢先。
+- 页面级缓存键为 `page_<页面 URL 哈希>`（忽略 query），同一台主机下不同路径各有各的图标；域名级缓存在页面阶段不再短路，旧版本按域名猜的图标不会盖掉页面自带图标。
+- 页面抓取失败会记入 `page_icon_misses`（10 分钟），期间不再重复抓同一个页面。
+
+### 2. 托管平台保留完整子域（Rust `favicon_cache_domain` / 前端 `baseDomainFromHost`）
+
+- `treapgogo.github.io` 以前被收敛成 `github.io`，按域名取图标自然只能拿到 GitHub 自己的。现在 `*.github.io`、`*.gitlab.io`、`*.gitee.io`、`*.netlify.app`、`*.vercel.app`、`*.pages.dev`、`*.readthedocs.io` 等「子域即站点」的托管后缀一律保留完整主机名。
+- 普通站点仍收敛到主域（`www.example.com` → `example.com`），原有缓存共用逻辑不变。
+
+### 3. 测速与设置
+
+- 设置里的「favicon 源测速」保留完整网址：填 `treapgogo.github.io/deepseek-whale-girl/` 测的就是这个项目页，而不是 `github.io`；结果表新增「页面自带图标」一行。
+- 图标来源下拉新增「页面自带图标」（直连组），说明文字改为「网站有专门图标时就是它」。
+- 关闭「自动保存到本地」时，前端在线地址对 `page` 自动退回 Quicker（浏览器跨域读不到页面 HTML），不会生成空地址。
+
+### 测试
+
+- Rust 新增 8 个用例：托管平台保子域、页面图标候选排序、相对路径解析、页面缓存前缀、`auto` 顺序、标签属性解析、内联 `data:` 解码、抓取失败记忆。
+- 前端新增 `hosted platform cache domains` 两个用例。
+
+---
+
+## V162 — 设置 / 搜索 / 中转站 / 图片浏览器按需加载，主包瘦身 38%；自动保存内容未变不再写盘
 
 > 启动更轻，界面与功能不变。
 

@@ -26,6 +26,11 @@ const MAX_TITLE_HTML_BYTES: u64 = 512 * 1024;
 /// v156：边收边解析的读块大小。<title> 基本都在第一块里。
 const TITLE_CHUNK_BYTES: usize = 8 * 1024;
 const MAX_FAVICON_BYTES: usize = 4 * 1024 * 1024;
+/// v163：页面自带图标解析失败后，短时间内不再为同一个网址重复抓 HTML。
+const PAGE_ICON_MISS_TTL: Duration = Duration::from_secs(10 * 60);
+const PAGE_ICON_MISS_MAX_ENTRIES: usize = 256;
+/// v163：一页里最多尝试几个图标声明（有些站点页头塞十几个 `<link rel=icon>`）。
+const PAGE_ICON_MAX_CANDIDATES: usize = 8;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +62,8 @@ static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 static TITLE_CACHE: OnceLock<Mutex<HashMap<String, TitleCacheEntry>>> = OnceLock::new();
 static TITLE_IN_FLIGHT: OnceLock<InFlightMap> = OnceLock::new();
 static FAVICON_IN_FLIGHT: OnceLock<InFlightMap> = OnceLock::new();
+/// v163：网址 → 最近一次解析页面图标失败的时间戳（毫秒）。
+static PAGE_ICON_MISS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
 /// v156：网址 → 最近一次抓标题失败的时间戳（毫秒），短期黑名单。
 static TITLE_FAILURE: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
 /// v161：标题缓存每改一次加一；落盘时只写比上次落盘更新的快照，避免旧快照覆盖新快照。
@@ -203,6 +210,24 @@ fn safe_file_part(value: &str) -> String {
   if out.is_empty() { "site".to_string() } else { out }
 }
 
+/// v163：子域即站点的公共托管后缀。对这些后缀必须保留完整主机名，
+/// 否则 `treapgogo.github.io/deepseek-whale-girl/` 会被当成 `github.io`，
+/// 第三方图标服务按这个域名查回来的必然是 GitHub 自己的图标。
+const HOSTED_PLATFORM_SUFFIXES: [&str; 24] = [
+  "github.io", "gitlab.io", "gitee.io", "githubusercontent.com",
+  "netlify.app", "vercel.app", "pages.dev", "workers.dev", "web.app",
+  "firebaseapp.com", "blogspot.com", "neocities.org", "surge.sh",
+  "onrender.com", "deno.dev", "replit.app", "glitch.me", "fly.dev",
+  "herokuapp.com", "azurewebsites.net", "cloudfront.net", "s3.amazonaws.com",
+  "readthedocs.io", "now.sh",
+];
+
+fn is_hosted_platform_host(host: &str) -> bool {
+  HOSTED_PLATFORM_SUFFIXES
+    .iter()
+    .any(|suffix| host == *suffix || host.ends_with(&format!(".{}", suffix)))
+}
+
 fn favicon_cache_domain(host: &str) -> String {
   const COMPOUND_SUFFIXES: [&str; 18] = [
     "com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn",
@@ -217,6 +242,9 @@ fn favicon_cache_domain(host: &str) -> String {
     return normalized;
   }
   if normalized.split('.').all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit())) {
+    return normalized;
+  }
+  if is_hosted_platform_host(&normalized) {
     return normalized;
   }
 
@@ -261,8 +289,43 @@ fn cached_favicon_for_domain(dir: &Path, cache_domain: &str) -> Option<PathBuf> 
   candidates.into_iter().map(|(_, path)| path).next()
 }
 
-fn remove_canonical_favicon_variants(dir: &Path, cache_domain: &str, except: Option<&Path>) {
-  let canonical_prefix = format!("site_{}", safe_file_part(cache_domain));
+/// v163：同一个站点下不同路径可能是完全不同的小站（`a.github.io/proj-1/` 与 `/proj-2/`），
+/// 共用一张域名图标会互相污染。页面级缓存因此按「完整网址」派生文件名前缀。
+fn page_icon_prefix(url: &str) -> String {
+  let key = reqwest::Url::parse(url)
+    .map(|mut parsed| {
+      parsed.set_query(None);
+      parsed.set_fragment(None);
+      parsed.to_string()
+    })
+    .unwrap_or_else(|_| url.to_string());
+  let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+  for byte in key.as_bytes() {
+    hash ^= u64::from(*byte);
+    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+  }
+  format!("page_{:016x}", hash)
+}
+
+fn cached_icon_with_prefix(dir: &Path, prefix: &str) -> Option<PathBuf> {
+  let mut candidates: Vec<(SystemTime, PathBuf)> = Vec::new();
+  for entry in fs::read_dir(dir).ok()?.flatten() {
+    let path = entry.path();
+    if !path.is_file() || !is_favicon_file(&path) {
+      continue;
+    }
+    if path.file_stem().and_then(|value| value.to_str()) != Some(prefix) {
+      continue;
+    }
+    let modified = entry.metadata().and_then(|meta| meta.modified()).unwrap_or(UNIX_EPOCH);
+    candidates.push((modified, path));
+  }
+  candidates.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
+  candidates.into_iter().map(|(_, path)| path).next()
+}
+
+/// v163：删掉同一前缀下的其它扩展名变体（`site_x` 与 `page_<hash>` 共用这套逻辑）。
+fn remove_icon_variants(dir: &Path, prefix: &str, except: Option<&Path>) {
   let Ok(entries) = fs::read_dir(dir) else { return; };
   for entry in entries.flatten() {
     let path = entry.path();
@@ -270,14 +333,19 @@ fn remove_canonical_favicon_variants(dir: &Path, cache_domain: &str, except: Opt
       continue;
     }
     let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or_default();
-    if stem == canonical_prefix && is_favicon_file(&path) {
+    if stem == prefix && is_favicon_file(&path) {
       let _ = fs::remove_file(path);
     }
   }
 }
 
+fn remove_canonical_favicon_variants(dir: &Path, cache_domain: &str, except: Option<&Path>) {
+  remove_icon_variants(dir, &format!("site_{}", safe_file_part(cache_domain)), except);
+}
+
 fn favicon_provider_meta(id: &str) -> (&'static str, &'static str) {
   match id {
+    "page" => ("页面自带图标", "直连"),
     "quicker" => ("Quicker", "国内"),
     "faviconIm" => ("Favicon.im", "国内"),
     "iowen" => ("Iowen", "国内"),
@@ -293,12 +361,14 @@ fn favicon_provider_meta(id: &str) -> (&'static str, &'static str) {
 }
 
 fn favicon_provider_order(provider_id: Option<&str>, fallback: bool) -> Vec<&'static str> {
-  const DEFAULTS: [&str; 10] = ["quicker", "faviconIm", "iowen", "google", "duckduckgo", "clearbit", "iconHorse", "faviconKit", "yandex", "direct"];
+  // v163：`page` 排第一 —— 网站自己在 HTML 里声明的图标，永远比按域名猜的第三方图标准。
+  const DEFAULTS: [&str; 11] = ["page", "quicker", "faviconIm", "iowen", "google", "duckduckgo", "clearbit", "iconHorse", "faviconKit", "yandex", "direct"];
   let selected = provider_id.unwrap_or("auto");
   if selected == "auto" || selected.trim().is_empty() {
     return DEFAULTS.to_vec();
   }
   let selected_static = match selected {
+    "page" => "page",
     "quicker" => "quicker",
     "faviconIm" => "faviconIm",
     "iowen" => "iowen",
@@ -325,6 +395,8 @@ fn favicon_provider_order(provider_id: Option<&str>, fallback: bool) -> Vec<&'st
 
 fn favicon_candidate_url(provider: &str, host: &str, raw_url: &str) -> String {
   match provider {
+    // v163：页面声明的图标要抓 HTML 才能知道，这里的「候选」就是页面本身。
+    "page" => raw_url.to_string(),
     "quicker" => format!("https://helperservice.getquicker.cn/favicon/get/{}", host),
     "faviconIm" => format!("https://favicon.im/{}", host),
     "iowen" => format!("https://api.iowen.cn/favicon/{}.png", host),
@@ -630,6 +702,357 @@ pub fn prefetch_title(url: &str) {
   }));
 }
 
+/// v163：把 `<link ...>` / `<meta ...>` 里的属性拆成键值对。
+/// 标签内部的属性名/分隔符都是 ASCII，所以只做字节级扫描，不引 HTML 解析库。
+fn parse_tag_attributes(tag: &str) -> Vec<(String, String)> {
+  let bytes = tag.as_bytes();
+  let mut out: Vec<(String, String)> = Vec::new();
+  let mut index = 0;
+  // 跳过标签名本身：`<link` / `<meta`
+  while index < bytes.len() && !bytes[index].is_ascii_whitespace() {
+    index += 1;
+  }
+  while index < bytes.len() {
+    while index < bytes.len() && (bytes[index].is_ascii_whitespace() || bytes[index] == b'/') {
+      index += 1;
+    }
+    if index >= bytes.len() {
+      break;
+    }
+    let name_start = index;
+    while index < bytes.len() && !bytes[index].is_ascii_whitespace() && bytes[index] != b'=' && bytes[index] != b'/' {
+      index += 1;
+    }
+    let name = tag[name_start..index].to_ascii_lowercase();
+    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+      index += 1;
+    }
+    let mut value = String::new();
+    if index < bytes.len() && bytes[index] == b'=' {
+      index += 1;
+      while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+        index += 1;
+      }
+      if index < bytes.len() && (bytes[index] == b'"' || bytes[index] == b'\'') {
+        let quote = bytes[index];
+        index += 1;
+        let value_start = index;
+        while index < bytes.len() && bytes[index] != quote {
+          index += 1;
+        }
+        value = tag[value_start..index].to_string();
+        if index < bytes.len() {
+          index += 1;
+        }
+      } else {
+        let value_start = index;
+        while index < bytes.len() && !bytes[index].is_ascii_whitespace() {
+          index += 1;
+        }
+        value = tag[value_start..index].to_string();
+      }
+    }
+    if !name.is_empty() {
+      out.push((name, value));
+    }
+  }
+  out
+}
+
+/// v163：`sizes="32x32 256x256"` → 画质加分。小而糊的 16×16 排在后面。
+fn icon_size_bonus(sizes: &str) -> i32 {
+  for token in sizes.split_whitespace() {
+    let Some((width, _height)) = token.split_once('x') else { continue; };
+    let Ok(value) = width.parse::<i32>() else { continue; };
+    return match value {
+      0..=15 => 0,
+      16..=31 => 2,
+      32..=63 => 4,
+      64..=127 => 6,
+      128..=255 => 8,
+      _ => 9,
+    };
+  }
+  0
+}
+
+fn icon_candidate_from_tag(tag_name: &str, attrs: &[(String, String)]) -> Option<(i32, String)> {
+  let attr = |name: &str| {
+    attrs
+      .iter()
+      .find(|(key, _)| key == name)
+      .map(|(_, value)| value.trim().to_string())
+  };
+  if tag_name == "link" {
+    let rel = attr("rel").unwrap_or_default().to_ascii_lowercase();
+    let href = attr("href")?;
+    if href.is_empty() {
+      return None;
+    }
+    let weight = if rel.split_whitespace().any(|token| token == "icon") {
+      100
+    } else if rel.contains("apple-touch-icon-precomposed") {
+      96
+    } else if rel.contains("apple-touch-icon") {
+      95
+    } else if rel.contains("mask-icon") {
+      90
+    } else if rel.contains("image_src") {
+      30
+    } else {
+      return None;
+    };
+    let mut score = weight;
+    if let Some(sizes) = attr("sizes") {
+      score += icon_size_bonus(&sizes);
+    }
+    if attr("type").is_some_and(|value| value.to_ascii_lowercase().contains("svg")) {
+      score += 3;
+    }
+    return Some((score, href));
+  }
+  let key = attr("property")
+    .or_else(|| attr("name"))
+    .unwrap_or_default()
+    .to_ascii_lowercase();
+  if key == "og:image" || key == "twitter:image" {
+    let content = attr("content")?;
+    return (!content.is_empty()).then_some((40, content));
+  }
+  None
+}
+
+/// v163：按优先级收集页面自己声明的图标地址（`<link rel=icon>` > apple-touch-icon >
+/// mask-icon > og:image），同一地址只留一次。
+fn collect_page_icon_candidates(html: &str) -> Vec<String> {
+  let lower = html.to_ascii_lowercase();
+  let mut scored: Vec<(i32, usize, String)> = Vec::new();
+  let mut cursor = 0usize;
+  while let Some(offset) = lower[cursor..].find('<') {
+    let tag_start = cursor + offset;
+    if lower[tag_start..].starts_with("<!--") {
+      match lower[tag_start..].find("-->") {
+        Some(end) => {
+          cursor = tag_start + end + 3;
+          continue;
+        }
+        None => break,
+      }
+    }
+    let Some(end_offset) = lower[tag_start..].find('>') else { break; };
+    let tag_end = tag_start + end_offset;
+    let raw = &html[tag_start..tag_end];
+    let name_end = raw[1..]
+      .find(|ch: char| ch.is_ascii_whitespace() || ch == '/' || ch == '>')
+      .map(|value| value + 1)
+      .unwrap_or(raw.len());
+    let tag_name = raw[1..name_end].to_ascii_lowercase();
+    if tag_name == "link" || tag_name == "meta" {
+      let attrs = parse_tag_attributes(raw);
+      let order = scored.len();
+      if let Some((score, href)) = icon_candidate_from_tag(&tag_name, &attrs) {
+        scored.push((score, order, href));
+      }
+    }
+    cursor = tag_end + 1;
+  }
+  // 稳定排序：分数高的在前，同分保持文档顺序。
+  scored.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
+  let mut out: Vec<String> = Vec::new();
+  for (_, _, href) in scored {
+    if out.iter().any(|existing| existing == &href) {
+      continue;
+    }
+    out.push(href);
+    if out.len() >= PAGE_ICON_MAX_CANDIDATES {
+      break;
+    }
+  }
+  out
+}
+
+fn resolve_icon_url(base: &str, href: &str) -> Option<String> {
+  let trimmed = href.trim();
+  if trimmed.is_empty() || trimmed.starts_with('#') {
+    return None;
+  }
+  let lowered = trimmed.to_ascii_lowercase();
+  if lowered.starts_with("javascript:") || lowered.starts_with("blob:") {
+    return None;
+  }
+  let base = reqwest::Url::parse(base).ok()?;
+  base.join(trimmed).ok().map(|url| url.to_string())
+}
+
+/// v163：页面没声明图标时，按实际路径补几个常见位置。
+/// `/proj/favicon.ico`（相对当前目录）排在 `/favicon.ico`（站点根）前面。
+fn page_fallback_icon_urls(final_url: &str) -> Vec<String> {
+  let Ok(base) = reqwest::Url::parse(final_url) else { return Vec::new(); };
+  let mut out: Vec<String> = Vec::new();
+  for name in ["favicon.ico", "favicon.png", "apple-touch-icon.png"] {
+    for target in [base.join(name).ok(), base.join(&format!("/{}", name)).ok()] {
+      if let Some(url) = target {
+        let text = url.to_string();
+        if !out.iter().any(|existing| existing == &text) {
+          out.push(text);
+        }
+      }
+    }
+  }
+  out
+}
+
+fn decode_percent_escapes(value: &str) -> Vec<u8> {
+  let bytes = value.as_bytes();
+  let mut out = Vec::with_capacity(bytes.len());
+  let mut index = 0;
+  while index < bytes.len() {
+    if bytes[index] == b'%' {
+      if let Some(hex) = value.get(index + 1..index + 3) {
+        if let Ok(byte) = u8::from_str_radix(hex, 16) {
+          out.push(byte);
+          index += 3;
+          continue;
+        }
+      }
+    }
+    out.push(bytes[index]);
+    index += 1;
+  }
+  out
+}
+
+/// v163：`data:image/png;base64,...` 形式的图标直接解码，不用再发一次请求。
+fn decode_data_icon_url(value: &str) -> Option<(Vec<u8>, String)> {
+  let lowered = value.to_ascii_lowercase();
+  let rest = lowered
+    .strip_prefix("data:")
+    .and_then(|_| value.get(5..))?;
+  let (meta, payload) = rest.split_once(',')?;
+  let mime = meta.split(';').next().unwrap_or("").trim();
+  let mime = if mime.is_empty() { "image/png".to_string() } else { mime.to_string() };
+  let bytes = if meta.to_ascii_lowercase().contains(";base64") {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.decode(payload.trim()).ok()?
+  } else {
+    decode_percent_escapes(payload)
+  };
+  (bytes.len() >= 32).then_some((bytes, mime))
+}
+
+/// v163：抓页面本身，取它自己声明的图标。
+///
+/// 这是「网站有专门图标时就用专门图标」的正解：`<link rel="icon">` 指向的通常是项目
+/// 自己的 logo（例如 `./assets/whale-girl-logo-dynamic.png`），而按域名查的第三方服务
+/// 只会给平台通用图标（`github.io` → GitHub 图标）。
+fn fetch_page_declared_icon(normalized: &str) -> Result<(Vec<u8>, String), String> {
+  let client = http_client()?;
+  let mut response = client
+    .get(normalized)
+    .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) YueLauncher/0.1")
+    .header(ACCEPT, "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5")
+    .header(RANGE, format!("bytes=0-{}", MAX_TITLE_HTML_BYTES - 1))
+    .send()
+    .map_err(|error| error.to_string())?
+    .error_for_status()
+    .map_err(|error| error.to_string())?;
+  let final_url = response.url().to_string();
+  let content_type = response
+    .headers()
+    .get(CONTENT_TYPE)
+    .and_then(|value| value.to_str().ok())
+    .unwrap_or("")
+    .to_string();
+  let lowered = content_type.to_ascii_lowercase();
+  if lowered.starts_with("image/") {
+    // 拖进来的是图片直链，它本身就是图标。
+    let mut bytes = Vec::new();
+    response
+      .by_ref()
+      .take((MAX_FAVICON_BYTES + 1) as u64)
+      .read_to_end(&mut bytes)
+      .map_err(|error| error.to_string())?;
+    if bytes.len() < 32 || bytes.len() > MAX_FAVICON_BYTES {
+      return Err("图标内容大小异常".to_string());
+    }
+    return Ok((bytes, content_type));
+  }
+  if lowered.starts_with("video/") || lowered.starts_with("audio/") || lowered.contains("application/pdf") {
+    return Err("该网址不是网页".to_string());
+  }
+
+  let mut html_bytes = Vec::new();
+  response
+    .by_ref()
+    .take(MAX_TITLE_HTML_BYTES as u64)
+    .read_to_end(&mut html_bytes)
+    .map_err(|error| error.to_string())?;
+  let html = String::from_utf8_lossy(&html_bytes);
+  let mut last_error = "页面没有声明图标".to_string();
+
+  for href in collect_page_icon_candidates(&html) {
+    if href.to_ascii_lowercase().starts_with("data:") {
+      if let Some((bytes, mime)) = decode_data_icon_url(&href) {
+        return Ok((bytes, mime));
+      }
+      last_error = "页面内联图标无法解码".to_string();
+      continue;
+    }
+    let Some(target) = resolve_icon_url(&final_url, &href) else {
+      last_error = format!("图标地址无法解析：{}", href);
+      continue;
+    };
+    match fetch_favicon_candidate(&target, false) {
+      Ok(pair) => return Ok(pair),
+      Err(error) => last_error = format!("{} ({})", error, target),
+    }
+  }
+
+  for target in page_fallback_icon_urls(&final_url) {
+    if let Ok(pair) = fetch_favicon_candidate(&target, false) {
+      return Ok(pair);
+    }
+  }
+  Err(last_error)
+}
+
+fn page_icon_misses() -> &'static Mutex<HashMap<String, u64>> {
+  PAGE_ICON_MISS.get_or_init(Default::default)
+}
+
+fn page_icon_recently_missed(url: &str) -> bool {
+  let now = now_ms();
+  let ttl = PAGE_ICON_MISS_TTL.as_millis() as u64;
+  let mut misses = page_icon_misses().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  match misses.get(url).copied() {
+    Some(at) if now.saturating_sub(at) <= ttl => true,
+    Some(_) => {
+      misses.remove(url);
+      false
+    }
+    None => false,
+  }
+}
+
+fn mark_page_icon_miss(url: &str) {
+  let now = now_ms();
+  let ttl = PAGE_ICON_MISS_TTL.as_millis() as u64;
+  let mut misses = page_icon_misses().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  misses.insert(url.to_string(), now);
+  misses.retain(|_, at| now.saturating_sub(*at) <= ttl);
+  if misses.len() > PAGE_ICON_MISS_MAX_ENTRIES {
+    let mut stamps: Vec<u64> = misses.values().copied().collect();
+    stamps.sort_unstable_by(|a, b| b.cmp(a));
+    let cutoff = stamps[PAGE_ICON_MISS_MAX_ENTRIES - 1];
+    misses.retain(|_, at| *at >= cutoff);
+  }
+}
+
+fn clear_page_icon_miss(url: &str) {
+  let mut misses = page_icon_misses().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  misses.remove(url);
+}
+
 fn favicon_extension(content_type: &str, candidate: &str) -> &'static str {
   let lowered = content_type.to_ascii_lowercase();
   if lowered.contains("svg") { "svg" }
@@ -687,31 +1110,63 @@ fn fetch_website_favicon_blocking(url: String, provider_id: Option<String>, fall
   let dir = launcher_cache_dir();
   fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
   let cache_domain = favicon_cache_domain(&host);
+  let page_prefix = page_icon_prefix(&normalized);
   let force_refresh = force_refresh.unwrap_or(false);
-  if !force_refresh {
-    if let Some(cached) = cached_favicon_for_domain(&dir, &cache_domain) {
-      return Ok(cached.to_string_lossy().to_string());
-    }
-  }
-
   let fallback = fallback.unwrap_or(true);
   let selected_provider = provider_id.clone().unwrap_or_else(|| "auto".to_string());
-  let key = format!("{}|{}|{}|{}", cache_domain, selected_provider, fallback, force_refresh);
-  dedupe_string(key, FAVICON_IN_FLIGHT.get_or_init(Default::default), move || {
-    if !force_refresh {
-      if let Some(cached) = cached_favicon_for_domain(&dir, &cache_domain) {
-        return Ok(cached.to_string_lossy().to_string());
-      }
+  let providers = favicon_provider_order(provider_id.as_deref(), fallback);
+  let page_enabled = providers.contains(&"page");
+  if !force_refresh && page_enabled {
+    // v163：页面级缓存最精确 —— 同一主机下的不同路径各有各的图标。
+    if let Some(cached) = cached_icon_with_prefix(&dir, &page_prefix) {
+      return Ok(cached.to_string_lossy().to_string());
     }
+    // 注意：这里不再先查域名级缓存。旧版本按域名猜的图标（github.io → GitHub）
+    // 会直接短路掉页面自带的图标，正是「有专门图标却显示平台图标」的成因。
+  }
 
-    let prefix = dir.join(format!("site_{}", safe_file_part(&cache_domain)));
-    let providers = favicon_provider_order(provider_id.as_deref(), fallback);
+  let key = format!("{}|{}|{}|{}", normalized, selected_provider, fallback, force_refresh);
+  dedupe_string(key, FAVICON_IN_FLIGHT.get_or_init(Default::default), move || {
+    let domain_prefix = format!("site_{}", safe_file_part(&cache_domain));
     let mut last_error = "未获取到网站图标".to_string();
+    let mut domain_cache_checked = false;
+
     for provider in providers {
+      if provider == "page" {
+        if !force_refresh && page_icon_recently_missed(&normalized) {
+          continue;
+        }
+        match fetch_page_declared_icon(&normalized) {
+          Ok((bytes, content_type)) => {
+            let output = dir.join(&page_prefix).with_extension(favicon_extension(&content_type, &normalized));
+            if let Err(error) = fs::write(&output, bytes) {
+              last_error = error.to_string();
+              continue;
+            }
+            remove_icon_variants(&dir, &page_prefix, Some(&output));
+            clear_page_icon_miss(&normalized);
+            return Ok(output.to_string_lossy().to_string());
+          }
+          Err(error) => {
+            last_error = error;
+            mark_page_icon_miss(&normalized);
+          }
+        }
+        continue;
+      }
+
+      // 域名级缓存只在进入「按域名 / 直连」阶段时才复用。
+      if !force_refresh && !domain_cache_checked {
+        domain_cache_checked = true;
+        if let Some(cached) = cached_favicon_for_domain(&dir, &cache_domain) {
+          return Ok(cached.to_string_lossy().to_string());
+        }
+      }
+
       let candidate = append_refresh_token(favicon_candidate_url(provider, &cache_domain, &normalized), force_refresh);
       match fetch_favicon_candidate(&candidate, force_refresh) {
         Ok((bytes, content_type)) => {
-          let output = prefix.with_extension(favicon_extension(&content_type, &candidate));
+          let output = dir.join(&domain_prefix).with_extension(favicon_extension(&content_type, &candidate));
           if let Err(error) = fs::write(&output, bytes) {
             last_error = error.to_string();
             continue;
@@ -743,7 +1198,10 @@ pub async fn fetch_website_title(url: String) -> Result<String, String> {
 #[tauri::command]
 pub async fn test_favicon_sources(domain: String) -> Result<Vec<FaviconTestResult>, String> {
   tauri::async_runtime::spawn_blocking(move || {
-    let host = host_from_url(&normalize_url(&domain).unwrap_or_else(|_| format!("https://{}", domain.trim())));
+    // v163：测速保留原始路径 —— `treapgogo.github.io/deepseek-whale-girl/` 与
+    // `treapgogo.github.io` 的图标完全不同，页面图标源必须按完整网址测。
+    let raw_url = normalize_url(&domain).unwrap_or_else(|_| format!("https://{}", domain.trim()));
+    let host = host_from_url(&raw_url);
     let clean_host = if host.is_empty() {
       domain.trim().trim_start_matches("http://").trim_start_matches("https://").split('/').next().unwrap_or("").to_ascii_lowercase()
     } else {
@@ -752,12 +1210,16 @@ pub async fn test_favicon_sources(domain: String) -> Result<Vec<FaviconTestResul
     if clean_host.is_empty() {
       return Err("请输入要测试的域名".to_string());
     }
-    let raw_url = format!("https://{}", clean_host);
+    let scan_host = favicon_cache_domain(&clean_host);
     let mut results = Vec::new();
     for provider in favicon_provider_order(Some("auto"), true) {
-      let candidate = favicon_candidate_url(provider, &clean_host, &raw_url);
+      let candidate = favicon_candidate_url(provider, &scan_host, &raw_url);
       let start = Instant::now();
-      let outcome = fetch_favicon_candidate(&candidate, true);
+      let outcome = if provider == "page" {
+        fetch_page_declared_icon(&raw_url)
+      } else {
+        fetch_favicon_candidate(&candidate, true)
+      };
       let elapsed_ms = start.elapsed().as_millis();
       let success = outcome.is_ok();
       let (name, group) = favicon_provider_meta(provider);
@@ -824,5 +1286,95 @@ mod tests {
     assert!(!failures.contains_key("expired"));
     assert_eq!(failures.len(), TITLE_FAILURE_MAX_ENTRIES);
     assert!(failures.contains_key(&format!("f{}", TITLE_FAILURE_MAX_ENTRIES + 19)));
+  }
+
+  // ---- v163：网站自带图标优先 ----
+
+  #[test]
+  fn hosted_platform_hosts_keep_their_subdomain() {
+    // 每个 *.github.io 子域是独立站点；压成 github.io 只能拿到 GitHub 自己的图标。
+    assert_eq!(favicon_cache_domain("treapgogo.github.io"), "treapgogo.github.io");
+    assert_eq!(favicon_cache_domain("momoqiqi.github.io"), "momoqiqi.github.io");
+    assert_eq!(favicon_cache_domain("x.netlify.app"), "x.netlify.app");
+    assert_eq!(favicon_cache_domain("raw.githubusercontent.com"), "raw.githubusercontent.com");
+    // 普通站点仍然收敛到主域，共用一份缓存。
+    assert_eq!(favicon_cache_domain("www.example.com"), "example.com");
+    assert_eq!(favicon_cache_domain("blog.example.com"), "example.com");
+    assert_eq!(favicon_cache_domain("shop.example.co.uk"), "example.co.uk");
+  }
+
+  #[test]
+  fn page_icon_candidates_prefer_declared_project_logo() {
+    // 鲸鱼娘资产库真实页头的写法：项目自己的 logo，相对路径。
+    let html = r#"<html><head>
+      <title>鲸鱼娘开源资产库</title>
+      <link rel="icon" type="image/png" sizes="256x256" href="./assets/whale-girl-logo-dynamic.png" />
+      <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+      <meta property="og:image" content="https://treapgogo.github.io/deepseek-whale-girl/preview.png">
+    </head></html>"#;
+    let candidates = collect_page_icon_candidates(html);
+    assert_eq!(candidates[0], "./assets/whale-girl-logo-dynamic.png");
+    assert!(candidates.contains(&"/apple-touch-icon.png".to_string()));
+    assert!(candidates.contains(&"https://treapgogo.github.io/deepseek-whale-girl/preview.png".to_string()));
+  }
+
+  #[test]
+  fn icon_hrefs_resolve_against_the_page_url() {
+    let base = "https://treapgogo.github.io/deepseek-whale-girl/";
+    assert_eq!(
+      resolve_icon_url(base, "./assets/whale-girl-logo-dynamic.png").as_deref(),
+      Some("https://treapgogo.github.io/deepseek-whale-girl/assets/whale-girl-logo-dynamic.png")
+    );
+    assert_eq!(resolve_icon_url(base, "/favicon.ico").as_deref(), Some("https://treapgogo.github.io/favicon.ico"));
+    assert_eq!(resolve_icon_url(base, "#frag"), None);
+    assert_eq!(resolve_icon_url(base, "javascript:void(0)"), None);
+  }
+
+  #[test]
+  fn page_icon_prefix_separates_paths_but_ignores_query() {
+    let whale = page_icon_prefix("https://treapgogo.github.io/deepseek-whale-girl/");
+    let other = page_icon_prefix("https://treapgogo.github.io/some-other-project/");
+    let same_with_query = page_icon_prefix("https://treapgogo.github.io/deepseek-whale-girl/?from=bookmark");
+    assert_ne!(whale, other);
+    assert_eq!(whale, same_with_query);
+    assert!(whale.starts_with("page_"));
+  }
+
+  #[test]
+  fn auto_provider_order_tries_the_page_icon_first() {
+    assert_eq!(favicon_provider_order(None, true)[0], "page");
+    assert_eq!(favicon_provider_order(Some("auto"), true)[0], "page");
+    // 显式选了来源又不兜底时尊重用户选择，不去抓页面。
+    assert_eq!(favicon_provider_order(Some("quicker"), false), vec!["quicker"]);
+    assert!(favicon_provider_order(Some("quicker"), true).contains(&"page"));
+  }
+
+  #[test]
+  fn tag_attributes_handle_quotes_and_case() {
+    let attrs = parse_tag_attributes("<LINK REL='shortcut icon' HREF=favicon.ico sizes=32x32");
+    let get = |name: &str| attrs.iter().find(|(key, _)| key == name).map(|(_, value)| value.clone());
+    assert_eq!(get("rel").as_deref(), Some("shortcut icon"));
+    assert_eq!(get("href").as_deref(), Some("favicon.ico"));
+    assert_eq!(get("sizes").as_deref(), Some("32x32"));
+  }
+
+  #[test]
+  fn inline_data_icons_are_decoded() {
+    let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/wH+2n0AAAAASUVORK5CYII=";
+    let (bytes, mime) = decode_data_icon_url(&format!("data:image/png;base64,{}", png)).expect("inline png");
+    assert_eq!(mime, "image/png");
+    assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+    // 太短的内容不当图标用。
+    assert!(decode_data_icon_url("data:image/png;base64,AAAA").is_none());
+  }
+
+  #[test]
+  fn page_icon_miss_is_remembered_and_cleared() {
+    let url = "https://example.com/remembered-miss/";
+    assert!(!page_icon_recently_missed(url));
+    mark_page_icon_miss(url);
+    assert!(page_icon_recently_missed(url));
+    clear_page_icon_miss(url);
+    assert!(!page_icon_recently_missed(url));
   }
 }

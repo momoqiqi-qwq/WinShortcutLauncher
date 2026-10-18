@@ -550,7 +550,7 @@ export function normalizeDisplay(value?: unknown): DisplaySettings {
     itemIconResolveMode: (['auto', 'read_icon_as_data_url', 'get_file_icon'] as const).includes((display?.itemIconResolveMode ?? defaultDisplay.itemIconResolveMode) as any) ? (display?.itemIconResolveMode ?? defaultDisplay.itemIconResolveMode) : defaultDisplay.itemIconResolveMode,
     iconParallelTasks: Math.max(1, Math.min(8, Math.round(Number(display?.iconParallelTasks ?? defaultDisplay.iconParallelTasks) || defaultDisplay.iconParallelTasks))),
     autoSaveWebsiteIcon: display?.autoSaveWebsiteIcon !== false,
-    faviconProvider: (['auto', 'quicker', 'faviconIm', 'iowen', 'google', 'duckduckgo', 'clearbit', 'iconHorse', 'faviconKit', 'yandex', 'direct'] as const).includes((display?.faviconProvider ?? defaultDisplay.faviconProvider) as FaviconProviderId) ? (display?.faviconProvider ?? defaultDisplay.faviconProvider) : defaultDisplay.faviconProvider,
+    faviconProvider: (['auto', 'page', 'quicker', 'faviconIm', 'iowen', 'google', 'duckduckgo', 'clearbit', 'iconHorse', 'faviconKit', 'yandex', 'direct'] as const).includes((display?.faviconProvider ?? defaultDisplay.faviconProvider) as FaviconProviderId) ? (display?.faviconProvider ?? defaultDisplay.faviconProvider) : defaultDisplay.faviconProvider,
     faviconProviderFallback: display?.faviconProviderFallback !== false,
     toastDurationMs: Math.max(500, Math.min(10000, Math.round(Number(display?.toastDurationMs ?? defaultDisplay.toastDurationMs) || defaultDisplay.toastDurationMs))),
     sortMode: (['custom', 'name', 'type', 'recent', 'frequent'] as const).includes((display?.sortMode ?? defaultDisplay.sortMode) as any) ? (display?.sortMode ?? defaultDisplay.sortMode) : defaultDisplay.sortMode,
