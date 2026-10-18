@@ -8,11 +8,15 @@ import { ItemContextMenu } from './components/ContextMenu/ItemContextMenu';
 import { AreaContextMenu } from './components/ContextMenu/AreaContextMenu';
 import { GroupContextMenu } from './components/ContextMenu/GroupContextMenu';
 import { DirectoryContextMenu } from './components/ContextMenu/DirectoryContextMenu';
-import { SettingsPanel } from './components/Settings/SettingsPanel';
-import { DropImportDialog } from './components/DropImportDialog/DropImportDialog';
-import { GlobalSearch } from './components/GlobalSearch/GlobalSearch';
-import { TransferStation } from './components/TransferStation/TransferStation';
-import { ImageBrowser } from './components/ImageBrowser/ImageBrowser';
+import {
+  DeferredDropImportDialog,
+  DeferredGlobalSearch,
+  DeferredImageBrowser,
+  DeferredSettingsPanel,
+  DeferredTransferStation,
+  useDeferredPanelPreload,
+} from './components/DeferredPanels';
+import './components/deferredPanelStyles';
 import { useThemeInstaller } from './stores/themeStore';
 import { useStableEdgeDock } from './hooks/useStableEdgeDock';
 import { useEdgeStripStyleSync } from './hooks/useEdgeStripStyleSync';
@@ -42,6 +46,7 @@ function App() {
   useThemedFormControls();
   useAutoSave();
   useCtrlWheelZoom();
+  useDeferredPanelPreload();
   const behavior = useAppStore((state) => state.behavior);
   useEffect(() => {
     void invoke('set_window_persistence_settings', {
@@ -348,18 +353,18 @@ function App() {
         {contextMenu?.kind === 'group' && <GroupContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />}
         {contextMenu?.kind === 'directory' && <DirectoryContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />}
         {dropPaths.length > 0 && (
-          <DropImportDialog
+          <DeferredDropImportDialog
             paths={dropPaths}
             initialGroupId={dropImportTarget?.groupId}
             initialDirectoryId={dropImportTarget?.directoryId}
             onClose={clearDropImport}
           />
         )}
-        <GlobalSearch open={globalSearchOpen} onClose={closeGlobalSearch} />
-        <TransferStation open={transferStationActive} onClose={closeTransferStation} />
-        <ImageBrowser open={imageBrowserActive} onClose={closeImageBrowser} />
+        <DeferredGlobalSearch open={globalSearchOpen} onClose={closeGlobalSearch} />
+        <DeferredTransferStation open={transferStationActive} onClose={closeTransferStation} />
+        <DeferredImageBrowser open={imageBrowserActive} onClose={closeImageBrowser} />
       </div>
-      <SettingsPanel />
+      <DeferredSettingsPanel open={settingsOpen} />
       <UiDialogHost />
       <RainbowEffects rainbow={rainbow} />
     </div>

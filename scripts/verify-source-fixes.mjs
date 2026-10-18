@@ -149,6 +149,9 @@ const checks = [
   ['src-tauri/src/edge_dock_native.rs', /AnimateWindow\(hwnd, ms, aw_show_flag\(edge\)\) == 0/, 'v160 a failed cross-thread AnimateWindow must fall back to ShowWindow'],
   ['src-tauri/src/website_metadata.rs', /fn persist_title_snapshot/, 'v161 the title cache must be written outside the cache lock'],
   ['src-tauri/src/website_metadata.rs', /fn prune_title_failures/, 'v161 the title failure blacklist must be pruned'],
+  ['src/App.tsx', /<DeferredSettingsPanel open=\{settingsOpen\} \/>/, 'v162 the settings panel must stay lazily loaded'],
+  ['src/components/DeferredPanels.tsx', /pending\.current\.splice\(0\)/, 'v162 settings open requests sent before the panel loads must be replayed'],
+  ['src/hooks/useAutoSave.ts', /skipIfUnchanged: true/, 'v162 auto save must skip unchanged config'],
 ];
 
 const forbidden = [
@@ -176,6 +179,7 @@ const forbidden = [
   ['src-tauri/src/edge_dock_native.rs', /fn now_millis/, 'v160 the suspend timer must use a monotonic clock'],
   ['src-tauri/src/edge_dock_native.rs', /last_good_visible_rect = Some\(/, 'v160 the last good rect must be filtered by remember_good'],
   ['src-tauri/src/website_metadata.rs', /persist_title_cache\(&cache\)/, 'v161 never write the title cache file while holding its lock'],
+  ['src/App.tsx', /from '\.\/components\/Settings\/SettingsPanel'/, 'v162 do not statically import SettingsPanel into the main bundle'],
 ];
 
 const failures = [];

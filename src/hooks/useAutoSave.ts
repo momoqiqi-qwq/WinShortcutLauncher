@@ -9,9 +9,18 @@ function joinPath(directory: string, fileName: string) {
   return `${dir}${sep}${safeFile}`;
 }
 
-export async function saveConfigToPath(path: string) {
+// v162: 记住每个路径上一次成功写入的内容。自动保存时内容没变就不再写盘，
+// 避免每隔几分钟把同样的配置原样重写一遍（同步盘会因此反复上传）。
+// 每次启动后的第一次自动保存仍会写，保证文件存在且是最新的。
+const lastSavedByPath = new Map<string, string>();
+
+export async function saveConfigToPath(path: string, options: { skipIfUnchanged?: boolean } = {}) {
   const config = useAppStore.getState().exportConfig();
-  await invoke('save_config', { config: JSON.stringify(config, null, 2), path });
+  const serialized = JSON.stringify(config, null, 2);
+  if (options.skipIfUnchanged && lastSavedByPath.get(path) === serialized) return false;
+  await invoke('save_config', { config: serialized, path });
+  lastSavedByPath.set(path, serialized);
+  return true;
 }
 
 export function getAutoSaveTargetPath(directory: string, fileName: string) {
@@ -28,7 +37,7 @@ export function useAutoSave() {
     const targetPath = getAutoSaveTargetPath(autoSave.directory, autoSave.fileName);
 
     const saveOnce = () => {
-      saveConfigToPath(targetPath).catch((error) => {
+      saveConfigToPath(targetPath, { skipIfUnchanged: true }).catch((error) => {
         console.error('自动保存配置失败', error);
       });
     };

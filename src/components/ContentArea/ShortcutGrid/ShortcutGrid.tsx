@@ -149,8 +149,8 @@ export function ShortcutGrid({
   useEffect(() => {
     function focusSelectedCard(itemId: string) {
       window.setTimeout(() => {
-        const target = Array.from(document.querySelectorAll<HTMLElement>('[data-item-id]'))
-          .find((element) => element.dataset.itemId === itemId);
+        // v162: 直接按属性值查询，不再把所有卡片都取出来再逐个比对。
+        const target = document.querySelector<HTMLElement>(`[data-item-id="${CSS.escape(itemId)}"]`);
         target?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       }, 0);
     }
