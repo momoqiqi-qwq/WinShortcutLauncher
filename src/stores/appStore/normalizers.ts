@@ -567,6 +567,7 @@ export function normalizeDisplay(value?: unknown): DisplaySettings {
     colorFrameBlend: display?.colorFrameBlend === 'adjacent' ? 'adjacent' : 'independent',
     colorFrameGroupSize: Math.round(clampDisplayNumber(display?.colorFrameGroupSize, 2, 6, defaultDisplay.colorFrameGroupSize)),
     colorFrameGroupTint: clampDisplayNumber(display?.colorFrameGroupTint, 0, 0.6, defaultDisplay.colorFrameGroupTint),
+    colorFrameClusterFrame: display?.colorFrameClusterFrame !== false,
     sidebarColumns: Math.round(clampDisplayNumber(display?.sidebarColumns, 1, 6, defaultDisplay.sidebarColumns)),
     sidebarItemLines: Math.round(clampDisplayNumber(display?.sidebarItemLines, 1, 4, defaultDisplay.sidebarItemLines)),
     sidebarShowFullNames: display?.sidebarShowFullNames === true,

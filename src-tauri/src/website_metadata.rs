@@ -10,9 +10,14 @@ use std::{
   time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-const HTTP_TIMEOUT: Duration = Duration::from_secs(8);
+const HTTP_TIMEOUT: Duration = Duration::from_secs(6);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const TITLE_CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+/// v156：抓标题失败后短时间内直接返回失败，别让同一个死站反复吃掉 6 秒。
+const TITLE_FAILURE_TTL: Duration = Duration::from_secs(60);
 const MAX_TITLE_HTML_BYTES: u64 = 512 * 1024;
+/// v156：边收边解析的读块大小。<title> 基本都在第一块里。
+const TITLE_CHUNK_BYTES: usize = 8 * 1024;
 const MAX_FAVICON_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
@@ -45,17 +50,22 @@ static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 static TITLE_CACHE: OnceLock<Mutex<HashMap<String, TitleCacheEntry>>> = OnceLock::new();
 static TITLE_IN_FLIGHT: OnceLock<InFlightMap> = OnceLock::new();
 static FAVICON_IN_FLIGHT: OnceLock<InFlightMap> = OnceLock::new();
+/// v156：网址 → 最近一次抓标题失败的时间戳（毫秒），短期黑名单。
+static TITLE_FAILURE: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
 
 fn http_client() -> Result<&'static Client, String> {
   if let Some(client) = HTTP_CLIENT.get() {
     return Ok(client);
   }
   let client = Client::builder()
-    .connect_timeout(Duration::from_secs(4))
+    .connect_timeout(CONNECT_TIMEOUT)
     .timeout(HTTP_TIMEOUT)
     .redirect(reqwest::redirect::Policy::limited(5))
-    .pool_idle_timeout(Duration::from_secs(90))
-    .pool_max_idle_per_host(8)
+    // v156：连接池留得更久、更宽，同一站点第二次拖入时省掉 TCP + TLS 握手。
+    .pool_idle_timeout(Duration::from_secs(300))
+    .pool_max_idle_per_host(16)
+    .tcp_keepalive(Duration::from_secs(60))
+    .tcp_nodelay(true)
     .build()
     .map_err(|error| error.to_string())?;
   let _ = HTTP_CLIENT.set(client);
@@ -329,28 +339,112 @@ where
   outcome
 }
 
-fn title_from_html(html: &str) -> Option<String> {
-  let lower = html.to_ascii_lowercase();
-  let start = lower.find("<title")?;
-  let open_end = lower[start..].find('>')? + start + 1;
-  let close = lower[open_end..].find("</title>")? + open_end;
-  let decoded = html_escape::decode_html_entities(&html[open_end..close]);
-  let collapsed = decoded.split_whitespace().collect::<Vec<_>>().join(" ");
+/// v156：在字节层面做大小写不敏感的查找，避免为了找 `</title>` 把整页 HTML 复制成小写。
+fn find_ascii_ci(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+  if needle.is_empty() || haystack.len() < needle.len() {
+    return None;
+  }
+  let first = needle[0].to_ascii_lowercase();
+  let last_start = haystack.len() - needle.len();
+  let mut index = 0;
+  while index <= last_start {
+    if haystack[index].to_ascii_lowercase() == first
+      && haystack[index..index + needle.len()]
+        .iter()
+        .zip(needle)
+        .all(|(left, right)| left.to_ascii_lowercase() == *right)
+    {
+      return Some(index);
+    }
+    index += 1;
+  }
+  None
+}
+
+fn charset_from_content_type(content_type: &str) -> Option<String> {
+  let lower = content_type.to_ascii_lowercase();
+  let position = lower.find("charset=")?;
+  let rest = lower[position + "charset=".len()..].trim_start_matches(['"', '\'']);
+  let label = rest
+    .split(|value: char| value == '"' || value == '\'' || value == ';' || value == ' ' || value == ',')
+    .next()
+    .unwrap_or("")
+    .trim();
+  (!label.is_empty()).then(|| label.to_string())
+}
+
+fn sniff_charset(head: &[u8]) -> Option<String> {
+  let text = String::from_utf8_lossy(head).to_ascii_lowercase();
+  let position = text.find("charset=")?;
+  let rest = text[position + "charset=".len()..].trim_start_matches(['"', '\'']);
+  let label = rest
+    .split(|value: char| value == '"' || value == '\'' || value == ';' || value == ' ' || value == '/' || value == '>')
+    .next()
+    .unwrap_or("")
+    .trim();
+  (!label.is_empty()).then(|| label.to_string())
+}
+
+/// v156：按页面声明的编码解码标题。国内站点大量是 GBK/GB18030，按 UTF-8 硬解会成乱码。
+fn resolve_encoding(content_type: &str, head: &[u8]) -> &'static encoding_rs::Encoding {
+  charset_from_content_type(content_type)
+    .or_else(|| sniff_charset(head))
+    .and_then(|label| encoding_rs::Encoding::for_label(label.as_bytes()))
+    .unwrap_or(encoding_rs::UTF_8)
+}
+
+fn decode_title_bytes(bytes: &[u8], encoding: &'static encoding_rs::Encoding) -> Option<String> {
+  let (decoded, _, _) = encoding.decode(bytes);
+  let text = html_escape::decode_html_entities(decoded.as_ref());
+  let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
   let title = collapsed.chars().take(120).collect::<String>();
   (!title.is_empty()).then_some(title)
 }
 
-fn read_limited_text(mut response: Response) -> Result<String, String> {
-  let mut bytes = Vec::new();
-  response
-    .by_ref()
-    .take(MAX_TITLE_HTML_BYTES)
-    .read_to_end(&mut bytes)
-    .map_err(|error| error.to_string())?;
-  Ok(String::from_utf8_lossy(&bytes).into_owned())
+fn title_from_bytes(buffer: &[u8], content_type: &str) -> Option<String> {
+  let start = find_ascii_ci(buffer, b"<title")?;
+  let open_end = start + buffer[start..].iter().position(|value| *value == b'>')? + 1;
+  let close = find_ascii_ci(&buffer[open_end..], b"</title>")? + open_end;
+  let head = &buffer[..buffer.len().min(2048)];
+  decode_title_bytes(&buffer[open_end..close], resolve_encoding(content_type, head))
 }
 
-fn fetch_title_http(url: &str) -> Result<String, String> {
+/// v156：边收边解析。标题几乎总在前 8KB，拿到 `</title>` 立刻返回，
+/// 不再等整页（最多 512KB）下载完；同时把 6 秒超时的概率压到最低。
+fn read_title_stream(mut response: Response, content_type: &str) -> Result<String, String> {
+  let mut buffer: Vec<u8> = Vec::with_capacity(TITLE_CHUNK_BYTES * 2);
+  let mut chunk = [0u8; TITLE_CHUNK_BYTES];
+  let mut title_start: Option<usize> = None;
+  loop {
+    let read = response.read(&mut chunk).map_err(|error| error.to_string())?;
+    if read == 0 {
+      break;
+    }
+    buffer.extend_from_slice(&chunk[..read]);
+    if title_start.is_none() {
+      title_start = find_ascii_ci(&buffer, b"<title");
+    }
+    if let Some(start) = title_start {
+      if let Some(open_rel) = buffer[start..].iter().position(|value| *value == b'>') {
+        let open_end = start + open_rel + 1;
+        if let Some(close_rel) = find_ascii_ci(&buffer[open_end..], b"</title>") {
+          let head = &buffer[..buffer.len().min(2048)];
+          let encoding = resolve_encoding(content_type, head);
+          if let Some(title) = decode_title_bytes(&buffer[open_end..open_end + close_rel], encoding) {
+            return Ok(title);
+          }
+        }
+      }
+    }
+    if buffer.len() >= MAX_TITLE_HTML_BYTES as usize {
+      break;
+    }
+  }
+  title_from_bytes(&buffer, content_type).ok_or_else(|| "未获取到网页标题".to_string())
+}
+
+/// v156：返回（标题，重定向后的最终网址），最终网址也进缓存，下次拖同一入口就是秒开。
+fn fetch_title_http(url: &str) -> Result<(String, String), String> {
   let client = http_client()?;
   let response = client
     .get(url)
@@ -361,8 +455,26 @@ fn fetch_title_http(url: &str) -> Result<String, String> {
     .map_err(|error| error.to_string())?
     .error_for_status()
     .map_err(|error| error.to_string())?;
-  let html = read_limited_text(response)?;
-  title_from_html(&html).ok_or_else(|| "未获取到网页标题".to_string())
+  let final_url = response.url().to_string();
+  let content_type = response
+    .headers()
+    .get(CONTENT_TYPE)
+    .and_then(|value| value.to_str().ok())
+    .unwrap_or("")
+    .to_string();
+  let lowered = content_type.to_ascii_lowercase();
+  // 拖进来的可能是 PDF / 图片直链，读下去纯属浪费，直接判失败。
+  if lowered.starts_with("image/")
+    || lowered.starts_with("video/")
+    || lowered.starts_with("audio/")
+    || lowered.contains("application/pdf")
+    || lowered.contains("application/octet-stream")
+    || lowered.contains("application/zip")
+  {
+    return Err("该网址不是网页，没有标签页标题".to_string());
+  }
+  let title = read_title_stream(response, &content_type)?;
+  Ok((title, final_url))
 }
 
 fn get_cached_title(url: &str) -> Option<String> {
@@ -378,10 +490,44 @@ fn get_cached_title(url: &str) -> Option<String> {
   Some(entry.title)
 }
 
-fn store_cached_title(url: String, title: String) {
+fn store_cached_titles(entries: Vec<(String, String)>) {
+  if entries.is_empty() {
+    return;
+  }
+  let saved_at_ms = now_ms();
   let mut cache = title_cache().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-  cache.insert(url, TitleCacheEntry { title, saved_at_ms: now_ms() });
+  for (url, title) in entries {
+    cache.insert(url, TitleCacheEntry { title, saved_at_ms });
+  }
   persist_title_cache(&cache);
+}
+
+fn title_failures() -> &'static Mutex<HashMap<String, u64>> {
+  TITLE_FAILURE.get_or_init(Default::default)
+}
+
+fn title_recently_failed(url: &str) -> bool {
+  let now = now_ms();
+  let ttl = TITLE_FAILURE_TTL.as_millis() as u64;
+  let mut failures = title_failures().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  match failures.get(url).copied() {
+    Some(at) if now.saturating_sub(at) <= ttl => true,
+    Some(_) => {
+      failures.remove(url);
+      false
+    }
+    None => false,
+  }
+}
+
+fn mark_title_failure(url: &str) {
+  let mut failures = title_failures().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  failures.insert(url.to_string(), now_ms());
+}
+
+fn clear_title_failure(url: &str) {
+  let mut failures = title_failures().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  failures.remove(url);
 }
 
 fn fetch_website_title_blocking(url: String) -> Result<String, String> {
@@ -389,15 +535,36 @@ fn fetch_website_title_blocking(url: String) -> Result<String, String> {
   if let Some(title) = get_cached_title(&normalized) {
     return Ok(title);
   }
+  if title_recently_failed(&normalized) {
+    return Err("刚抓过一次标题没成功，稍后再试".to_string());
+  }
   let key = normalized.clone();
-  dedupe_string(key.clone(), TITLE_IN_FLIGHT.get_or_init(Default::default), move || {
+  let cache_key = normalized.clone();
+  let outcome = dedupe_string(key.clone(), TITLE_IN_FLIGHT.get_or_init(Default::default), move || {
     if let Some(title) = get_cached_title(&key) {
       return Ok(title);
     }
-    let title = fetch_title_http(&key)?;
-    store_cached_title(key, title.clone());
+    let (title, final_url) = fetch_title_http(&key)?;
+    store_cached_titles(vec![(key.clone(), title.clone()), (final_url, title.clone())]);
     Ok(title)
-  })
+  });
+  match &outcome {
+    Ok(_) => clear_title_failure(&cache_key),
+    Err(_) => mark_title_failure(&cache_key),
+  }
+  outcome
+}
+
+/// v156：拖拽悬停阶段就预热标题抓取。
+/// 用户从浏览器拖到落点通常还要几百毫秒，等他松手时标题往往已经在缓存里了。
+pub fn prefetch_title(url: &str) {
+  let Ok(normalized) = normalize_url(url) else { return; };
+  if get_cached_title(&normalized).is_some() || title_recently_failed(&normalized) {
+    return;
+  }
+  let _ = tauri::async_runtime::spawn_blocking(move || {
+    let _ = fetch_website_title_blocking(normalized);
+  });
 }
 
 fn favicon_extension(content_type: &str, candidate: &str) -> &'static str {

@@ -25,8 +25,9 @@ import { matchesItemQuery, nextKeyboardItemIndex } from '../../../lib/itemExperi
 import { uiAlert } from '../../../lib/uiDialog';
 import { formatShortcut, shortcutMatchesEvent } from '../../../lib/keyboardShortcuts';
 import { getMappedPath, isMappedDirectory } from '../../../lib/mappedFolder';
-import { resolveColorFrameColors } from '../../../lib/colorFrames';
+import { resolveColorFrameClusters, resolveColorFrameColors } from '../../../lib/colorFrames';
 import { getEffectiveCardMinHeight, getEffectiveCardWidth } from '../../../lib/cardMetrics';
+import { ItemColorClusterFrames } from '../ItemColorClusterFrames';
 import type { MirrorKind } from '../../../lib/folderMirror';
 
 interface ShortcutGridProps {
@@ -119,6 +120,15 @@ export function ShortcutGrid({
       groupTint: display.colorFrameGroupTint,
     },
   ), [filteredItems, display.colorFrameBlend, display.colorFrameGroupSize, display.colorFrameGroupTint]);
+  // v156: 同色相邻成组框 —— 与顶部父目录（v138）同一套规则，按显示顺序把「实际渲染色相同且相邻」的项目并成一组。
+  // 用 frameColors（组合后的颜色）而不是 item.color：用户看到同色才框，相邻组合模式下组内渐浅就不会被硬框成一个色块。
+  const colorClusters = useMemo(
+    () => resolveColorFrameClusters(filteredItems.map((item) => ({ id: item.id, color: frameColors[item.id] }))),
+    [filteredItems, frameColors],
+  );
+  const showColorClusters = (display.colorFrameClusterFrame ?? true) && colorClusters.length > 0;
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [sorting, setSorting] = useState(false);
   const selectedItemIdSet = useMemo(() => new Set(selectedItemIds), [selectedItemIds]);
   const itemDragActivationConstraint = behavior.launchMode === 'single'
     ? { distance: Math.max(2, Math.min(8, Math.round((behavior.itemDragTolerance ?? 10) / 2))) }
@@ -295,12 +305,36 @@ export function ShortcutGrid({
       />
     ));
 
-    if (isAllDirectory || mirrorKind) return <div className="items-grid all-items-grid">{cards}</div>;
+    // v156: 同色相邻项目的成组框，作为网格里的绝对定位子元素，不占网格单元、不吃点击。
+    const clusterFrames = showColorClusters ? (
+      <ItemColorClusterFrames clusters={colorClusters} gridRef={gridRef} suppressed={sorting} />
+    ) : null;
+
+    if (isAllDirectory || mirrorKind) {
+      return (
+        <div ref={gridRef} className="items-grid all-items-grid">
+          {clusterFrames}
+          {cards}
+        </div>
+      );
+    }
 
     return (
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={() => setSorting(true)}
+        onDragCancel={() => setSorting(false)}
+        onDragEnd={(event) => {
+          setSorting(false);
+          handleDragEnd(event);
+        }}
+      >
         <SortableContext items={ids} strategy={rectSortingStrategy}>
-          <div className="items-grid">{cards}</div>
+          <div ref={gridRef} className="items-grid">
+            {clusterFrames}
+            {cards}
+          </div>
         </SortableContext>
       </DndContext>
     );

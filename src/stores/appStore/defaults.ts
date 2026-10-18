@@ -73,6 +73,7 @@ export const defaultDisplay: DisplaySettings = {
   colorFrameBlend: 'independent',
   colorFrameGroupSize: 3,
   colorFrameGroupTint: 0.22,
+  colorFrameClusterFrame: true,
   sidebarWidth: 176,
   sidebarItemHeight: 38,
   sidebarItemGap: 8,

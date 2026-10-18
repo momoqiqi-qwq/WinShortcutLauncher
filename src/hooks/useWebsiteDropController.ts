@@ -298,6 +298,10 @@ export function useWebsiteDropController({ disabled }: WebsiteDropControllerOpti
     let selectedBrowserRoute: BrowserRouteOverride | undefined;
     let selectedSingleClickAction: ItemClickAction | undefined;
     let selectedDoubleClickAction: ItemClickAction | undefined;
+    // v156: 标题请求立刻起跑，和对话框首帧并行。
+    // 原实现要等对话框 rAF 回调才发请求，白白多等一帧到几帧；这里提前，
+    // 上面 uiWebsiteNameChoice 传的仍是同一个 in-flight promise，不会重复请求。
+    if (!droppedName) void loadTitle();
     if (shouldPromptRename) {
       const choice = await uiWebsiteNameChoice(
         finalName,

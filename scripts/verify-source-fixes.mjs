@@ -123,6 +123,13 @@ const checks = [
   ['src/lib/commandPalette.ts', /SETTINGS_SEARCH_ITEMS[\s\S]*?settingTargetId: item\.targetId/, 'v154 the command palette must merge the fine-grained settings search index'],
   ['src/components/GlobalSearch/GlobalSearch.tsx', /requestSettingsItem\(request\)/, 'v154 palette hits must open settings at the matched control'],
   ['src/components/Settings/SettingsPanel.tsx', /setRequestedFocusText\(request\.focusText \?\? null\)/, 'v154 settings must honour focusText/targetId coming from the palette'],
+  ['src-tauri/src/website_metadata.rs', /fn read_title_stream[\s\S]*?find_ascii_ci\(&buffer\[open_end\.\.\], b"<\/title>"\)/, 'v156 title parsing must stream and return as soon as </title> arrives'],
+  ['src-tauri/src/website_metadata.rs', /fn resolve_encoding[\s\S]*?encoding_rs::Encoding::for_label/, 'v156 titles must decode with the charset the page declares'],
+  ['src-tauri/src/website_metadata.rs', /static TITLE_FAILURE[\s\S]*?fn title_recently_failed/, 'v156 failed title lookups must be cached briefly so a dead site cannot stall every drop'],
+  ['src-tauri/src/website_metadata.rs', /pub fn prefetch_title[\s\S]*?spawn_blocking/, 'v156 titles must be prefetchable off the UI thread'],
+  ['src-tauri/src/native_browser_drop.rs', /fn title_from_html_payload[\s\S]*?<a /, 'v156 Chrome/Edge drags must read the title from the HTML payload'],
+  ['src-tauri/src/native_browser_drop.rs', /DragEnter[\s\S]*?website_metadata::prefetch_title/, 'v156 native drag hover must warm the title cache'],
+  ['src/hooks/useWebsiteDropController.ts', /void loadTitle\(\);[\s\S]*?if \(shouldPromptRename\)/, 'v156 the title request must start before the naming dialog renders'],
 ];
 
 const forbidden = [

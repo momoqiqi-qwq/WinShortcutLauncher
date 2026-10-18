@@ -3,6 +3,7 @@ import {
   clampGroupSize,
   clampGroupTint,
   isHexColor,
+  resolveColorFrameClusters,
   resolveColorFrameColors,
   tintColor,
 } from '../colorFrames';
@@ -125,5 +126,48 @@ describe('color frame blending', () => {
 
   it('returns an empty map for an empty list', () => {
     expect(resolveColorFrameColors([], { blend: 'adjacent', groupSize: 3, groupTint: 0.22 })).toEqual({});
+  });
+});
+
+// v156: 同色相邻成组框的分组规则（与顶部父目录的成组框同一套）。
+describe('color frame clusters', () => {
+  it('groups adjacent items that share the same color', () => {
+    expect(
+      resolveColorFrameClusters([
+        { id: 'a', color: AMBER },
+        { id: 'b', color: AMBER },
+        { id: 'c', color: SKY },
+      ]),
+    ).toEqual([{ id: 'cluster-a', color: AMBER, itemIds: ['a', 'b'] }]);
+  });
+
+  it('compares colors case-insensitively but keeps the first spelling', () => {
+    expect(
+      resolveColorFrameClusters([
+        { id: 'a', color: '#F59E0B' },
+        { id: 'b', color: '#f59e0b' },
+      ]),
+    ).toEqual([{ id: 'cluster-a', color: '#F59E0B', itemIds: ['a', 'b'] }]);
+  });
+
+  it('never groups a single colored item or uncolored neighbours', () => {
+    expect(resolveColorFrameClusters([{ id: 'a', color: AMBER }])).toEqual([]);
+    expect(resolveColorFrameClusters([{ id: 'a' }, { id: 'b' }])).toEqual([]);
+  });
+
+  it('breaks a run when a different color sits in between', () => {
+    expect(
+      resolveColorFrameClusters([
+        { id: 'a', color: AMBER },
+        { id: 'b', color: AMBER },
+        { id: 'c', color: SKY },
+        { id: 'd', color: AMBER },
+        { id: 'e', color: AMBER },
+      ]).map((cluster) => cluster.itemIds),
+    ).toEqual([['a', 'b'], ['d', 'e']]);
+  });
+
+  it('returns nothing for an empty list', () => {
+    expect(resolveColorFrameClusters([])).toEqual([]);
   });
 });

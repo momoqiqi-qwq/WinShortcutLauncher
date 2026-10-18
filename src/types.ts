@@ -241,6 +241,12 @@ export interface DisplaySettings {
   colorFrameGroupSize: number;
   /** v148: 相邻组合时组内每格的深浅落差；0 表示组内完全同色（0–0.6）。 */
   colorFrameGroupTint: number;
+  /**
+   * v156: 项目卡片是否画「同色相邻成组框」。
+   * 与顶部父目录的成组框（v138）同一套画法：颜色相同且相邻的 2 个以上项目
+   * 会被一个更鲜艳的框圈成一组；只影响外观，不改变点击与拖动。
+   */
+  colorFrameClusterFrame: boolean;
   sidebarWidth: number;
   sidebarItemHeight: number;
   sidebarItemGap: number;

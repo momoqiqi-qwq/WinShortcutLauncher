@@ -75,6 +75,42 @@ export function tintColor(value: string, amount: number): string {
   });
 }
 
+/**
+ * v156: 同色相邻成组框。
+ *
+ * 与 v138「同色相邻父目录自动成组框」同一套规则，只是作用在内容区的项目卡片上：
+ * 按显示顺序找出「颜色相同且相邻」的项，数量 ≥2 才成组（单个项目不画额外的框）。
+ * 颜色比较忽略大小写（`#FF0000` 与 `#ff0000` 视为同色），但框本身用组内第一项的原始写法。
+ */
+export interface ColorFrameCluster {
+  id: string;
+  color: string;
+  itemIds: string[];
+}
+
+export function resolveColorFrameClusters(entries: ColorFrameEntry[]): ColorFrameCluster[] {
+  const result: ColorFrameCluster[] = [];
+  let index = 0;
+  while (index < entries.length) {
+    const color = entries[index].color?.trim().toLowerCase();
+    if (!color) {
+      index += 1;
+      continue;
+    }
+    let end = index + 1;
+    while (end < entries.length && entries[end].color?.trim().toLowerCase() === color) end += 1;
+    if (end - index >= 2) {
+      result.push({
+        id: `cluster-${entries[index].id}`,
+        color: (entries[index].color as string).trim(),
+        itemIds: entries.slice(index, end).map((entry) => entry.id),
+      });
+    }
+    index = end;
+  }
+  return result;
+}
+
 export function clampGroupSize(value: number) {
   if (!Number.isFinite(value)) return 3;
   return Math.max(2, Math.min(6, Math.round(value)));

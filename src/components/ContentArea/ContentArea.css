@@ -11,6 +11,41 @@
   grid-template-columns: repeat(auto-fill, minmax(var(--item-card-width, 108px), var(--item-card-width, 108px)));
   align-items: start;
   gap: var(--items-gap, 14px);
+  /* v156: 同色相邻成组框以网格为定位父级（框用卡片的 offsetLeft/offsetTop 定位）。 */
+  position: relative;
+}
+
+/* v156: 同色相邻项目成组框 —— 与顶部「同色相邻父目录」成组框（v138）同一套画法。
+   框本身完全不吃事件，点击/右键/拖动照旧穿透到下面的卡片。 */
+.item-color-clusters {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.item-color-clusters.suppressed {
+  opacity: 0;
+}
+
+.item-color-cluster-segment {
+  position: absolute;
+  border: 1.5px solid var(--cluster-accent, var(--accent));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--cluster-accent, var(--accent)) 6%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cluster-accent, var(--accent)) 24%, transparent),
+    0 0 14px color-mix(in srgb, var(--cluster-accent, var(--accent)) 22%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--cluster-accent, var(--accent)) 8%, transparent);
+}
+
+.color-frame-shape-square .item-color-cluster-segment {
+  border-radius: 10px;
+}
+
+.reduce-motion .item-color-clusters {
+  transition: none;
 }
 
 .all-items-grid {

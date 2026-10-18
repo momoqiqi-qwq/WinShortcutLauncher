@@ -6,6 +6,7 @@ use std::{
   ptr,
 };
 
+use crate::website_metadata;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use windows::{
@@ -238,6 +239,67 @@ fn http_url_from_text(value: &str) -> Option<String> {
   None
 }
 
+/// v156: CF_HTML 拖拽格式带一段 `Version:0.9 / StartHTML:... / StartFragment:...` 头，
+/// 真正的片段从 StartFragment 的字节偏移开始，不剥掉会连头部数字一起当标题。
+fn strip_cf_html_header(text: &str) -> &str {
+  if !text.starts_with("Version:") {
+    return text;
+  }
+  let mut fragment_offset = None;
+  for line in text.lines().take(8) {
+    if let Some(value) = line.strip_prefix("StartFragment:") {
+      fragment_offset = value.trim().parse::<usize>().ok();
+    }
+  }
+  fragment_offset
+    .and_then(|offset| text.get(offset..))
+    .unwrap_or(text)
+}
+
+fn clean_html_title(value: &str) -> Option<String> {
+  let decoded = html_escape::decode_html_entities(value);
+  let collapsed = decoded.split_whitespace().collect::<Vec<_>>().join(" ");
+  let title = collapsed.chars().take(120).collect::<String>();
+  (!title.is_empty()).then_some(title)
+}
+
+/// v156: Chrome / Edge 拖标签页时，`text/html` / `HTML Format` 里就带着
+/// `<title>` 或 `<a href>链接文字</a>`，本地直接取到标题，省掉一次网络请求。
+fn title_from_html_payload(text: &str) -> Option<String> {
+  let body = strip_cf_html_header(text);
+  let lower = body.to_ascii_lowercase();
+
+  if let Some(start) = lower.find("<title") {
+    if let Some(tag_end_rel) = lower[start..].find('>') {
+      let inner_start = start + tag_end_rel + 1;
+      if let Some(close_rel) = lower[inner_start..].find("</title>") {
+        if let Some(title) = clean_html_title(&body[inner_start..inner_start + close_rel]) {
+          return Some(title);
+        }
+      }
+    }
+  }
+
+  let mut cursor = 0;
+  while let Some(anchor_rel) = lower[cursor..].find("<a ") {
+    let anchor_start = cursor + anchor_rel;
+    let Some(tag_end_rel) = lower[anchor_start..].find('>') else {
+      break;
+    };
+    let inner_start = anchor_start + tag_end_rel + 1;
+    let Some(close_rel) = lower[inner_start..].find("</a>") else {
+      break;
+    };
+    let inner_end = inner_start + close_rel;
+    if let Some(title) = clean_html_title(&body[inner_start..inner_end]) {
+      return Some(title);
+    }
+    cursor = inner_end + 4;
+  }
+
+  None
+}
+
 fn extract_url_and_title(data_obj: &IDataObject) -> (Option<String>, Option<String>) {
   let formats = known_registered_formats();
   let mut title = None;
@@ -262,6 +324,9 @@ fn extract_url_and_title(data_obj: &IDataObject) -> (Option<String>, Option<Stri
               .iter()
               .find(|candidate| candidate.name == "text/x-moz-url-desc")
               .and_then(|candidate| read_text(data_obj, candidate.id, candidate.encoding));
+          }
+          if title.is_none() && matches!(name, "text/html" | "HTML Format") {
+            title = title_from_html_payload(&text);
           }
           return (Some(url), title);
         }
@@ -438,6 +503,14 @@ impl IDropTarget_Impl for NativeBrowserDropTarget_Impl {
     }
     if cursor_effect != DROPEFFECT_NONE {
       self.emit_hover(true, Some(pt));
+    }
+
+    // v156: 悬停阶段就把标题抓起来。用户从浏览器拖到落点通常还有几百毫秒，
+    // 等他松手时标题往往已经在缓存里，对话框第一帧就能显示真标题。
+    if recognized && has_url && !has_files {
+      if let (Some(url), None) = extract_url_and_title(data_obj) {
+        website_metadata::prefetch_title(&url);
+      }
     }
     Ok(())
   }

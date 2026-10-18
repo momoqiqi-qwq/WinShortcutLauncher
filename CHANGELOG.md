@@ -4,7 +4,58 @@
 
 ---
 
-## V154（最新）— 修复「每行字数」换行失效与全局搜索搜不到设置项
+## V156（最新）— 项目同色相邻自动成组框 + 拖入网站标题秒出
+
+> **版本号说明**：本版从 0.1.154 直接升到 0.1.156，**没有单独的 V155**。下面两项改动（同色相邻成组框、拖入网站标题提速）合并在 V156 一起提交，Git 历史中不存在 0.1.155 版本。
+
+> 本版两件事：内容区项目卡片补上「同色相邻成组框」，以及拖入网站后标签页标题的获取提速（`src-tauri/src/website_metadata.rs`、`src-tauri/src/native_browser_drop.rs`、`src/hooks/useWebsiteDropController.ts`）。
+
+### 需求
+
+顶部同色相邻的父目录会自动被一个更鲜艳的框圈成一组（v138），内容区的项目卡片没有这个效果。本次让项目卡片也具备同样的行为。
+
+### 实现
+
+- 把 v138 的分组规则抽成纯函数 `resolveColorFrameClusters`（`src/lib/colorFrames.ts`），父目录与项目共用同一套语义。
+- 内容区复用同一套画法：新增 `src/components/ContentArea/ItemColorClusterFrames.tsx`，样式 `.item-color-clusters` / `.item-color-cluster-segment` 写在 `src/components/ContentArea/ContentArea.css`（`.items-grid` 补 `position: relative`，框才有正确的定位父级）。
+- **分组**：按显示顺序（含搜索过滤后的顺序）把「颜色相同且相邻」的项目并成一组，**数量 ≥2 才画框**（单个已上色项目不额外加框）；颜色比较忽略大小写（`#FF0000` 与 `#ff0000` 视为同色），框色用组内第一项的写法。
+- **用实际渲染色判断**：分组输入是 `resolveColorFrameColors` 之后的结果，所以「相邻颜色 = 相邻组合」模式下组内逐格渐浅时不会被硬框成一个色块 —— 屏幕上看着同色才框。
+- **测量**：按卡片 `offsetLeft / offsetTop` 算出每组覆盖的区域，外扩 5px 后描边 + 发光；一组被换行拆开时**按行分段**，跨行也能分别框住（与父目录跨行时的分段行为一致）。
+- **不干扰交互**：框 `pointer-events: none`，点击、双击、右键、拖入、拖拽排序全部照旧穿透到卡片；排序拖动开始时框淡出（`suppressed`），松手后按新位置重新测量。
+- **设置**：设置 → 界面 → 子目录与项目彩色框 新增「同色相邻成组框」开关（`colorFrameClusterFrame`，默认开启），不需要时可以单独关掉；全局搜索关键词补了「成组 / 成组框 / 同色 / 同色相邻 / 圈起来」。
+
+### 验证
+
+- `npx tsc --noEmit` 通过；`npx vitest run` 41 个测试文件 / 220 个用例全绿（新增 5 条分组规则用例：相邻同色成组、大小写不敏感、单个不上色的不成组、异色打断、空列表）。
+- 无头 Chrome 加载真实 CSS（`ContentArea.css` + `ItemCard.css` + 全局 `border-box`）渲染 8 张卡片实测：3 列布局下 `i1..i4` 跨行组被拆成 2 段、`i5/i6` 与 `i7/i8` 各 1 段；每段框完整包住成员卡片（外扩 5px），且不误圈同行其他颜色的卡片，断言输出 `problems: []`。
+
+---
+
+## V156 之二 — 拖入网站后，标签页标题秒出
+
+### 需求
+
+从浏览器把标签页拖进窗口，命名对话框里「标签页标题」那一项总要先转一会儿。慢在四处：前端要等对话框画完第一帧才发请求；Rust 端把整页（最多 512KB）**读完**才去解析 `<title>`；超时 8 秒；Chrome / Edge 的原生拖拽数据里根本不给标题，只能等网络。顺带还有国内 GBK 站点标题乱码的问题。
+
+### 实现（七层，任一层缺失都会退化成「等」）
+
+1. **前端提前起跑**（`src/hooks/useWebsiteDropController.ts`）：`if (!droppedName) void loadTitle();` 提到 `if (shouldPromptRename)` **之前**，标题请求与对话框首帧并行；传给 `uiWebsiteNameChoice` 的仍是同一个 in-flight promise，不会重复请求。
+2. **流式早退解析**（`src-tauri/src/website_metadata.rs`）：`read_title_stream` 按 `TITLE_CHUNK_BYTES`（8KB）分块读，凑齐 `</title>` 立刻返回，不再等整页下完。
+3. **字节级查找**：新增 `find_ascii_ci`，大小写不敏感地扫原始字节，省掉「整页复制成小写」那一次分配。
+4. **按页面声明解码**：`resolve_encoding` 依次看 `Content-Type` 的 `charset=` → `<meta charset>` → UTF-8，再用 `encoding_rs` 解码，GBK / GB18030 站点标题不再乱码。
+5. **连接与超时**：`connect_timeout` 4s→3s、总超时 8s→6s、`pool_idle_timeout` 90s→300s、`pool_max_idle_per_host` 8→16、`tcp_keepalive(60s)`、`tcp_nodelay(true)` —— 同一站点第二次拖入省掉 TCP + TLS 握手。
+6. **缓存增强**：重定向后的**最终网址**也写进标题缓存（下次拖同一入口直接命中）；新增 `TITLE_FAILURE` 失败黑名单（60s），死站不会每次拖入都吃满 6 秒；`image/` `video/` `audio/` `application/pdf` `octet-stream` `zip` 这类非网页直链直接判失败，不读正文。
+7. **悬停预热 + 原生标题**（`src-tauri/src/native_browser_drop.rs`）：`DragEnter` 阶段就把 URL 交给 `website_metadata::prefetch_title`（`spawn_blocking`）去抓，用户拖到落点松手时标题往往已在缓存里；同时新增 `title_from_html_payload`，从 Chrome / Edge 的 `text/html`、`HTML Format` 载荷里取 `<title>` 或 `<a href>` 的文字（CF_HTML 头按 `StartFragment:` 字节偏移剥离），有本地标题就完全不走网络。
+
+### 验证
+
+- `npx tsc --noEmit` 通过；`npx vitest run` 41 个测试文件 / 220 个用例全绿；`node scripts/verify-source-fixes.mjs` 输出 `Persistent Windows/Rust source fixes: OK`。
+- `cargo check` 通过（仅剩既有的 4 条无关 warning）。
+- `src-tauri/build.rs` 与 `scripts/verify-source-fixes.mjs` 各补 7 条 V156 断言（`read_title_stream`、`TITLE_CHUNK_BYTES`、`encoding_rs::Encoding`、`TITLE_FAILURE`、`prefetch_title`、`title_from_html_payload`、前端「先发请求再开对话框」的顺序），任一被删都会在构建期 panic。
+
+---
+
+## V154 — 修复「每行字数」换行失效与全局搜索搜不到设置项
 
 ### 1. 「每行字数（换行）」在 8 以上完全没反应
 

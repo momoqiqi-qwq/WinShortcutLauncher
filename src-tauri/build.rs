@@ -232,6 +232,17 @@ fn verify_persistent_windows_fixes() {
   require(&item_menu, "显示完整名称", "v153 project context menu exposes 显示完整名称");
   require(&item_menu, "showFullItemName", "v153 project 显示完整名称 binds to display.showFullItemName");
 
+  // V156：拖入网站后标题秒出。加速分成四层，任何一层被删掉，
+  // 拖入就会退回“等整页下载完 / 等对话框首帧 / 等网络超时”的老样子。
+  require(&website_metadata, "read_title_stream", "v156 title parsing streams and exits at </title>");
+  require(&website_metadata, "TITLE_CHUNK_BYTES", "v156 title parsing reads the page in small chunks");
+  require(&website_metadata, "encoding_rs::Encoding", "v156 titles decode with the page-declared charset");
+  require(&website_metadata, "TITLE_FAILURE", "v156 failed title lookups are short-circuit cached");
+  require(&website_metadata, "pub fn prefetch_title", "v156 title fetch can be prefetched during drag hover");
+  require(&native_drop, "website_metadata::prefetch_title", "v156 native DragEnter warms the title cache");
+  require(&native_drop, "title_from_html_payload", "v156 Chrome/Edge drags read the title from HTML payloads");
+  require(&website_drop, "void loadTitle();\n    if (shouldPromptRename)", "v156 the title request starts before the naming dialog renders");
+
   // V145：映射文件夹卡顿。三条不变量必须同时成立，否则卡顿会回来：
   // 1) 重活命令必须是 async（Tauri 里同步命令跑在主线程上）；
   // 2) 图标走原生提取，不再每个图标起一个 PowerShell 进程；
