@@ -1,4 +1,4 @@
-# Yue launcher v0.1.156
+# Yue launcher v0.1.157
 
 Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快捷启动器。
 
@@ -18,7 +18,7 @@ Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快�
 - 批量项目管理：每次生成形成独立批次，可查看整批项目、替换某组 URL、把旧 Profile 整批迁移到新 Profile、删除整批并检查已不存在的 Profile。
 - v121 批次元数据随项目持久化；手工复制/粘贴/创建副本会主动脱离原批次，避免误删或误修改。
 
-详细说明见 `V121_MULTI_ACCOUNT_WORKSPACE_README.md`。
+详细说明见 `docs/history/V121_MULTI_ACCOUNT_WORKSPACE_README.md`。
 
 ## v0.1.120 多账号批量生成与项目粘贴
 
@@ -30,7 +30,7 @@ Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快�
 - 补齐项目剪贴板：项目/目录/空白区域均可粘贴，并支持 Ctrl+C / Ctrl+V。
 - 批量网址项目使用具体 `browserId + profileId` 路由，图标每批只获取一次。
 
-详细说明见 `V120_MULTI_ACCOUNT_CLIPBOARD_README.md`，验证结果见 `V120_TEST_RESULTS.txt`。
+详细说明见 `docs/history/V120_MULTI_ACCOUNT_CLIPBOARD_README.md`，验证结果见 `docs/history/V120_TEST_RESULTS.txt`。
 
 
 
@@ -43,7 +43,7 @@ Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快�
 - 为避免副作用，Gecko 图片/普通文件的 file-promise 不会因为自带资源 URL 被误识别成“网站”。
 - 兼容目标覆盖 Floorp、Firefox、Waterfox、LibreWolf，以及 Chrome、Edge、Brave、Vivaldi、Opera 和多数 Chromium 壳浏览器常见的网页拖拽格式。
 
-详细说明见 `V116_BROWSER_DRAG_COMPATIBILITY_README.md`，验证结果见 `V116_TEST_RESULTS.txt`。
+详细说明见 `docs/history/V116_BROWSER_DRAG_COMPATIBILITY_README.md`，验证结果见 `docs/history/V116_TEST_RESULTS.txt`。
 
 
 ## v0.1.115 设置搜索精确定位
@@ -62,7 +62,7 @@ Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快�
 - 中央设置补齐搜索防抖、文件中转图标显示、清空前确认三个已有运行参数。
 - 旧 `windowState.edgeAutoHide` 保留兼容，但加载和更新时都强制与 `behavior.edgeAutoHide` 同步，避免双状态漂移。
 
-详细说明见 `V114_SETTINGS_EFFECT_FIXES_README.md`，验证结果见 `V114_TEST_RESULTS.txt`。
+详细说明见 `docs/history/V114_SETTINGS_EFFECT_FIXES_README.md`，验证结果见 `docs/history/V114_TEST_RESULTS.txt`。
 
 ## v0.1.113 首次启动、搜索设置与网站拖入重命名
 
@@ -73,7 +73,7 @@ Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快�
 - 从浏览器或 `.url/.website` 文件拖入网站时，默认先显示应用内重命名界面；可在“设置 → 拖动”关闭“拖入网站后显示重命名界面”。
 - 设置搜索可直接搜索“网站 / 拖入 / 重命名”定位新开关。
 
-详细说明见 `V113_FIRST_RUN_SEARCH_DROP_RENAME_README.md`，验证结果见 `V113_TEST_RESULTS.txt`。
+详细说明见 `docs/history/V113_FIRST_RUN_SEARCH_DROP_RENAME_README.md`，验证结果见 `docs/history/V113_TEST_RESULTS.txt`。
 
 ## v0.1.110 拼音搜索扩展
 
@@ -83,7 +83,7 @@ Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快�
 - 示例：`gongzuo / gz` → “工作”，`wenjianjia / wjj` → “文件夹”，`liulanqi / llq` → “浏览器”。
 - 拼音表内置在前端，不新增 npm runtime dependency。
 
-详细说明见 `V110_PINYIN_SEARCH_EXPANSION_README.md`，验证结果见 `V110_TEST_RESULTS.txt`。
+详细说明见 `docs/history/V110_PINYIN_SEARCH_EXPANSION_README.md`，验证结果见 `docs/history/V110_TEST_RESULTS.txt`。
 
 
 ## v0.1.106 父目录配色、外观自由度与拖入体验
@@ -95,7 +95,7 @@ Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快�
 - 将父目录外观、父目录配色拆成独立设置组件和独立 CSS；重复的设置开关卡片抽到 `SettingsPrimitives.tsx`。
 - 设置搜索新增“父目录配色 / 高度 / 间距 / 边框 / 颜色强度”等关键词。
 
-详细说明见 `V106_PARENT_GROUPS_FREEDOM_UX_README.md`，结构复查见 `V106_CODE_STRUCTURE_REVIEW.md`。
+详细说明见 `docs/history/V106_PARENT_GROUPS_FREEDOM_UX_README.md`，结构复查见 `docs/history/V106_CODE_STRUCTURE_REVIEW.md`。
 
 ## v0.1.105 设置面板透明度与玻璃效果修复
 
@@ -106,14 +106,14 @@ Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快�
 - 新增实色 100%、90%、75%、60% 面板快捷按钮，设置搜索也可搜「不透明度 / 饱和度 / 高光」。
 - 将 DisplaySettings 中的防抖滑块和设置面板外观拆成独立组件，新增样式也不再继续堆入 2700+ 行的 `Settings.css`。
 
-详细说明见 `V105_SETTINGS_OPACITY_GLASS_UX_README.md`。
+详细说明见 `docs/history/V105_SETTINGS_OPACITY_GLASS_UX_README.md`。
 
 
 ## v0.1.104 性能优化
 
 这一版重点优化“项目多、图标多、连续调整设置时”的主线程卡顿：配置持久化改为浅比较后合并写盘，快捷项目不再为每张卡片注册全局鼠标监听，离屏图标延迟到接近可视区域再解析，全局搜索缓存重复的中文归一化/拼音计算，彩虹鼠标位置更新改走 requestAnimationFrame + DOM 更新；图片浏览器也改成可视区域缩略图加载、读取请求去重，并对尺寸拖动与裁剪指针更新做逐帧节流。
 
-详细说明见 `V104_PERFORMANCE_OPTIMIZATION_README.md`。
+详细说明见 `docs/history/V104_PERFORMANCE_OPTIMIZATION_README.md`。
 
 ## v0.1.103 主要更新
 
@@ -142,9 +142,9 @@ Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快�
 
 详细说明：
 
-- `V103_IMPORT_CENTER_QUICK_SETTINGS_UX_README.md`
-- `V103_CODE_STRUCTURE_REVIEW.md`
-- `V103_TEST_RESULTS.txt`
+- `docs/history/V103_IMPORT_CENTER_QUICK_SETTINGS_UX_README.md`
+- `docs/history/V103_CODE_STRUCTURE_REVIEW.md`
+- `docs/history/V103_TEST_RESULTS.txt`
 
 ## 开发与构建
 
@@ -164,4 +164,4 @@ npm run typecheck
 npm run test
 ```
 
-当前程序版本：`0.1.156`
+当前程序版本：`0.1.157`

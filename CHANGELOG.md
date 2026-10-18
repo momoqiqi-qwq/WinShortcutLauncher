@@ -4,7 +4,19 @@
 
 ---
 
-## V156（最新）— 项目同色相邻自动成组框 + 拖入网站标题秒出
+## V157（最新）— 根目录历史说明文档归档到 docs/history
+
+纯整理，不涉及任何代码与功能改动。
+
+- 根目录下 179 个历史文档（`*_README.md`、`*_TEST_RESULTS.txt`、`*_CODE_STRUCTURE_REVIEW.md`、`V114_SETTINGS_EFFECT_AUDIT.md`、`TOPBAR_ACTIONS_CODE.md`、`TOPBAR_PANEL_ANCHOR_VERIFY.png`）用 `git mv` 移到 `docs/history/`，文件历史保留（`git log --follow` 可追溯）。
+- 根目录只保留 `README.md`、`CHANGELOG.md`、`AGENTS.md`、`LICENSE`、构建脚本与工程配置。
+- `README.md` 中引用这些文档的路径同步改为 `docs/history/...`；文档之间互相引用（如 `TOPBAR_PANEL_ANCHOR_VERIFY.png`）仍在同一目录，不受影响。
+- `AGENTS.md` 配套要求第 3 条更新：今后新增的 `V<版本号>_<主题>_README.md` 放在 `docs/history/`。
+- 新增 `docs/history/README.md` 说明该目录用途。
+
+---
+
+## V156 — 项目同色相邻自动成组框 + 拖入网站标题秒出
 
 > **版本号说明**：本版从 0.1.154 直接升到 0.1.156，**没有单独的 V155**。下面两项改动（同色相邻成组框、拖入网站标题提速）合并在 V156 一起提交，Git 历史中不存在 0.1.155 版本。
 
