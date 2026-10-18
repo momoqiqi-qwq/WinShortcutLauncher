@@ -15,6 +15,7 @@ import { TransferStation } from './components/TransferStation/TransferStation';
 import { ImageBrowser } from './components/ImageBrowser/ImageBrowser';
 import { useThemeInstaller } from './stores/themeStore';
 import { useStableEdgeDock } from './hooks/useStableEdgeDock';
+import { useEdgeStripStyleSync } from './hooks/useEdgeStripStyleSync';
 import { useWindowDrag } from './hooks/useWindowDrag';
 import { useWindowBoundsGuard } from './hooks/useWindowBoundsGuard';
 import { useAutoSave } from './hooks/useAutoSave';
@@ -52,7 +53,6 @@ function App() {
     behavior.saveWindowStateOnExit,
   ]);
   const display = useAppStore((state) => state.display);
-  const groups = useAppStore((state) => state.groups);
   const rainbow = useAppStore((state) => state.rainbow);
   const experience = useAppStore((state) => state.experience);
   const [edgeDockPausedUntil, setEdgeDockPausedUntil] = useState(0);
@@ -124,6 +124,13 @@ function App() {
   const {
     dragHover, webDragHover, externalDropTargetGroupId, dropPaths, dropImportTarget, clearDropImport,
   } = useWebsiteDropController({ disabled: transferStationActive || imageBrowserActive });
+  // v158: 只订阅「外部拖入目标分组」的名字（字符串），不订阅整棵 groups ——
+  // 否则改任何项目的颜色 / 名称 / 顺序都会让根组件连同整棵组件树重新渲染。
+  const externalDropTargetGroupName = useAppStore((state) => (
+    externalDropTargetGroupId
+      ? state.groups.find((group) => group.id === externalDropTargetGroupId)?.name
+      : undefined
+  ));
 
   useGlobalShortcutRouter({
     closeTopOverlay,
@@ -133,6 +140,7 @@ function App() {
     openSettings: () => setSettingsOpen(true),
   });
 
+  useEdgeStripStyleSync();
   useStableEdgeDock({
     enabled: behavior.edgeAutoHide || behavior.autoEdgeHide || behavior.autoEdgeSnapBack,
     dockAutoHide: behavior.edgeAutoHide,
@@ -173,7 +181,6 @@ function App() {
 
   const customFontFamily = display.fontFamily?.trim() || 'var(--font-family)';
   const fontApplyAreas = new Set(display.fontApplyAreas ?? []);
-  const externalDropTargetGroupName = groups.find((group) => group.id === externalDropTargetGroupId)?.name;
 
   const shellStyle = {
     '--main-font-family': fontApplyAreas.has('main') ? customFontFamily : 'var(--font-family)',

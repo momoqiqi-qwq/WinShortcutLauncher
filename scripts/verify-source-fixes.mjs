@@ -130,6 +130,9 @@ const checks = [
   ['src-tauri/src/native_browser_drop.rs', /fn title_from_html_payload[\s\S]*?<a /, 'v156 Chrome/Edge drags must read the title from the HTML payload'],
   ['src-tauri/src/native_browser_drop.rs', /DragEnter[\s\S]*?website_metadata::prefetch_title/, 'v156 native drag hover must warm the title cache'],
   ['src/hooks/useWebsiteDropController.ts', /void loadTitle\(\);[\s\S]*?if \(shouldPromptRename\)/, 'v156 the title request must start before the naming dialog renders'],
+  ['src/edge-strip.tsx', /listen<EdgeStripStyle>\(EDGE_STRIP_STYLE_EVENT/, 'v158 the edge strip must receive its style by event'],
+  ['src/App.tsx', /useEdgeStripStyleSync\(\)/, 'v158 the main window must push the edge strip style'],
+  ['vite.config.ts', /process\.env\.TAURI_ENV_PLATFORM/, 'v158 vite must read the Tauri v2 platform variable'],
 ];
 
 const forbidden = [
@@ -148,6 +151,9 @@ const forbidden = [
   ['src-tauri/src/commands.rs', /Remove-ItemProperty -Path \$runKey/, 'v146 removes the PowerShell auto-start write'],
   ['src-tauri/src/transfer_station.rs', /#\[tauri::command\]\npub fn copy_transfer_paths_to_folder/, 'v146 the transfer-station copy command must stay async'],
   ['src-tauri/src/legacy_import.rs', /#\[tauri::command\]\npub fn import_legacy_db_config/, 'v146 the legacy import command must stay async'],
+  ['src/edge-strip.tsx', /setInterval\(/, 'v158 the edge strip must not poll localStorage'],
+  ['src/App.tsx', /useAppStore\(\(state\) => state\.groups\)/, 'v158 App must not subscribe to the whole groups tree'],
+  ['vite.config.ts', /process\.env\.TAURI_(?:PLATFORM|DEBUG)\b/, 'v158 Tauri v1 env names are never set by the v2 CLI'],
 ];
 
 const failures = [];

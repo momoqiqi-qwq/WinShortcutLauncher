@@ -1,7 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { emit, listen } from '@tauri-apps/api/event';
-import { getTheme } from './themes';
+import {
+  EDGE_STRIP_READY_EVENT,
+  EDGE_STRIP_STYLE_EVENT,
+  applyEdgeStripStyle,
+  resolveEdgeStripStyle,
+  sameEdgeStripStyle,
+  type EdgeStripStyle,
+} from './lib/edgeStripStyle';
 import './edge-strip.css';
 
 type Edge = 'left' | 'right' | 'top';
@@ -29,20 +36,6 @@ function readPersistedConfig(): PersistedConfig['state'] {
   }
 }
 
-function installStripStyle() {
-  const state = readPersistedConfig();
-  const behavior = state?.behavior ?? {};
-  const theme = getTheme(state?.theme ?? 'claude');
-  const themeAccent = theme.variables['--accent'] ?? '#C36A2D';
-  const useThemeColor = behavior.edgeStripUseThemeColor !== false;
-  const color = useThemeColor ? themeAccent : (behavior.edgeStripColor || themeAccent);
-  const opacity = behavior.edgeStripOpacity ?? 0.88;
-  const size = behavior.edgeStripSize ?? 10;
-  document.documentElement.style.setProperty('--accent', themeAccent);
-  document.documentElement.style.setProperty('--edge-strip-color', color);
-  document.documentElement.style.setProperty('--edge-strip-opacity', String(opacity));
-  document.documentElement.style.setProperty('--edge-strip-size', `${size}px`);
-}
 
 function EdgeStrip() {
   const [edge, setEdge] = useState<Edge>('left');
@@ -50,12 +43,39 @@ function EdgeStrip() {
   const visibleOnceRef = useRef(false);
 
   useEffect(() => {
-    installStripStyle();
-    const timer = window.setInterval(installStripStyle, 250);
-    window.addEventListener('storage', installStripStyle);
+    // v158: 不再每 250ms 读出并解析整份配置。启动时读一次 localStorage 打底，
+    // 之后由主窗口在主题 / 触发条设置变化时推送 edge-strip-style 事件；storage 事件保留兜底。
+    let current: EdgeStripStyle | null = null;
+    const apply = (next: EdgeStripStyle) => {
+      if (sameEdgeStripStyle(current, next)) return;
+      current = next;
+      applyEdgeStripStyle(next);
+    };
+    apply(resolveEdgeStripStyle(readPersistedConfig()));
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === 'win-launcher-config') {
+        apply(resolveEdgeStripStyle(readPersistedConfig()));
+      }
+    };
+    window.addEventListener('storage', onStorage);
+
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    listen<EdgeStripStyle>(EDGE_STRIP_STYLE_EVENT, (event) => apply(event.payload)).then((un) => {
+      if (disposed) {
+        un();
+        return;
+      }
+      unlisten = un;
+      // 监听挂好后再通知主窗口补发当前外观，避免错过主窗口在本窗口创建前发出的那次推送。
+      void emit(EDGE_STRIP_READY_EVENT).catch(() => undefined);
+    });
+
     return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('storage', installStripStyle);
+      disposed = true;
+      window.removeEventListener('storage', onStorage);
+      unlisten?.();
     };
   }, []);
 

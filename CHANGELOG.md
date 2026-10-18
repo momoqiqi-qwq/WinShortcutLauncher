@@ -4,7 +4,40 @@
 
 ---
 
-## V157（最新）— 根目录历史说明文档归档到 docs/history
+## V158（最新）— 去掉触发条轮询、收紧根组件订阅、修正 Vite 的 Tauri v2 环境变量
+
+> 纯性能 / 构建修复，界面与功能不变。
+
+### 1. 贴边触发条不再每 250ms 解析整份配置
+
+- **问题**：`src/edge-strip.tsx` 用 `setInterval(installStripStyle, 250)` 每秒 4 次从 `localStorage` 读出并 `JSON.parse` 整份配置（含全部分组与项目，可能几百 KB），只为拿触发条的颜色 / 透明度 / 尺寸 4 个值；只要开着贴边就一直跑。
+- **修复**：
+  - 新增 `src/lib/edgeStripStyle.ts`：`resolveEdgeStripStyle` / `sameEdgeStripStyle` / `applyEdgeStripStyle`，主窗口与触发条共用同一套换算。
+  - 新增 `src/hooks/useEdgeStripStyleSync.ts`（在 `App.tsx` 调用）：只订阅 `theme` 与 4 个触发条字段，值变化时 `emit('edge-strip-style')`。
+  - `edge-strip.tsx`：启动时读一次 `localStorage` 打底 → 监听 `edge-strip-style` 更新；监听挂好后发 `edge-strip-ready`，主窗口收到即补发当前外观（触发条窗口可能比主窗口晚创建）。`storage` 事件保留兜底，且只在 `win-launcher-config` 变化时处理；值未变化时不重复写 CSS 变量。
+
+### 2. 根组件不再订阅整棵 `groups`
+
+- **问题**：`App.tsx` 用 `useAppStore((state) => state.groups)` 订阅整棵分组树，只为查「外部拖入目标分组」的名字；改任何项目的颜色、名称、顺序都会让根组件连同整棵组件树重新渲染。
+- **修复**：改为只选出那个分组名（字符串），分组树其他变化不再触发根组件渲染。
+
+### 3. Vite 配置改用 Tauri v2 环境变量
+
+- **问题**：`vite.config.ts` 读的是 v1 的 `TAURI_PLATFORM` / `TAURI_DEBUG`，Tauri v2 CLI 只设置 `TAURI_ENV_*`。结果编译目标永远是 `es2020`，调试构建也永远压缩、没有 sourcemap；`envPrefix: 'TAURI_'` 还可能把 `TAURI_SIGNING_PRIVATE_KEY` 之类的变量暴露进前端产物。
+- **修复**：改读 `TAURI_ENV_PLATFORM` / `TAURI_ENV_DEBUG === 'true'`，`envPrefix` 收窄为 `TAURI_ENV_`（前端代码没有任何 `import.meta.env` 引用，不受影响）。
+
+### 4. 删除未使用的 `src/hooks/useEdgeSnap.ts`
+
+- 该 hook 在全项目没有任何引用（贴边早已由 `useStableEdgeDock` + Rust 原生 `edge_dock_native` 接管），删除 290 行死代码；它原本每 80–180ms 轮询窗口位置的逻辑从未实际运行。
+
+### 验证
+
+- `npx tsc --noEmit` 通过；`npx vitest run` 42 个测试文件 / 224 个用例全绿（新增 `src/lib/__tests__/edgeStripStyle.test.ts` 4 条：默认值、自定义色仅在关闭主题色时生效、空色回退、按值比较）。
+- `npm run build` 通过；`node scripts/verify-source-fixes.mjs` 新增 3 条必须 / 3 条禁止断言（触发条不得再 `setInterval`、App 不得订阅整棵 `groups`、Vite 不得再读 v1 变量名），输出 `OK`。
+
+---
+
+## V157 — 根目录历史说明文档归档到 docs/history
 
 纯整理，不涉及任何代码与功能改动。
 
