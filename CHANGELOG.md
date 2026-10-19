@@ -4,7 +4,32 @@
 
 ---
 
-## V163（最新）— 网站自带图标优先：页面有专门图标就用专门的，不再被平台通用图标顶掉
+## V164（最新）— 便捷版 exe 规范名统一为 `Yue Launcher.exe`
+
+> 只改命名与文档，不改功能：`Launcher` 首字母大写，与安装包 / 开始菜单里的产品名对齐。
+
+### 1. `AGENTS.md` 新增「exe 命名规则」
+
+- 写死链路：构建产物裸名仍是 `shortcut-launcher.exe`，**同步到 DeskBox 时文件名是 `Yue Launcher.exe`**；备份名 `Yue Launcher_<版本>.exe`。
+- 全文 7 处目标路径、备份路径、三步核对命令、替换脚本片段统一改成大写 `L`。
+- 说明 Windows 大小写不敏感：改大小写**不影响**开始菜单 `.lnk` 的 `TargetPath` 与 `HKCU\...\Run` 注册表项，两者仍能解析。
+
+### 2. 同步脚本与技能文档跟进
+
+- `~/.workbuddy-ai/skills/yue-launcher-release-publish/scripts/sync-portable.py`：`DST_DEFAULT`、备份文件名、docstring 三处全改为 `Yue Launcher`。
+- `yue-launcher-build-release` 技能文档：5 处便捷版路径说明同步为 `Yue Launcher.exe`。
+
+### 3. 本机便捷版文件改名
+
+- `C:\Users\yile\DeskBox\DeskBox\Yue launcher.exe` → `Yue Launcher.exe`（同一文件，仅改大小写；运行中的窗口不受影响）。
+
+### 验证
+
+- 四处版本号 + 两处 lock 版本全部 `0.1.164`。
+- `sync-portable.py --dry-run` 能定位目标文件并读到旧版本号。
+- 构建后便捷版同步到 v0.1.164，`Get-FileHash` 与构建产物一致。
+
+## V163 — 网站自带图标优先：页面有专门图标就用专门的，不再被平台通用图标顶掉
 
 > 修 `treapgogo.github.io/deepseek-whale-girl/` 这类「页面明明有自己的 logo，却显示 GitHub 图标」。
 

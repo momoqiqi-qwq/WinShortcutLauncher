@@ -36,11 +36,14 @@
 | | 路径 |
 | --- | --- |
 | 源（构建产物） | `src-tauri/target/release/shortcut-launcher.exe` |
-| 目标（便捷版，🔴 唯一有效位置） | `C:\Users\yile\DeskBox\DeskBox\Yue launcher.exe` |
-| 备份 | `.workbuddy/portable-backup/Yue launcher_<旧版本>.exe` |
+| 目标（便捷版，🔴 唯一有效位置） | `C:\Users\yile\DeskBox\DeskBox\Yue Launcher.exe` |
+| 备份 | `.workbuddy/portable-backup/Yue Launcher_<旧版本>.exe` |
 
-❌ **不是 `C:\Users\yile\Desktop\Yue launcher.exe`** —— 那是 V135 前后的旧位置，本机已经不存在。
+❌ **不是 `C:\Users\yile\Desktop\Yue Launcher.exe`** —— 那是 V135 前后的旧位置，本机已经不存在。
 位置对不上的话先看下一节的「三步核对」，别凭印象往桌面写文件。
+
+> **exe 命名规则（V164 起固定）**：构建产物裸名仍是 `shortcut-launcher.exe`，**同步到 DeskBox 时文件名是 `Yue Launcher.exe`**（`Launcher` 首字母大写，不是 `Yue launcher.exe`）。
+> 备份文件同样用 `Yue Launcher_<版本>.exe`。Windows 文件系统大小写不敏感，两种写法指向同一个文件，所以**改大小写不需要改快捷方式 / Run 注册表项**；但文档、脚本、快捷方式说明、Release 文案里一律写 `Yue Launcher.exe`，别再写小写 `l`。
 
 一键同步（零依赖；自带版本探测 + 备份 + 校验 + 失败回滚）：
 
@@ -127,18 +130,18 @@ $EX = "$env:TEMP\yue-extract"
 
 | 角色 | 路径 |
 | --- | --- |
-| **便捷版（唯一有效目标）** | `C:\Users\yile\DeskBox\DeskBox\Yue launcher.exe` |
+| **便捷版（唯一有效目标）** | `C:\Users\yile\DeskBox\DeskBox\Yue Launcher.exe` |
 | 开始菜单快捷方式 | `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Yue launcher.lnk` → 目标就是上面那个文件 |
-| 备份 | `E:\E-Develop-Project\tauri-shortcut-launcher\.workbuddy\portable-backup\Yue launcher_<旧版本>.exe` |
+| 备份 | `E:\E-Develop-Project\tauri-shortcut-launcher\.workbuddy\portable-backup\Yue Launcher_<旧版本>.exe` |
 
-**❌ 不要往 `C:\Users\yile\Desktop\Yue launcher.exe` 替换** —— 那是历史路径，本机**不存在**该文件；
+**❌ 不要往 `C:\Users\yile\Desktop\Yue Launcher.exe` 替换** —— 那是历史路径，本机**不存在**该文件；
 `yue-launcher-build-release` 技能文档里残留的「部署到桌面」是过期的（本次已一并改正）。
 
 位置不确定时**三步核对**，三者必须指向同一个文件：
 
 ```powershell
-& 'C:\Users\yile\.workbuddy-ai\bin\es.exe' 'Yue launcher.exe'                                        # 1) 全盘找
-Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'Yue launcher.exe' } |
+& 'C:\Users\yile\.workbuddy-ai\bin\es.exe' 'Yue Launcher.exe'                                        # 1) 全盘找
+Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'Yue Launcher.exe' } |
   Select-Object -ExpandProperty ExecutablePath                                                        # 2) 正在跑的实例
 (New-Object -ComObject WScript.Shell).CreateShortcut(
   'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Yue launcher.lnk').TargetPath                 # 3) 开始菜单指向
@@ -151,11 +154,11 @@ Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'Yue launcher.exe' } 
 
 ```powershell
 $NEW = "$env:TEMP\yue-extract\shortcut-launcher.exe"                                   # 第 3 步解出的裸 exe
-$DST = 'C:\Users\yile\DeskBox\DeskBox\Yue launcher.exe'                                # 🔴 唯一位置
+$DST = 'C:\Users\yile\DeskBox\DeskBox\Yue Launcher.exe'                                # 🔴 唯一位置
 $BAK = 'E:\E-Develop-Project\tauri-shortcut-launcher\.workbuddy\portable-backup'
 
 $OLD = (Get-Item $DST).VersionInfo.FileVersion                                          # 先记下旧版本，例如 0.1.151
-Copy-Item $DST "$BAK\Yue launcher_$OLD.exe" -Force                                      # 1) 备份旧版
+Copy-Item $DST "$BAK\Yue Launcher_$OLD.exe" -Force                                      # 1) 备份旧版
 Move-Item $DST "$DST.old-$OLD" -Force                                                   # 2) 改名（运行中也成功）
 Copy-Item $NEW $DST -Force                                                              # 3) 写入新版
 (Get-FileHash $NEW).Hash -eq (Get-FileHash $DST).Hash                                   # 4) 必须 True
