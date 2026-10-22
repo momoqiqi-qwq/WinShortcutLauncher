@@ -278,6 +278,11 @@ export interface DisplaySettings {
   windowControlHidden: WindowControlId[];
   /** 顶部父目录按字母排列前保存的原始顺序；null 表示当前不处于字母排序状态。 */
   sortGroupsSavedOrder: string[] | null;
+  /**
+   * 目录内项目切离「自定义排序」前保存的 id 序列；null 表示没有挂起的自定义顺序。
+   * 切回自定义排序时按它还原（V165）。
+   */
+  sortItemsSavedOrder: string[] | null;
   backgroundEnabled: boolean;
   backgroundImage: string;
   backgroundMediaKind: BackgroundMediaKind;

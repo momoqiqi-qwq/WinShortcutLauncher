@@ -575,6 +575,7 @@ export function normalizeDisplay(value?: unknown): DisplaySettings {
     windowControlOrder: normalizeWindowControlOrder(display?.windowControlOrder),
     windowControlHidden: normalizeWindowControlHidden((display as any)?.windowControlHidden),
     sortGroupsSavedOrder: normalizeSortGroupsSavedOrder((display as any)?.sortGroupsSavedOrder),
+    sortItemsSavedOrder: normalizeSortGroupsSavedOrder((display as any)?.sortItemsSavedOrder),
     backgroundEnabled: display?.backgroundEnabled === true && Boolean(backgroundImage),
     backgroundImage,
     backgroundMediaKind: (['auto', 'image', 'video'] as const).includes((display?.backgroundMediaKind ?? defaultDisplay.backgroundMediaKind) as any) ? (display?.backgroundMediaKind ?? defaultDisplay.backgroundMediaKind) : defaultDisplay.backgroundMediaKind,

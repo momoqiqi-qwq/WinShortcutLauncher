@@ -67,6 +67,39 @@ export function sortShortcutItemsForDisplay(items: ShortcutItem[], mode: SortMod
   return sorted;
 }
 
-export function sortShortcutItemsForStorage(items: ShortcutItem[], mode: SortMode): ShortcutItem[] {
-  return reindex(sortShortcutItemsForDisplay(items, mode, false));
+/**
+ * 当前项目按「自定义顺序」（order 字段）排列的 id 序列。
+ * 用于切离自定义排序前留档 —— 见 restoreCustomOrder。
+ */
+export function orderIds(items: ShortcutItem[]): string[] {
+  return items
+    .slice()
+    .sort(byOrder)
+    .map((item) => item.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
 }
+
+/**
+ * 按留档的 id 序列还原自定义顺序：留档里有的按留档排，留档之后新增的项目接在末尾。
+ *
+ * 顺序没有实际变化时返回 null（调用方据此跳过写入，避免无谓的 state 抖动）。
+ */
+export function restoreCustomOrder(items: ShortcutItem[], saved?: string[] | null): ShortcutItem[] | null {
+  if (!saved?.length || !items.length) return null;
+  const pool = new Map(items.map((item) => [item.id, item]));
+  const ordered: ShortcutItem[] = [];
+  for (const id of saved) {
+    const hit = pool.get(id);
+    if (hit) {
+      ordered.push(hit);
+      pool.delete(id);
+    }
+  }
+  if (!ordered.length) return null;
+  for (const item of items) {
+    if (pool.has(item.id)) ordered.push(item);
+  }
+  const changed = ordered.some((item, index) => item !== items[index]);
+  return changed ? reindex(ordered) : null;
+}
+

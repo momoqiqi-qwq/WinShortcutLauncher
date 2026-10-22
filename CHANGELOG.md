@@ -4,7 +4,31 @@
 
 ---
 
-## V164（最新）— 便捷版 exe 规范名统一为 `Yue Launcher.exe`
+## V165（最新）— 排序切回自定义时能还原原顺序
+
+> 修「按名称排过一次，再切回自定义，顺序就再也回不来了」。
+
+### 1. 根因：切换排序把 `order` 重写成了排序结果
+
+- `sortDirectoryItems()` 里同时做了两件事：写 `display.sortMode`，以及用 `sortShortcutItemsForStorage()` 把 `items` 的 `order` 按名称/类型**重新编号**。
+- 后果：`order` 就是用户的「自定义顺序」，被排一次就永久覆盖 —— 切回自定义时已经无据可依。
+- 本机实证（读取 leveldb 历史快照对比）：`Lovely系列` 目录原本自定义顺序是 `LovelyCarve磁盘取证 → LovelyHawk_dev → …`，执行一次「按名称」后首项被换成 `LovelyHawk_dev`（文件夹优先），切回 `custom` 也没有还原。
+
+### 2. 修法：排序只影响显示，另外留一份「自定义顺序」档
+
+- `sortDirectoryItems()` 不再改写 `items` 的 `order`，也不再写目录级 `sortMode`（全局切换不再顺带给当前目录塞一个覆盖）。
+- 新增 `display.sortItemsSavedOrder`（`string[] | null`，沿用 `sortGroupsSavedOrder` 的既有做法）：
+  - 切**离**自定义排序时，把当前 `order` 的 id 序列存进去（已存过就保留最早那份，不被后续排序覆盖）；
+  - 切**回**自定义排序时，按留档还原，留档之后新增的项目接在末尾，然后清空留档。
+- 新增 `lib/sort.ts` 的 `orderIds()` / `restoreCustomOrder()`；删掉只被这条 bug 用到的 `sortShortcutItemsForStorage()`，避免以后又拿它重排 `order`。
+- 顺带：`global` 作用域切换排序不再产生目录级 `sortMode` 覆盖（原来选「统一排序方式」会给当前目录留一个钉子，之后改全局都影响不到它）。
+
+### 验证
+
+- 新增 `src/stores/appStore/__tests__/v165SortOrderRestore.test.ts`（5 例）：切到按名称/按类型不改顺序、切走再切回原样恢复、`order` 被其它路径改过也能按留档还原、留档后新增项目接末尾、切排序不写目录级 `sortMode`。
+- `npx tsc --noEmit` 通过；`npx vitest run` 44 个文件 / 234 例全绿；`scripts/verify-source-fixes.mjs` OK。
+
+## V164 — 便捷版 exe 规范名统一为 `Yue Launcher.exe`
 
 > 只改命名与文档，不改功能：`Launcher` 首字母大写，与安装包 / 开始菜单里的产品名对齐。
 

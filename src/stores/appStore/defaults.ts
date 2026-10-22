@@ -99,6 +99,7 @@ export const defaultDisplay: DisplaySettings = {
   windowControlOrder: DEFAULT_WINDOW_CONTROL_ORDER,
   windowControlHidden: [],
   sortGroupsSavedOrder: null,
+  sortItemsSavedOrder: null,
   backgroundEnabled: false,
   backgroundImage: '',
   backgroundMediaKind: 'auto',

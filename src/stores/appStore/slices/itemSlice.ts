@@ -1,8 +1,7 @@
 import { cloneShortcutItemsForCopy, snapshotShortcutItems } from '../../../lib/itemCopy';
-import { reindex, sortShortcutItemsForStorage } from '../../../lib/sort';
-import type { Group, ShortcutItem } from '../../../types';
+import { orderIds, reindex, restoreCustomOrder } from '../../../lib/sort';
+import type { Directory, Group, ShortcutItem } from '../../../types';
 import type { AppSliceCreator, ItemActions } from '../types';
-import { cleanDisplayPatch } from '../normalizers';
 
 function collectItemsByIds(groups: readonly Group[], itemIds: readonly string[]): ShortcutItem[] {
   const uniqueIds = Array.from(new Set(itemIds.filter(Boolean)));
@@ -21,6 +20,37 @@ function collectItemsByIds(groups: readonly Group[], itemIds: readonly string[])
     if (found.size === wanted.size) break;
   }
   return uniqueIds.map((id) => found.get(id)).filter(Boolean) as ShortcutItem[];
+}
+
+/**
+ * 切换目录内项目的排序方式（V165）。
+ *
+ * ⚠️ 这里**绝不重写 items 的 order**：项目顺序就是用户的「自定义排序」，一旦按名称/类型
+ * 重新写过，切回自定义时原顺序就永久丢了（V164 及之前的 bug）。排序模式只影响显示，
+ * 由 display.sortMode 决定。
+ *
+ * 为了让切回可还原，切离 custom 时把当前自定义顺序存进 display.sortItemsSavedOrder
+ * （已存过就保留最早那份），切回 custom 时按它还原；留档之后新增的项目接在末尾。
+ */
+function withItemSortMode(directory: Directory, mode: string): Directory {
+  const display = directory.display ?? {};
+  const saved = display.sortItemsSavedOrder?.length ? display.sortItemsSavedOrder : null;
+
+  if (mode === 'custom') {
+    if (!saved) return directory;
+    const restored = restoreCustomOrder(directory.items, saved);
+    return {
+      ...directory,
+      items: restored ?? directory.items,
+      display: { ...display, sortItemsSavedOrder: null },
+    };
+  }
+
+  // 已经在「切走」状态：保留最初那份自定义顺序，别用当前（可能已被排过的）顺序覆盖。
+  if (saved) return directory;
+  const snapshot = orderIds(directory.items);
+  if (!snapshot.length) return directory;
+  return { ...directory, display: { ...display, sortItemsSavedOrder: snapshot } };
 }
 
 export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
@@ -108,20 +138,18 @@ export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
       directories: group.directories.map((dir) => (dir.id === directoryId ? { ...dir, items: [] } : dir)),
     })),
   })),
-  sortDirectoryItems: (directoryId, mode) => set((state) => ({
-    groups: state.groups.map((group) => ({
-      ...group,
-      directories: group.directories.map((dir) =>
-        dir.id === directoryId
-          ? {
-              ...dir,
-              display: cleanDisplayPatch({ ...(dir.display ?? {}), sortMode: mode }),
-              items: sortShortcutItemsForStorage(dir.items, mode),
-            }
-          : dir,
-      ),
-    })),
-  })),
+  sortDirectoryItems: (directoryId, mode) => set((state) => {
+    let hit = false;
+    const groups = state.groups.map((group) => {
+      if (!group.directories.some((dir) => dir.id === directoryId)) return group;
+      hit = true;
+      return {
+        ...group,
+        directories: group.directories.map((dir) => (dir.id === directoryId ? withItemSortMode(dir, mode) : dir)),
+      };
+    });
+    return hit ? { groups } : {};
+  }),
   deleteSelectedItems: () => set((state) => {
     const ids = new Set(state.selectedItemIds);
     return {
