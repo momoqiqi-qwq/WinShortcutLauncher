@@ -4,7 +4,43 @@
 
 ---
 
-## V166（最新）— 左侧子目录也用「同色相邻成组框」圈起来
+## V167（最新）— 项目、子目录、父目录都支持 Ctrl+X 剪切粘贴（移动）
+
+> 之前只有「复制 → 粘贴」：Ctrl+C 一份、Ctrl+V 再多一份副本，想把东西挪个位置只能靠右键菜单里的「移动到父目录」，父目录本身根本没有移动的办法。这次把 Ctrl+X 补齐，三种对象一条规则：**Ctrl+X 之后 Ctrl+V 是移动，Ctrl+C 之后 Ctrl+V 还是复制。**
+
+### 1. 一套模式标记，三种对象共用
+
+- 新增 `src/lib/clipboardMode.ts`：`ClipboardMode = 'copy' | 'cut'`。剪贴板里存的内容结构一点没变，只多带一个「这次是剪切还是复制」的标记。
+- 项目走 `itemClipboardMode`（新状态，`src/stores/appStore/types.ts` 的 `ItemSlice`），子目录 / 父目录走 `navigationClipboard.mode`（`src/lib/navigationClipboard.ts`）。老剪贴板没有 `mode` 字段，一律按 `copy` 处理，所以升级不会改变已有行为。
+
+### 2. 项目：剪切粘贴 = 移动
+
+- `itemSlice` 新增 `cutItemsToClipboard(itemIds)`：和复制一样取快照，但标记 `itemClipboardMode: 'cut'`。
+- `pasteItemsToDirectory()` 按模式分流：`cut` 时把项目**保留原 id** 搬到目标子目录（与既有的 `moveItemToDirectory` 一致，不会重置图标缓存/启动统计），并从原位置删掉；已经就在目标子目录里的那部分跳过。粘贴完剪贴板清空、模式回落 `copy`，不会一粘再粘。
+
+### 3. 子目录：剪切粘贴 = 换父目录
+
+- `navigationSlice` 新增 `cutDirectoryToClipboard(directoryId)`。剪贴板里的 `directory` 仍是快照，但**快照保留了原 id**，所以 `pasteDirectoryToGroup()` 在 `cut` 模式下直接按 id 找回真实子目录、交给既有的 `moveDirectoryToGroup()` 完成移动（空父目录自动补一个「常用」的逻辑一并复用），然后清掉剪贴板。粘回原来那个父目录时不动数据。
+
+### 4. 父目录：剪切粘贴 = 合并到目标父目录
+
+- 新增 `cutGroupToClipboard(groupId)` 与 `pasteGroupIntoGroupFromClipboard(targetGroupId)`：父目录没有「上级」可言，移动的唯一含义就是并进另一个父目录 —— 走既有的 `mergeGroup()`（子目录换新 id 搬过去、源父目录删除）。粘到自己身上、或只剩一个父目录时什么都不做。
+
+### 5. 快捷键路由
+
+- `src/hooks/useGlobalShortcutRouter.ts`：新增 Ctrl+X 分支，优先级与 Ctrl+C 完全一致 —— 先看选中的项目，再看侧栏选中的子目录，最后看父目录；每种都给出「已剪切…，切到目标后 Ctrl+V」的提示。
+- Ctrl+V 在 `cut` 模式下把提示语从「已粘贴」改成**「已移动」**；父目录合并会先弹一次确认（会删掉原来的父目录，不能无声执行）。
+
+### 6. 右键菜单
+
+- `ItemContextMenu` 加「剪切项目」、`DirectoryContextMenu` 加「剪切子目录」、`GroupContextMenu` 加「剪切父目录」（父目录 / 子目录的剪切项跟随「复制」的显示开关，隐藏了复制就等于隐藏了剪切）。
+- 粘贴项在剪切模式下说明自己会移动/合并：「粘贴父目录…（合并到此）」，粘贴完成后的通知也说「已把子目录移动到…」。
+
+### 7. 测试
+
+- 新增 `src/stores/appStore/__tests__/v167ClipboardCut.test.ts`（8 条）：项目剪切的移动语义与 id 保留、粘回原位不产生副本、复制的克隆语义未被破坏、子目录剪切换父目录 / 粘同组不动、父目录剪切合并 / 粘自己不动、复制子目录仍是新 id。
+
+## V166 — 左侧子目录也用「同色相邻成组框」圈起来
 
 > V156 只在内容区项目卡片上把同色相邻的几项圈成一组，左侧子目录虽然能各自上色，却没有这层「这是一组」的框。
 

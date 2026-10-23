@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardPaste, Copy, Eraser, FolderInput, FolderOpen, FolderSymlink, Merge, Palette, Pencil, RefreshCw, Repeat2, StickyNote, Trash2, Type } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Copy, Eraser, FolderInput, FolderOpen, FolderSymlink, Merge, Palette, Pencil, RefreshCw, Repeat2, Scissors, StickyNote, Trash2, Type } from 'lucide-react';
 import { useState, type MouseEvent } from 'react';
 import type { ContextMenuState, DirectoryKind } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -41,6 +41,7 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   const pasteItemsToDirectory = useAppStore((state) => state.pasteItemsToDirectory);
   const navigationClipboard = useAppStore((state) => state.navigationClipboard);
   const copyDirectoryToClipboard = useAppStore((state) => state.copyDirectoryToClipboard);
+  const cutDirectoryToClipboard = useAppStore((state) => state.cutDirectoryToClipboard);
   const pasteDirectoryToGroup = useAppStore((state) => state.pasteDirectoryToGroup);
   const moveDirectoryToGroup = useAppStore((state) => state.moveDirectoryToGroup);
   const experience = useAppStore((state) => state.experience);
@@ -213,14 +214,26 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
     onClose();
   }
 
+  function cutDirectory() {
+    if (cutDirectoryToClipboard(currentDirectory.id)) {
+      showLauncherNotice(`已剪切子目录「${currentDirectory.name}」；切到目标父目录后按 Ctrl+V 即可移动过去`);
+    }
+    onClose();
+  }
+
   function pasteDirectory() {
     if (!copiedDirectory) return;
+    const isCut = navigationClipboard?.kind === 'directory' && navigationClipboard.mode === 'cut';
     const pastedId = pasteDirectoryToGroup(currentGroup.id);
     if (pastedId) {
       const pasted = useAppStore.getState().groups
         .find((entry) => entry.id === currentGroup.id)
         ?.directories.find((entry) => entry.id === pastedId);
-      showLauncherNotice(`已粘贴子目录到「${currentGroup.name}」${pasted ? `：${pasted.name}` : ''}`);
+      showLauncherNotice(isCut
+        ? `已把子目录移动到「${currentGroup.name}」${pasted ? `：${pasted.name}` : ''}`
+        : `已粘贴子目录到「${currentGroup.name}」${pasted ? `：${pasted.name}` : ''}`);
+    } else if (isCut) {
+      showLauncherNotice(`无法移动到「${currentGroup.name}」（已经在这里，或该父目录已有同类型子目录）`);
     } else if ((copiedDirectory.kind ?? 'normal') === 'all') {
       showLauncherNotice(`「${currentGroup.name}」已经有“全部”子目录，不能重复粘贴`);
     }
@@ -265,6 +278,7 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
       onContextMenu={(event) => event.preventDefault()}
     >
       {show('copyDirectory') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={copyDirectory}><span>复制子目录</span><Copy size={15} /></div>}
+      {show('copyDirectory') && <div className="menu-item" title="剪切后切到目标父目录按 Ctrl+V，子目录会直接移过去（不是副本）" onMouseEnter={() => setOpenSubmenu(null)} onClick={cutDirectory}><span>剪切子目录</span><Scissors size={15} /></div>}
       {show('pasteDirectory') && <div className={`menu-item ${canPasteDirectory ? '' : 'disabled'}`} title={copiedDirectory && !canPasteDirectory ? '目标父目录已经存在同类型的“全部/开始菜单”子目录' : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canPasteDirectory && pasteDirectory()}><span>粘贴子目录{copiedDirectory ? `「${copiedDirectory.name}」` : ''}</span><ClipboardPaste size={15} /></div>}
       {show('moveToGroup') && <div className={`menu-item with-submenu ${moveTargets.length === 0 ? 'disabled' : ''}`} onMouseEnter={() => setOpenSubmenu('move')} onClick={() => moveTargets.length > 0 && setOpenSubmenu((value) => value === 'move' ? null : 'move')}>
         <span>移动到父目录</span><ChevronRight size={14} />

@@ -1,11 +1,19 @@
 import { makeId } from './id';
 import { getUniqueDirectoryName } from './directoryExperience';
 import { reindex } from './sort';
+import type { ClipboardMode } from './clipboardMode';
 import type { AppConfig, Directory, Group } from '../types';
 
+/**
+ * 导航剪贴板。
+ *
+ * `mode` 缺省（老配置 / 老调用）视为 `copy`：粘贴时克隆一份。
+ * `mode: 'cut'`（Ctrl+X）时粘贴是移动 —— `directory` / `group` 都是**快照**，
+ * 但快照里的 id 就是原 id，所以移动时按 id 找回真实目录 / 父目录，不会克隆。
+ */
 export type NavigationClipboard =
-  | { kind: 'directory'; copiedAt: number; sourceGroupName: string; directory: Directory }
-  | { kind: 'group'; copiedAt: number; group: Group }
+  | { kind: 'directory'; copiedAt: number; sourceGroupName: string; directory: Directory; mode?: ClipboardMode }
+  | { kind: 'group'; copiedAt: number; group: Group; mode?: ClipboardMode }
   | null;
 
 function deepClone<T>(value: T): T {

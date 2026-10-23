@@ -185,8 +185,30 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
         copiedAt: Date.now(),
         sourceGroupName: group.name,
         directory: snapshotDirectory(directory),
+        mode: 'copy',
       },
       itemClipboard: [],
+      itemClipboardMode: 'copy',
+      selectedNavTarget: { kind: 'directory', id: directoryId },
+    });
+    return true;
+  },
+  cutDirectoryToClipboard: (directoryId) => {
+    const state = get();
+    const group = state.groups.find((entry) => entry.directories.some((directory) => directory.id === directoryId));
+    const directory = group?.directories.find((entry) => entry.id === directoryId);
+    if (!group || !directory) return false;
+    set({
+      navigationClipboard: {
+        kind: 'directory',
+        copiedAt: Date.now(),
+        sourceGroupName: group.name,
+        // 快照保留原 id：剪切粘贴时按 id 找回真实目录移动，不克隆。
+        directory: snapshotDirectory(directory),
+        mode: 'cut',
+      },
+      itemClipboard: [],
+      itemClipboardMode: 'copy',
       selectedNavTarget: { kind: 'directory', id: directoryId },
     });
     return true;
@@ -195,8 +217,20 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
     const group = get().groups.find((entry) => entry.id === groupId);
     if (!group) return false;
     set({
-      navigationClipboard: { kind: 'group', copiedAt: Date.now(), group: snapshotGroup(group) },
+      navigationClipboard: { kind: 'group', copiedAt: Date.now(), group: snapshotGroup(group), mode: 'copy' },
       itemClipboard: [],
+      itemClipboardMode: 'copy',
+      selectedNavTarget: { kind: 'group', id: groupId },
+    });
+    return true;
+  },
+  cutGroupToClipboard: (groupId) => {
+    const group = get().groups.find((entry) => entry.id === groupId);
+    if (!group) return false;
+    set({
+      navigationClipboard: { kind: 'group', copiedAt: Date.now(), group: snapshotGroup(group), mode: 'cut' },
+      itemClipboard: [],
+      itemClipboardMode: 'copy',
       selectedNavTarget: { kind: 'group', id: groupId },
     });
     return true;
@@ -206,7 +240,25 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
     const state = get();
     const clipboard = state.navigationClipboard;
     const targetGroup = state.groups.find((group) => group.id === groupId);
-    if (clipboard?.kind !== 'directory' || !targetGroup || !canPasteDirectoryIntoGroup(clipboard.directory, targetGroup)) return null;
+    if (clipboard?.kind !== 'directory' || !targetGroup) return null;
+
+    // v167: 剪切模式 —— 移动真实目录（保留 id），原父目录里那份要删掉。
+    if (clipboard.mode === 'cut') {
+      const directoryId = clipboard.directory.id;
+      const sourceGroup = state.groups.find((group) => group.directories.some((directory) => directory.id === directoryId));
+      if (!sourceGroup) {
+        // 源目录已经不在了（被删 / 换配置），剪贴板作废。
+        set({ navigationClipboard: null });
+        return null;
+      }
+      if (sourceGroup.id === groupId) return null;
+      const moved = get().moveDirectoryToGroup(directoryId, groupId);
+      if (!moved) return null;
+      set({ navigationClipboard: null });
+      return directoryId;
+    }
+
+    if (!canPasteDirectoryIntoGroup(clipboard.directory, targetGroup)) return null;
     const directory = cloneDirectoryForPaste(
       clipboard.directory,
       targetGroup.directories.length,
@@ -244,6 +296,22 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
       selectedNavTarget: { kind: 'group', id: group.id },
     }));
     return group.id;
+  },
+  pasteGroupIntoGroupFromClipboard: (targetGroupId) => {
+    const state = get();
+    const clipboard = state.navigationClipboard;
+    if (clipboard?.kind !== 'group') return null;
+    const sourceGroupId = clipboard.group.id;
+    if (sourceGroupId === targetGroupId) return null;
+    if (!state.groups.some((group) => group.id === sourceGroupId)) {
+      set({ navigationClipboard: null });
+      return null;
+    }
+    const target = state.groups.find((group) => group.id === targetGroupId);
+    if (!target) return null;
+    get().mergeGroup(sourceGroupId, targetGroupId);
+    set({ navigationClipboard: null });
+    return targetGroupId;
   },
   moveDirectoryToGroup: (directoryId, targetGroupId) => {
     const state = get();

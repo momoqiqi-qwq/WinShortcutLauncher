@@ -83,16 +83,66 @@ export function useGlobalShortcutRouter({
           return;
         }
       }
+      if (event.ctrlKey && !event.altKey && !event.shiftKey && event.code === 'KeyX') {
+        if (state.selectedItemIds.length > 0) {
+          event.preventDefault();
+          const count = state.cutItemsToClipboard(state.selectedItemIds);
+          if (count > 0) showLauncherNotice(`已剪切 ${count} 个项目，切换到目标子目录后 Ctrl+V 即可移动过去`);
+          return;
+        }
+        if (state.selectedNavTarget?.kind === 'directory') {
+          event.preventDefault();
+          const directory = state.groups.flatMap((group) => group.directories).find((entry) => entry.id === state.selectedNavTarget?.id);
+          if (directory && state.cutDirectoryToClipboard(directory.id)) {
+            showLauncherNotice(`已剪切子目录「${directory.name}」，切到目标父目录后 Ctrl+V 即可移动过去`);
+          }
+          return;
+        }
+        if (state.selectedNavTarget?.kind === 'group') {
+          event.preventDefault();
+          const group = state.groups.find((entry) => entry.id === state.selectedNavTarget?.id);
+          if (group && state.cutGroupToClipboard(group.id)) {
+            showLauncherNotice(`已剪切父目录「${group.name}」，在目标父目录上 Ctrl+V 即可合并过去`);
+          }
+          return;
+        }
+      }
       if (event.ctrlKey && !event.altKey && !event.shiftKey && event.code === 'KeyV') {
-        if (state.navigationClipboard?.kind === 'group') {
+        const clipboard = state.navigationClipboard;
+        const clipboardGroupId = clipboard?.kind === 'group' ? clipboard.group.id : null;
+        if (clipboard?.kind === 'group' && clipboard.mode === 'cut') {
+          event.preventDefault();
+          const selectedGroupId = state.selectedNavTarget?.kind === 'group'
+            ? state.selectedNavTarget.id
+            : state.selectedNavTarget?.kind === 'directory'
+              ? state.groups.find((group) => group.directories.some((directory) => directory.id === state.selectedNavTarget?.id))?.id
+              : undefined;
+          const targetGroup = state.groups.find((group) => group.id === selectedGroupId) ?? state.getActiveGroup();
+          if (!clipboardGroupId) return;
+          if (!targetGroup || targetGroup.id === clipboardGroupId) {
+            showLauncherNotice(`父目录「${clipboard.group.name}」已经在这里了，换个父目录再粘贴`);
+            return;
+          }
+          if (state.groups.length <= 1) {
+            showLauncherNotice('只有一个父目录，无处合并');
+            return;
+          }
+          if (await uiConfirm(`确定把父目录「${clipboard.group.name}」合并到「${targetGroup.name}」吗？合并后原来的父目录会被删除。`)) {
+            const mergedId = state.pasteGroupIntoGroupFromClipboard(targetGroup.id);
+            if (mergedId) showLauncherNotice(`已把父目录「${clipboard.group.name}」合并到「${targetGroup.name}」`);
+          }
+          return;
+        }
+        if (clipboard?.kind === 'group') {
           event.preventDefault();
           const pastedId = state.pasteGroupFromClipboard();
           const pasted = pastedId ? useAppStore.getState().groups.find((group) => group.id === pastedId) : undefined;
           if (pasted) showLauncherNotice(`已粘贴父目录「${pasted.name}」`);
           return;
         }
-        if (state.navigationClipboard?.kind === 'directory') {
+        if (clipboard?.kind === 'directory') {
           event.preventDefault();
+          const isCut = clipboard.mode === 'cut';
           const selectedGroupId = state.selectedNavTarget?.kind === 'group'
             ? state.selectedNavTarget.id
             : state.selectedNavTarget?.kind === 'directory'
@@ -103,8 +153,15 @@ export function useGlobalShortcutRouter({
           const pasted = pastedId
             ? useAppStore.getState().groups.find((group) => group.id === targetGroup?.id)?.directories.find((directory) => directory.id === pastedId)
             : undefined;
-          if (pasted && targetGroup) showLauncherNotice(`已粘贴子目录到「${targetGroup.name}」：${pasted.name}`);
-          else if (targetGroup && (state.navigationClipboard.directory.kind ?? 'normal') === 'all') showLauncherNotice(`「${targetGroup.name}」已经有“全部”子目录，不能重复粘贴`);
+          if (pasted && targetGroup) {
+            showLauncherNotice(isCut
+              ? `已把子目录「${pasted.name}」移动到「${targetGroup.name}」`
+              : `已粘贴子目录到「${targetGroup.name}」：${pasted.name}`);
+          } else if (isCut && targetGroup) {
+            showLauncherNotice(`「${pasted?.name ?? clipboard.directory.name}」无法移动到「${targetGroup.name}」（已在其中，或该父目录已有同类型子目录）`);
+          } else if (targetGroup && (clipboard.directory.kind ?? 'normal') === 'all') {
+            showLauncherNotice(`「${targetGroup.name}」已经有“全部”子目录，不能重复粘贴`);
+          }
           return;
         }
         if (state.itemClipboard.length > 0) {
@@ -115,8 +172,15 @@ export function useGlobalShortcutRouter({
             : activeGroup?.directories.find((directory) => (directory.kind ?? 'normal') === 'normal');
           if (target) {
             event.preventDefault();
+            const isCut = state.itemClipboardMode === 'cut';
             const count = state.pasteItemsToDirectory(target.id);
-            if (count > 0) showLauncherNotice(`已粘贴 ${count} 个项目到「${target.name}」`);
+            if (count > 0) {
+              showLauncherNotice(isCut
+                ? `已移动 ${count} 个项目到「${target.name}」`
+                : `已粘贴 ${count} 个项目到「${target.name}」`);
+            } else if (isCut) {
+              showLauncherNotice(`这些项目已经都在「${target.name}」里了`);
+            }
           }
           return;
         }

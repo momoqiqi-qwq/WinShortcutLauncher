@@ -58,6 +58,7 @@ export const useAppStore = create<AppState>()(
         selectedItemIds: [],
         multiSelectMode: false,
         itemClipboard: [],
+        itemClipboardMode: 'copy',
         selectedNavTarget: null,
         navigationClipboard: null,
         settingsOpen: false,

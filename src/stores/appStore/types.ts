@@ -27,6 +27,7 @@ import type {
   TransferStationSettings,
 } from '../../utils/v16Types';
 import type { NavigationClipboard } from '../../lib/navigationClipboard';
+import type { ClipboardMode } from '../../lib/clipboardMode';
 import type { CreateShortcutsResult } from '../../lib/folderMirror';
 
 export interface NavigationSlice {
@@ -58,10 +59,16 @@ export interface NavigationSlice {
   reorderDirectories: (groupId: string, directoryIds: string[]) => void;
   setSelectedNavTarget: (target: { kind: 'group' | 'directory'; id: string } | null) => void;
   copyDirectoryToClipboard: (directoryId: string) => boolean;
+  /** v167: Ctrl+X 子目录 —— 粘贴时移动而不是复制。 */
+  cutDirectoryToClipboard: (directoryId: string) => boolean;
   copyGroupToClipboard: (groupId: string) => boolean;
+  /** v167: Ctrl+X 父目录 —— 粘贴到另一个父目录 = 合并（原父目录消失）。 */
+  cutGroupToClipboard: (groupId: string) => boolean;
   clearNavigationClipboard: () => void;
   pasteDirectoryToGroup: (groupId: string) => string | null;
   pasteGroupFromClipboard: () => string | null;
+  /** v167: 把剪贴板里的父目录（剪切模式）合并进目标父目录，返回目标 id。 */
+  pasteGroupIntoGroupFromClipboard: (targetGroupId: string) => string | null;
   moveDirectoryToGroup: (directoryId: string, targetGroupId: string) => boolean;
   addDirectory: (groupId: string, name: string, kind?: DirectoryKind) => string;
   /** 设置 / 清除映射子目录被镜像的文件夹；传空串表示清除。 */
@@ -78,6 +85,8 @@ export interface ItemSlice {
   selectedItemIds: string[];
   multiSelectMode: boolean;
   itemClipboard: ShortcutItem[];
+  /** v167: 项目剪贴板模式 —— copy 粘贴克隆，cut 粘贴移动。 */
+  itemClipboardMode: ClipboardMode;
   reorderItems: (directoryId: string, itemIds: string[]) => void;
   selectItem: (itemId: string, append?: boolean) => void;
   selectItems: (itemIds: string[], append?: boolean) => void;
@@ -97,6 +106,8 @@ export interface ItemSlice {
   moveItemToDirectory: (itemId: string, directoryId: string) => void;
   duplicateItem: (itemId: string) => void;
   copyItemsToClipboard: (itemIds: string[]) => number;
+  /** v167: Ctrl+X 项目 —— 粘贴时移动而不是复制。 */
+  cutItemsToClipboard: (itemIds: string[]) => number;
   pasteItemsToDirectory: (directoryId: string) => number;
   clearItemClipboard: () => void;
   recordItemLaunch: (itemId: string) => void;
@@ -188,7 +199,7 @@ export interface MappedSlice {
 }
 
 export type NavigationActions = Omit<NavigationSlice, 'activeGroupId' | 'activeDirectoryId' | 'selectedNavTarget' | 'navigationClipboard' | 'settingsOpen'>;
-export type ItemActions = Omit<ItemSlice, 'selectedItemIds' | 'multiSelectMode' | 'itemClipboard'>;
+export type ItemActions = Omit<ItemSlice, 'selectedItemIds' | 'multiSelectMode' | 'itemClipboard' | 'itemClipboardMode'>;
 export type MediaActions = Omit<MediaSlice, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts'>;
 export type StartMenuActions = Omit<StartMenuSlice, 'startMenuItems' | 'startMenuLoading' | 'startMenuError' | 'startMenuFolder' | 'startMenuLoadedAt'>;
 export type MappedActions = Omit<MappedSlice, 'mappedItems' | 'mappedLoading' | 'mappedError' | 'mappedLoadedAt'>;

@@ -61,6 +61,7 @@ export const createConfigSlice: AppSliceCreator<ConfigSlice> = (set, get) => ({
       selectedItemIds: [],
       multiSelectMode: false,
       itemClipboard: [],
+      itemClipboardMode: 'copy',
       selectedNavTarget: null,
       settingsOpen: get().settingsOpen,
     };
@@ -98,6 +99,7 @@ export const createConfigSlice: AppSliceCreator<ConfigSlice> = (set, get) => ({
       selectedItemIds: [],
       multiSelectMode: false,
       itemClipboard: [],
+      itemClipboardMode: 'copy',
       navigationClipboard: null,
       selectedNavTarget: null,
       settingsOpen: false,

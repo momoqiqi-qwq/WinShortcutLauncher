@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardCopy, ClipboardPaste, Copy, CopyPlus, FolderOpen, ImagePlus, Palette, Pencil, Pin, PinOff, RefreshCw, Shield, Sparkles, Trash2, CheckSquare, Type } from 'lucide-react';
+import { ChevronRight, ClipboardCopy, ClipboardPaste, Copy, CopyPlus, FolderOpen, ImagePlus, Palette, Pencil, Pin, PinOff, RefreshCw, Scissors, Shield, Sparkles, Trash2, CheckSquare, Type } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import type { BrowserRouteOverride, ContextMenuState, ItemClickAction, ShortcutItem, ShortcutType } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -176,6 +176,8 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
   const moveItemToDirectory = useAppStore((state) => state.moveItemToDirectory);
   const duplicateItem = useAppStore((state) => state.duplicateItem);
   const copyItemsToClipboard = useAppStore((state) => state.copyItemsToClipboard);
+  const cutItemsToClipboard = useAppStore((state) => state.cutItemsToClipboard);
+  const itemClipboardMode = useAppStore((state) => state.itemClipboardMode);
   const itemClipboard = useAppStore((state) => state.itemClipboard);
   const pasteItemsToDirectory = useAppStore((state) => state.pasteItemsToDirectory);
   const startMenuItems = useAppStore((state) => state.startMenuItems);
@@ -353,12 +355,22 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
     onClose();
   }
 
+  function cutActionItems() {
+    const count = cutItemsToClipboard(actionItemIds);
+    if (count > 0) showLauncherNotice(`已剪切 ${count} 个项目，切到目标子目录后按 Ctrl+V 即可移动过去`);
+    onClose();
+  }
+
   function pasteActionItems() {
     const sourceDirectory = groups.flatMap((group) => group.directories).find((directory) => directory.items.some((entry) => entry.id === currentItem.id));
     const targetDirectory = (activeDirectory?.kind ?? 'normal') === 'normal' ? activeDirectory : sourceDirectory;
     if (!targetDirectory || (targetDirectory.kind ?? 'normal') !== 'normal') return;
     const count = pasteItemsToDirectory(targetDirectory.id);
-    if (count > 0) showLauncherNotice(`已粘贴 ${count} 个项目到「${targetDirectory.name}」`);
+    if (count > 0) {
+      showLauncherNotice(itemClipboardMode === 'cut'
+        ? `已移动 ${count} 个项目到「${targetDirectory.name}」`
+        : `已粘贴 ${count} 个项目到「${targetDirectory.name}」`);
+    }
     onClose();
   }
 
@@ -508,6 +520,7 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
           <span>{currentItem.pinned ? '取消固定项目' : '固定项目到前面'}</span>{currentItem.pinned ? <PinOff size={14} /> : <Pin size={14} />}
         </div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={copyActionItems}><span>复制项目{actionCount > 1 ? `（${actionCount} 项）` : ''}</span><Copy size={14} /></div>
+        <div className="menu-item" title="剪切后到目标子目录按 Ctrl+V，项目会直接移动过去（不会产生副本）" onMouseEnter={() => setOpenSubmenu(null)} onClick={cutActionItems}><span>剪切项目{actionCount > 1 ? `（${actionCount} 项）` : ''}</span><Scissors size={14} /></div>
         <div className={`menu-item ${itemClipboard.length ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => itemClipboard.length && pasteActionItems()}><span>粘贴项目{itemClipboard.length ? `（${itemClipboard.length} 项）` : ''}</span><ClipboardPaste size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={duplicateCurrentItem}><span>创建当前项目副本</span><CopyPlus size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void copyText(currentItem.path, currentItem.type === 'url' ? '网址' : '路径')}><span>复制{currentItem.type === 'url' ? '网址' : '路径'}</span><ClipboardCopy size={14} /></div>

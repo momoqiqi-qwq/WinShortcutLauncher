@@ -60,6 +60,7 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   const sortDirectoryItems = useAppStore((state) => state.sortDirectoryItems);
   const clearSelection = useAppStore((state) => state.clearSelection);
   const itemClipboard = useAppStore((state) => state.itemClipboard);
+  const itemClipboardMode = useAppStore((state) => state.itemClipboardMode);
   const pasteItemsToDirectory = useAppStore((state) => state.pasteItemsToDirectory);
   const addToStartMenu = useAppStore((state) => state.addToStartMenu);
   const addUrlToStartMenu = useAppStore((state) => state.addUrlToStartMenu);
@@ -221,7 +222,11 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
 
   function pasteItems() {
     const count = pasteItemsToDirectory(targetDirectoryId);
-    if (count > 0) showLauncherNotice(`已粘贴 ${count} 个项目到当前子目录`);
+    if (count > 0) {
+      showLauncherNotice(itemClipboardMode === 'cut'
+        ? `已移动 ${count} 个项目到当前子目录`
+        : `已粘贴 ${count} 个项目到当前子目录`);
+    }
     onClose();
   }
 

@@ -1,4 +1,4 @@
-import { ChevronRight, ClipboardPaste, Copy, FolderPlus, Merge, Palette, Trash2 } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Copy, FolderPlus, Merge, Palette, Scissors, Trash2 } from 'lucide-react';
 import { useMemo, useState, type MouseEvent } from 'react';
 import type { ContextMenuState } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -34,6 +34,8 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
   const setGroupColor = useAppStore((state) => state.setGroupColor);
   const navigationClipboard = useAppStore((state) => state.navigationClipboard);
   const copyGroupToClipboard = useAppStore((state) => state.copyGroupToClipboard);
+  const cutGroupToClipboard = useAppStore((state) => state.cutGroupToClipboard);
+  const pasteGroupIntoGroupFromClipboard = useAppStore((state) => state.pasteGroupIntoGroupFromClipboard);
   const pasteGroupFromClipboard = useAppStore((state) => state.pasteGroupFromClipboard);
   const pasteDirectoryToGroup = useAppStore((state) => state.pasteDirectoryToGroup);
   const experience = useAppStore((state) => state.experience);
@@ -47,6 +49,7 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
   const targetGroups = groups.filter((entry) => entry.id !== currentGroup.id);
   const copiedDirectory = navigationClipboard?.kind === 'directory' ? navigationClipboard.directory : null;
   const copiedGroup = navigationClipboard?.kind === 'group' ? navigationClipboard.group : null;
+  const cutGroup = navigationClipboard?.kind === 'group' && navigationClipboard.mode === 'cut' ? navigationClipboard.group : null;
   const canPasteDirectory = Boolean(copiedDirectory && canPasteDirectoryIntoGroup(copiedDirectory, currentGroup));
 
   function createGroup() {
@@ -61,8 +64,35 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
     onClose();
   }
 
-  function pasteGroup() {
+  function cutGroupAction() {
+    if (cutGroupToClipboard(currentGroup.id)) {
+      showLauncherNotice(`已剪切父目录「${currentGroup.name}」；在目标父目录上按 Ctrl+V 会合并过去`);
+    }
+    onClose();
+  }
+
+  async function pasteGroup() {
     if (!copiedGroup) return;
+    // v167: 剪切模式下的父目录只能「合并」到目标父目录，不能原地再克隆一份。
+    if (cutGroup) {
+      if (copiedGroup.id === currentGroup.id) {
+        showLauncherNotice(`父目录「${copiedGroup.name}」已经在这里了，换个父目录再粘贴`);
+        onClose();
+        return;
+      }
+      if (groups.length <= 1) {
+        showLauncherNotice('只有一个父目录，无处合并');
+        onClose();
+        return;
+      }
+      const ok = await uiConfirm(`确定把父目录「${copiedGroup.name}」合并到「${currentGroup.name}」吗？合并后原来的父目录会被删除。`);
+      if (ok) {
+        const mergedId = pasteGroupIntoGroupFromClipboard(currentGroup.id);
+        if (mergedId) showLauncherNotice(`已把父目录「${copiedGroup.name}」合并到「${currentGroup.name}」`);
+      }
+      onClose();
+      return;
+    }
     const pastedId = pasteGroupFromClipboard();
     if (pastedId) {
       const pasted = useAppStore.getState().groups.find((entry) => entry.id === pastedId);
@@ -73,12 +103,17 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
 
   function pasteDirectory() {
     if (!copiedDirectory) return;
+    const isCut = navigationClipboard?.kind === 'directory' && navigationClipboard.mode === 'cut';
     const pastedId = pasteDirectoryToGroup(currentGroup.id);
     if (pastedId) {
       const pasted = useAppStore.getState().groups
         .find((entry) => entry.id === currentGroup.id)
         ?.directories.find((entry) => entry.id === pastedId);
-      showLauncherNotice(`已粘贴子目录到「${currentGroup.name}」${pasted ? `：${pasted.name}` : ''}`);
+      showLauncherNotice(isCut
+        ? `已把子目录移动到「${currentGroup.name}」${pasted ? `：${pasted.name}` : ''}`
+        : `已粘贴子目录到「${currentGroup.name}」${pasted ? `：${pasted.name}` : ''}`);
+    } else if (isCut) {
+      showLauncherNotice(`无法移动到「${currentGroup.name}」（已经在这里，或该父目录已有同类型子目录）`);
     } else if ((copiedDirectory.kind ?? 'normal') === 'all' || (copiedDirectory.kind ?? 'normal') === 'startMenu') {
       const label = (copiedDirectory.kind ?? 'normal') === 'startMenu' ? '开始菜单' : '全部';
       showLauncherNotice(`「${currentGroup.name}」已经有“${label}”子目录，不能重复粘贴`);
@@ -130,7 +165,8 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
       onContextMenu={(event) => event.preventDefault()}
     >
       {show('copyGroup') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={copyGroup}><span>复制父目录</span><Copy size={15} /></div>}
-      {show('pasteGroup') && <div className={`menu-item ${copiedGroup ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => copiedGroup && pasteGroup()}><span>粘贴父目录{copiedGroup ? `「${copiedGroup.name}」` : ''}</span><ClipboardPaste size={15} /></div>}
+      {show('copyGroup') && <div className="menu-item" title="剪切后到目标父目录按 Ctrl+V，会把当前父目录合并过去（原父目录消失）" onMouseEnter={() => setOpenSubmenu(null)} onClick={cutGroupAction}><span>剪切父目录</span><Scissors size={15} /></div>}
+      {show('pasteGroup') && <div className={`menu-item ${copiedGroup ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => copiedGroup && void pasteGroup()}><span>粘贴父目录{copiedGroup ? `「${copiedGroup.name}」` : ''}{cutGroup ? '（合并到此）' : ''}</span><ClipboardPaste size={15} /></div>}
       {show('pasteDirectory') && <div className={`menu-item ${canPasteDirectory ? '' : 'disabled'}`} title={copiedDirectory && !canPasteDirectory ? '目标父目录已经存在“全部”子目录' : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canPasteDirectory && pasteDirectory()}><span>粘贴子目录{copiedDirectory ? `「${copiedDirectory.name}」` : ''}</span><ClipboardPaste size={15} /></div>}
       {(show('copyGroup') || show('pasteGroup') || show('pasteDirectory')) && (show('create') || show('merge') || show('color') || show('delete')) && <div className="menu-separator" />}
       {show('create') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={createGroup}><span>新建父目录</span><FolderPlus size={15} /></div>}

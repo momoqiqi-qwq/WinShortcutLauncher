@@ -257,12 +257,63 @@ export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
   copyItemsToClipboard: (itemIds) => {
     const sources = collectItemsByIds(get().groups, itemIds);
     const items = snapshotShortcutItems(sources);
-    set({ itemClipboard: items, navigationClipboard: null });
+    set({ itemClipboard: items, itemClipboardMode: 'copy', navigationClipboard: null });
+    return items.length;
+  },
+  cutItemsToClipboard: (itemIds) => {
+    const sources = collectItemsByIds(get().groups, itemIds);
+    if (!sources.length) return 0;
+    const items = snapshotShortcutItems(sources);
+    set({
+      itemClipboard: items,
+      itemClipboardMode: 'cut',
+      navigationClipboard: null,
+      // 剪切后目标位置还没定，先把选中状态留着 —— 用户还可能 Ctrl+X 之后再按 Delete 取消。
+      multiSelectMode: false,
+    });
     return items.length;
   },
   pasteItemsToDirectory: (directoryId) => {
-    const clipboard = get().itemClipboard;
+    const state = get();
+    const clipboard = state.itemClipboard;
     if (!clipboard.length) return 0;
+
+    // v167: 剪切模式 = 移动 —— 保留原 id（和「移动到父目录」一致），从原位置删掉。
+    if (state.itemClipboardMode === 'cut') {
+      const target = state.groups
+        .flatMap((group) => group.directories)
+        .find((directory) => directory.id === directoryId);
+      if (!target || (target.kind ?? 'normal') !== 'normal') return 0;
+      const movingIds = new Set(clipboard.map((item) => item.id));
+      const alreadyThere = new Set(target.items.map((item) => item.id));
+      const moving = clipboard.filter((item) => !alreadyThere.has(item.id));
+      if (!moving.length) {
+        set({ itemClipboard: [], itemClipboardMode: 'copy', selectedItemIds: [] });
+        return 0;
+      }
+      set((current) => ({
+        groups: current.groups.map((group) => ({
+          ...group,
+          directories: group.directories.map((directory) => {
+            if (directory.id === directoryId && (directory.kind ?? 'normal') === 'normal') {
+              return {
+                ...directory,
+                items: reindex([...directory.items, ...moving.map((item, index) => ({ ...item, order: directory.items.length + index }))]),
+              };
+            }
+            if (directory.items.some((item) => movingIds.has(item.id))) {
+              return { ...directory, items: reindex(directory.items.filter((item) => !movingIds.has(item.id))) };
+            }
+            return directory;
+          }),
+        })),
+        itemClipboard: [],
+        itemClipboardMode: 'copy',
+        selectedItemIds: [],
+      }));
+      return moving.length;
+    }
+
     let pasted = 0;
     set((state) => ({
       groups: state.groups.map((group) => ({
@@ -278,7 +329,7 @@ export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
     }));
     return pasted;
   },
-  clearItemClipboard: () => set({ itemClipboard: [] }),
+  clearItemClipboard: () => set({ itemClipboard: [], itemClipboardMode: 'copy' }),
   recordItemLaunch: (itemId) => set((state) => ({
     groups: state.groups.map((group) => ({
       ...group,
