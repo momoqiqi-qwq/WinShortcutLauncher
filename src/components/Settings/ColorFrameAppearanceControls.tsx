@@ -117,7 +117,7 @@ export function ColorFrameAppearanceControls({ display, onChange }: ColorFrameAp
         </>
       )}
 
-      {/* v156: 项目卡片也像父目录一样，把同色相邻的几项圈成一组。 */}
+      {/* v156: 项目卡片也像父目录一样，把同色相邻的几项圈成一组；v166 起左侧子目录同样生效。 */}
       <div className="field-row">
         <label>同色相邻成组框</label>
         <div className="segmented segmented-wide">
@@ -125,7 +125,7 @@ export function ColorFrameAppearanceControls({ display, onChange }: ColorFrameAp
           <button type="button" className={display.colorFrameClusterFrame === false ? 'active' : ''} onClick={() => onChange({ colorFrameClusterFrame: false })}>关闭</button>
         </div>
         <small>
-          开启后，内容区里颜色相同且相邻的两个以上项目会被一个更鲜艳的框圈成一组 ——
+          开启后，左侧子目录和内容区项目里「颜色相同且相邻」的两个以上会各自被一个更鲜艳的框圈成一组 ——
           和顶部同色相邻父目录的成组框同一套画法；换行时自动按行分段。只影响外观，点击、右键和拖动都不受影响。
         </small>
       </div>

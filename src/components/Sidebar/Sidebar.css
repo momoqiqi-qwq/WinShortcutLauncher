@@ -41,6 +41,40 @@
   overflow: auto;
   padding-right: 2px;
   overscroll-behavior: contain;
+  /* v166: 同色相邻成组框以这里为定位父级（框用子目录的 offsetLeft/offsetTop 定位）。 */
+  position: relative;
+}
+
+/* v166: 子目录同色相邻成组框 —— 与内容区项目卡片（v156）同一套画法。
+   框完全不吃事件，点击 / 右键 / 拖动排序照旧穿透到下面的子目录。 */
+.sidebar-color-clusters {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.sidebar-color-clusters.suppressed {
+  opacity: 0;
+}
+
+.sidebar-color-cluster-segment {
+  position: absolute;
+  border: 1.5px solid var(--cluster-accent, var(--accent));
+  border-radius: calc(var(--sidebar-item-radius, 12px) + 4px);
+  background: color-mix(in srgb, var(--cluster-accent, var(--accent)) 6%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cluster-accent, var(--accent)) 24%, transparent),
+    0 0 12px color-mix(in srgb, var(--cluster-accent, var(--accent)) 20%, transparent);
+}
+
+.color-frame-shape-square .sidebar-color-cluster-segment {
+  border-radius: 8px;
+}
+
+.reduce-motion .sidebar-color-clusters {
+  transition: none;
 }
 
 .side-tab {

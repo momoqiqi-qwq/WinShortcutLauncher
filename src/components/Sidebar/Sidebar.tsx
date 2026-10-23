@@ -6,7 +6,8 @@ import { FolderPlus } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { byOrder } from '../../lib/sort';
 import { getDirectoryDisplayCount } from '../../lib/directoryExperience';
-import { resolveColorFrameColors } from '../../lib/colorFrames';
+import { resolveColorFrameClusters, resolveColorFrameColors } from '../../lib/colorFrames';
+import { ColorClusterFrames } from '../ColorClusterFrames';
 import { useDirectoryCreator } from '../../hooks/useDirectoryCreator';
 import type { Directory } from '../../types';
 
@@ -132,6 +133,14 @@ export function Sidebar({
       groupTint: globalDisplay.colorFrameGroupTint,
     },
   ), [directories, globalDisplay.colorFrameBlend, globalDisplay.colorFrameGroupSize, globalDisplay.colorFrameGroupTint]);
+  // v166: 同色相邻成组框 —— 和内容区项目卡片（v156）同一套规则，把「实际渲染色相同且相邻」的子目录并成一组。
+  // 用 frameColors（组合后的颜色）而不是 directory.color：相邻组合模式下组内渐浅就不该被硬框成一个色块。
+  const colorClusters = useMemo(
+    () => resolveColorFrameClusters(directories.map((directory) => ({ id: directory.id, color: frameColors[directory.id] }))),
+    [directories, frameColors],
+  );
+  const showColorClusters = (globalDisplay.colorFrameClusterFrame ?? true) && colorClusters.length > 0;
+  const tabsRef = useRef<HTMLDivElement | null>(null);
   const activeDragIdRef = useRef<string | null>(null);
   const activeGroupIdRef = useRef(activeGroup?.id ?? '');
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -253,9 +262,24 @@ export function Sidebar({
       >
         <SortableContext items={ids} strategy={sidebarColumns > 1 ? rectSortingStrategy : verticalListSortingStrategy}>
           <div
+            ref={tabsRef}
             className={`sidebar-tabs ${globalDisplay.sidebarShowFullNames ? 'full-names' : ''}`}
             style={{ '--sidebar-columns': sidebarColumns } as CSSProperties}
           >
+            {/* v166: 同色相邻子目录的成组框。绝对定位在网格里，不占格、不吃事件（拖动排序时淡出）。 */}
+            {showColorClusters && (
+              <ColorClusterFrames
+                clusters={colorClusters}
+                containerRef={tabsRef}
+                itemSelector=".side-tab[data-directory-id]"
+                dataKey="directoryId"
+                className="sidebar-color-clusters"
+                segmentClassName="sidebar-color-cluster-segment"
+                pad={3}
+                clampInside
+                suppressed={activeDragId !== null}
+              />
+            )}
             {directories.map((directory) => (
               <EditableDirectory
                 directory={directory}

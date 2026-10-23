@@ -78,8 +78,8 @@ export function tintColor(value: string, amount: number): string {
 /**
  * v156: 同色相邻成组框。
  *
- * 与 v138「同色相邻父目录自动成组框」同一套规则，只是作用在内容区的项目卡片上：
- * 按显示顺序找出「颜色相同且相邻」的项，数量 ≥2 才成组（单个项目不画额外的框）。
+ * 与 v138「同色相邻父目录自动成组框」同一套规则，v166 起同时作用于内容区项目卡片和左侧子目录：
+ * 按显示顺序找出「颜色相同且相邻」的项，数量 ≥2 才成组（单个项目 / 单个子目录不画额外的框）。
  * 颜色比较忽略大小写（`#FF0000` 与 `#ff0000` 视为同色），但框本身用组内第一项的原始写法。
  */
 export interface ColorFrameCluster {
@@ -88,6 +88,7 @@ export interface ColorFrameCluster {
   itemIds: string[];
 }
 
+/** 按「颜色相同且相邻」切组；调用方给的是已解析成最终渲染色（含相邻组合结果）的条目。 */
 export function resolveColorFrameClusters(entries: ColorFrameEntry[]): ColorFrameCluster[] {
   const result: ColorFrameCluster[] = [];
   let index = 0;

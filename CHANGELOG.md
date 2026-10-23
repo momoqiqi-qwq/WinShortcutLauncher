@@ -4,7 +4,23 @@
 
 ---
 
-## V165（最新）— 排序切回自定义时能还原原顺序
+## V166（最新）— 左侧子目录也用「同色相邻成组框」圈起来
+
+> V156 只在内容区项目卡片上把同色相邻的几项圈成一组，左侧子目录虽然能各自上色，却没有这层「这是一组」的框。
+
+### 1. 抽成通用组件，两处共用一套画法
+
+- 新增 `src/components/ColorClusterFrames.tsx`：量与画的做法照搬 `ItemColorClusterFrames`，但去掉了对项目卡片的写死 —— 选择器（`itemSelector`）、读 id 的 data 属性（`dataKey`）、根/段 class、外扩像素、是否夹边全部由调用方给。
+- `src/components/ContentArea/ItemColorClusterFrames.tsx` 退化成薄封装，只固定内容区的参数（`.item-card[data-item-id]`、`data-itemId`、外扩 5px、不夹边），行为与 v156 完全一致。
+
+### 2. 侧栏接入
+
+- `src/components/Sidebar/Sidebar.tsx`：用 `resolveColorFrameClusters()` 按显示顺序把「实际渲染色相同且相邻」的子目录并组（用相邻组合算完的 `frameColors`，所以组合模式下组内渐浅不会被硬框成一个色块），在 `.sidebar-tabs` 里插一层 `ColorClusterFrames`：`.side-tab[data-directory-id]`、外扩 4px、拖动排序时淡出。
+- `src/components/Sidebar/Sidebar.css`：`.sidebar-tabs` 加 `position: relative` 当定位父级；新增 `.sidebar-color-clusters` / `.sidebar-color-cluster-segment`，圆角跟随「子目录圆角」（`--sidebar-item-radius + 4px`），方形模式 8px，带 `--reduce-motion` 开关。框 `pointer-events: none`，点击、右键、拖动排序照旧穿透。
+- 因为 `.sidebar-tabs` 自己是滚动容器，框加 `clampInside`：左上外扩部分夹回 0，避免第一条框被裁掉一半。
+- 开关沿用设置里既有的「同色相邻成组框」（`display.colorFrameClusterFrame`，默认开启，缺省即开），文案改为「左侧子目录和内容区项目」；`types.ts` 注释、设置搜索索引关键词（新增「侧栏」「左侧」「子目录成组」）一并对齐。
+
+## V165 — 排序切回自定义时能还原原顺序
 
 > 修「按名称排过一次，再切回自定义，顺序就再也回不来了」。
 
