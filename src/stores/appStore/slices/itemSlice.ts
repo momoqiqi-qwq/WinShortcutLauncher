@@ -268,7 +268,7 @@ export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
       itemClipboard: items,
       itemClipboardMode: 'cut',
       navigationClipboard: null,
-      // 剪切后目标位置还没定，先把选中状态留着 —— 用户还可能 Ctrl+X 之后再按 Delete 取消。
+      // 目标位置还没定，选中状态先留着 —— 用户可能接着按 Delete 把这几项删掉。
       multiSelectMode: false,
     });
     return items.length;
@@ -284,9 +284,13 @@ export const createItemSlice: AppSliceCreator<ItemActions> = (set, get) => ({
         .flatMap((group) => group.directories)
         .find((directory) => directory.id === directoryId);
       if (!target || (target.kind ?? 'normal') !== 'normal') return 0;
-      const movingIds = new Set(clipboard.map((item) => item.id));
       const alreadyThere = new Set(target.items.map((item) => item.id));
-      const moving = clipboard.filter((item) => !alreadyThere.has(item.id));
+      // 剪切之后、粘贴之前就被删掉的那几项不再从快照里“复活”：只搬此刻还真实存在的项目。
+      const existing = new Set(
+        state.groups.flatMap((group) => group.directories.flatMap((directory) => directory.items.map((item) => item.id))),
+      );
+      const moving = clipboard.filter((item) => !alreadyThere.has(item.id) && existing.has(item.id));
+      const movingIds = new Set(moving.map((item) => item.id));
       if (!moving.length) {
         set({ itemClipboard: [], itemClipboardMode: 'copy', selectedItemIds: [] });
         return 0;

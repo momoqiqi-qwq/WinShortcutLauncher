@@ -309,7 +309,10 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
     }
     const target = state.groups.find((group) => group.id === targetGroupId);
     if (!target) return null;
+    const before = state.groups.length;
     get().mergeGroup(sourceGroupId, targetGroupId);
+    // mergeGroup 自己会拒绝「只剩一个父目录」「源或目标不存在」这类情况；没真的合并就不算成功，剪贴板留着。
+    if (get().groups.length >= before) return null;
     set({ navigationClipboard: null });
     return targetGroupId;
   },
@@ -427,12 +430,22 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
     );
     const nextTarget = groups.find((group) => group.id === targetGroupId);
     const fallbackDir = nextTarget?.directories[0]?.id ?? getFirstDirectory(groups, { normalized: true }).directoryId;
+    // 选中项如果正指着被合并掉的那个父目录（或它里面某个子目录），合并后指针要跟着落到目标父目录上，
+    // 否则 Ctrl+X / Ctrl+V 会对着一个已经不存在的 id 空转。
+    const selectionPointsAtSource = Boolean(
+      state.selectedNavTarget
+      && (state.selectedNavTarget.id === sourceGroupId
+        || source.directories.some((directory) => directory.id === state.selectedNavTarget?.id)),
+    );
     return {
       groups,
       activeGroupId: state.activeGroupId === sourceGroupId ? targetGroupId : state.activeGroupId,
       activeDirectoryId: source.directories.some((dir) => dir.id === state.activeDirectoryId)
         ? fallbackDir
         : state.activeDirectoryId,
+      selectedNavTarget: selectionPointsAtSource
+        ? { kind: 'group' as const, id: targetGroupId }
+        : state.selectedNavTarget,
       selectedItemIds: [],
       multiSelectMode: false,
     };

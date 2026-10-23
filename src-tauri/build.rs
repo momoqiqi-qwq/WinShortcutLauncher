@@ -18,6 +18,7 @@ const VERIFIED_INPUTS: &[&str] = &[
   "../src/stores/appStore/slices/navigationSlice.ts",
   "../src/stores/appStore/normalizers.ts",
   "../src/lib/navigationClipboard.ts",
+  "../src/lib/clipboardMode.ts",
   "../src/components/Sidebar/Sidebar.tsx",
   "../src/components/ContextMenu/DirectoryContextMenu.tsx",
   "../src/components/ContextMenu/GroupContextMenu.tsx",
@@ -196,6 +197,8 @@ fn verify_persistent_windows_fixes() {
   require(&website_drop, "targetFromClientPoint", "native OLE coordinates resolve frontend drop targets");
   require(&website_drop, "website-drop-timing", "website drop timing diagnostics");
   require(&shortcut_router, "copyItemsToClipboard", "global shortcut router owns project clipboard shortcuts");
+  require(&shortcut_router, "cutItemsToClipboard", "global shortcut router owns Ctrl+X cut");
+  require(&shortcut_router, "pasteGroupIntoGroupFromClipboard", "global shortcut router owns parent-directory merge paste");
   require(&overlay_router, "closeTopOverlay", "overlay router owns overlay close routing");
   require(&app, "useWebsiteDropController", "App delegates website drop routing");
   require(&app_types, "ItemClickAction", "v129 project click-action model");

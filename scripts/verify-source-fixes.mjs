@@ -152,6 +152,18 @@ const checks = [
   ['src/App.tsx', /<DeferredSettingsPanel open=\{settingsOpen\} \/>/, 'v162 the settings panel must stay lazily loaded'],
   ['src/components/DeferredPanels.tsx', /pending\.current\.splice\(0\)/, 'v162 settings open requests sent before the panel loads must be replayed'],
   ['src/hooks/useAutoSave.ts', /skipIfUnchanged: true/, 'v162 auto save must skip unchanged config'],
+  ['src/lib/clipboardMode.ts', /ClipboardMode\s*=\s*'copy'\s*\|\s*'cut'/, 'v167 clipboard mode must keep the copy/cut distinction'],
+  ['src/hooks/useGlobalShortcutRouter.ts', /KeyC[\s\S]*?copyItemsToClipboard[\s\S]*?KeyX[\s\S]*?cutItemsToClipboard[\s\S]*?KeyV[\s\S]*?pasteItemsToDirectory/, 'v167 Ctrl+C / Ctrl+X / Ctrl+V project flow must keep this order'],
+  ['src/hooks/useGlobalShortcutRouter.ts', /cutItemsToClipboard[\s\S]*?cutDirectoryToClipboard[\s\S]*?cutGroupToClipboard/, 'v167 Ctrl+X must cover items, directories and groups'],
+  ['src/stores/appStore/slices/itemSlice.ts', /cutItemsToClipboard:[\s\S]*?itemClipboardMode:\s*'cut'/, 'v167 item cut must flag the clipboard as cut'],
+  ['src/stores/appStore/slices/itemSlice.ts', /itemClipboardMode === 'cut'[\s\S]*?existing\.has\(item\.id\)/, 'v168 cut paste must not resurrect items that were deleted before pasting'],
+  ['src/stores/appStore/slices/navigationSlice.ts', /cutDirectoryToClipboard:[\s\S]*?cutGroupToClipboard:[\s\S]*?pasteGroupIntoGroupFromClipboard:/, 'v167 navigation clipboard must expose directory/group cut and group merge-paste'],
+  ['src/stores/appStore/slices/navigationSlice.ts', /if \(get\(\)\.groups\.length >= before\) return null/, 'v168 merge-paste must verify the merge really happened'],
+  ['src/stores/appStore/slices/navigationSlice.ts', /selectionPointsAtSource/, 'v168 merging a group must move the selection off the deleted group'],
+  ['src/components/ContextMenu/ItemContextMenu.tsx', /复制项目[\s\S]*?剪切项目[\s\S]*?粘贴项目/, 'v167 item context menu must expose cut beside copy and paste'],
+  ['src/components/ContextMenu/DirectoryContextMenu.tsx', /复制子目录[\s\S]*?剪切子目录[\s\S]*?粘贴子目录[\s\S]*?移动到父目录/, 'v167 directory context menu must expose cut beside copy'],
+  ['src/components/ContextMenu/GroupContextMenu.tsx', /复制父目录[\s\S]*?剪切父目录[\s\S]*?粘贴父目录[\s\S]*?粘贴子目录/, 'v167 group context menu must expose cut beside copy'],
+  ['src/components/ContextMenu/GroupContextMenu.tsx', /if \(cutGroup\) \{\s*if \(copiedGroup\.id === currentGroup\.id\)/, 'v168 only a cut parent must refuse to paste into itself'],
 ];
 
 const forbidden = [

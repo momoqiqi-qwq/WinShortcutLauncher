@@ -179,7 +179,7 @@ export function useGlobalShortcutRouter({
                 ? `已移动 ${count} 个项目到「${target.name}」`
                 : `已粘贴 ${count} 个项目到「${target.name}」`);
             } else if (isCut) {
-              showLauncherNotice(`这些项目已经都在「${target.name}」里了`);
+              showLauncherNotice(`没有可移动的项目了（可能已经都在「${target.name}」里，或在粘贴前被删掉了）`);
             }
           }
           return;

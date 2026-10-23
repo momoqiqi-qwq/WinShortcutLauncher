@@ -148,3 +148,84 @@ describe('V167 Ctrl+X 剪切粘贴（移动语义）', () => {
     expect(pastedId).not.toBe(sourceDirId);
   });
 });
+
+describe('V168 剪切粘贴的边界', () => {
+  beforeEach(() => {
+    useAppStore.getState().resetAll();
+  });
+
+  /** 全库里所有非系统项目 id（用来查有没有产生重复 id）。 */
+  function allSeededIds(): string[] {
+    return useAppStore.getState().groups
+      .flatMap((group) => group.directories.flatMap((dir) => dir.items))
+      .map((item) => item.id)
+      .filter((id) => !id.startsWith('sys_'));
+  }
+
+  it('剪切后在粘贴前把项目删掉，粘贴不会把它们从快照里复活', () => {
+    const { sourceDirId, targetDirId } = seedTwoGroups();
+    useAppStore.getState().cutItemsToClipboard(['a1', 'a2']);
+    useAppStore.getState().deleteItemsByIds(['a1', 'a2']);
+    expect(seededIds(sourceDirId)).toEqual([]);
+
+    expect(useAppStore.getState().pasteItemsToDirectory(targetDirId)).toBe(0);
+    expect(seededIds(targetDirId)).toEqual([]);
+    expect(useAppStore.getState().itemClipboardMode).toBe('copy');
+  });
+
+  it('剪切后项目被搬到第三个子目录，再粘贴：只有一个副本，不产生重复 id', () => {
+    const { sourceDirId, targetGroupId, targetDirId } = seedTwoGroups();
+    const thirdDirId = useAppStore.getState().addDirectory(targetGroupId, '第三个子目录');
+    expect(thirdDirId).toBeTruthy();
+
+    useAppStore.getState().cutItemsToClipboard(['a1', 'a2']);
+    // 用户没粘贴，先自己把其中一项挪走。
+    useAppStore.getState().moveItemToDirectory('a1', thirdDirId);
+    expect(seededIds(thirdDirId)).toEqual(['a1']);
+
+    expect(useAppStore.getState().pasteItemsToDirectory(targetDirId)).toBe(2);
+
+    const ids = allSeededIds();
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(seededIds(targetDirId)).toEqual(['a1', 'a2']);
+    expect(seededIds(thirdDirId)).toEqual([]);
+    expect(seededIds(sourceDirId)).toEqual([]);
+  });
+
+  it('剪切父目录合并后，选中目标不再指向被删掉的父目录', () => {
+    const { sourceGroupId, targetGroupId } = seedTwoGroups();
+    useAppStore.getState().cutGroupToClipboard(sourceGroupId);
+    expect(useAppStore.getState().selectedNavTarget).toEqual({ kind: 'group', id: sourceGroupId });
+
+    useAppStore.getState().pasteGroupIntoGroupFromClipboard(targetGroupId);
+
+    const selection = useAppStore.getState().selectedNavTarget;
+    expect(selection).toEqual({ kind: 'group', id: targetGroupId });
+    expect(useAppStore.getState().groups.some((group) => group.id === sourceGroupId)).toBe(false);
+  });
+
+  it('剪切父目录粘到不存在的父目录：拒绝，剪贴板留着还能再选', () => {
+    const { sourceGroupId } = seedTwoGroups();
+    useAppStore.getState().cutGroupToClipboard(sourceGroupId);
+
+    expect(useAppStore.getState().pasteGroupIntoGroupFromClipboard('dir-ghost')).toBeNull();
+    expect(useAppStore.getState().navigationClipboard?.kind).toBe('group');
+    expect(useAppStore.getState().navigationClipboard?.mode).toBe('cut');
+  });
+
+  it('剪切的「全部」子目录不会被搬进已经有「全部」的父目录', () => {
+    const { sourceGroupId, targetGroupId } = seedTwoGroups();
+    const sourceAllId = useAppStore.getState().addDirectory(sourceGroupId, '全部', 'all');
+    useAppStore.getState().addDirectory(targetGroupId, '全部', 'all');
+
+    expect(useAppStore.getState().cutDirectoryToClipboard(sourceAllId)).toBe(true);
+    expect(useAppStore.getState().pasteDirectoryToGroup(targetGroupId)).toBeNull();
+
+    const target = useAppStore.getState().groups.find((group) => group.id === targetGroupId);
+    expect(target?.directories.filter((dir) => dir.kind === 'all')).toHaveLength(1);
+    expect(
+      useAppStore.getState().groups.some((group) => group.directories.some((dir) => dir.id === sourceAllId)),
+    ).toBe(true);
+    expect(useAppStore.getState().navigationClipboard?.kind).toBe('directory');
+  });
+});
