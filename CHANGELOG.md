@@ -4,7 +4,25 @@
 
 ---
 
-## V170（最新）— 开发规范新增「关闭进程 → 干净替换便捷版」流程
+## V171（最新）— 修复深色主题下下拉列表「白底浅字」：原生弹层改为跟随主题
+
+> 反馈：「太白，修复」。截的是「新建链接父目录」的来源配置下拉——弹层是刺眼的纯白，文字却还是深色主题的浅灰，几乎读不出来。
+
+### 原因
+
+`<select>` 的展开列表由系统（WebView2）绘制，不吃组件的 CSS 背景。以前只在控件上写了文字色，弹层却还是系统的纯白底，于是深色主题里就成了「白底 + 浅色字」。全项目 39 处原生 `<select>` 都受这个问题影响，只是这次在弹窗里最扎眼。
+
+### 修复
+
+- `src/lib/themeColors.ts`：新增 `pickNativeColorScheme(background, fallback?)`，按主题底色的相对亮度（WCAG 公式）判定该用 `dark` 还是 `light`，无法解析时回落到 `light`。
+- `src/stores/themeStore.ts`：切主题时把 `document.documentElement.style.colorScheme` 设成 `dark` / `light` —— 原生控件（下拉弹层、滚动条、日期选择器）从此跟随主题明暗。
+- `src/themes/moreThemes.ts`：`installThemePreset()`（设置里点主题卡片）同样同步 `colorScheme`，点下去当场生效，不用等重渲染。
+- `src/index.css`：兜底再给 `select option` / `select optgroup` 明确配色（`--panel-solid` 底 + `--text` 字），`option:checked` 用主题强调色混出高亮。即使某些 WebView2 版本忽略 `color-scheme`，弹层也不会再出现浅字压白底。
+- 测试：`src/lib/__tests__/themeColors.test.ts` 新增两条，覆盖常见深色/浅色主题底色与无法解析时的回落（全量 270 条通过）。
+
+---
+
+## V170 — 开发规范新增「关闭进程 → 干净替换便捷版」流程
 
 > 以前更新便捷版只做「改名换新」：旧进程继续活着，新版要等下次启动才生效。本人要的是「关掉再替换」，那就得先把在跑的实例全关干净，替换才是真覆盖，替换完立刻生效、不留 `.old-*` 残渣。这套流程现在写进 `AGENTS.md`，以后照做。
 

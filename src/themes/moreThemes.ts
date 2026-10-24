@@ -1,3 +1,4 @@
+import { pickNativeColorScheme } from '../lib/themeColors';
 import type { ThemePreset } from '../utils/v16Types';
 
 export const MORE_THEMES: ThemePreset[] = [
@@ -256,4 +257,6 @@ export function installThemePreset(theme: ThemePreset) {
   const root = document.documentElement;
   Object.entries(theme.vars).forEach(([key, value]) => root.style.setProperty(key, value));
   root.dataset.theme = theme.id;
+  // v171: 原生控件（select 弹层、滚动条）跟着主题明暗走。
+  root.style.colorScheme = pickNativeColorScheme(theme.vars['--bg'] || '#ffffff');
 }

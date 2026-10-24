@@ -64,3 +64,19 @@ export function toOpaqueThemeSurface(foreground: string, background: string) {
   const b = fg.b * fg.a + bgB * (1 - fg.a);
   return `rgb(${clampChannel(r)}, ${clampChannel(g)}, ${clampChannel(b)})`;
 }
+
+/**
+ * v171: 原生表单控件的配色方向（`color-scheme`）跟着主题底色走。
+ * 深色主题下若不给 `color-scheme: dark`，Windows/WebView2 会把 `<select>` 的
+ * 弹层画成纯白底，而文字沿用主题的浅色 —— 结果就是「白底浅字」，几乎读不出来。
+ */
+export function pickNativeColorScheme(background: string, fallback: 'dark' | 'light' = 'light'): 'dark' | 'light' {
+  const parsed = parseCssColor(background);
+  if (!parsed) return fallback;
+  const toLinear = (channel: number) => {
+    const srgb = channel / 255;
+    return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * toLinear(parsed.r) + 0.7152 * toLinear(parsed.g) + 0.0722 * toLinear(parsed.b);
+  return luminance < 0.42 ? 'dark' : 'light';
+}

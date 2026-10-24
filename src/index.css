@@ -28,6 +28,22 @@
   box-sizing: border-box;
 }
 
+/*
+ * v171: 原生 <select> 的下拉弹层由系统绘制。深色主题下如果不给 option 明确配色，
+ * WebView2 会画成纯白底、却沿用主题的浅色文字 —— 出现「白底浅字」，几乎读不出来。
+ * 这里统一让弹层跟随主题；明暗方向由 :root 的 color-scheme（见 themeStore）决定。
+ */
+select option,
+select optgroup {
+  background-color: var(--panel-solid, #ffffff);
+  color: var(--text, #1a202c);
+}
+
+select option:checked {
+  background-color: color-mix(in srgb, var(--accent, #4a8cff) 32%, var(--panel-solid, #ffffff));
+  color: var(--text, #1a202c);
+}
+
 html,
 body,
 #root {
