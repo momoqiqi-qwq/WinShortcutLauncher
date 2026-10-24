@@ -35,6 +35,10 @@ const DIRECTORY_LABELS: Record<DirectoryContextMenuItemId, { label: string; hint
   changeMappedFolder: { label: '重新选择文件夹', hint: '仅映射文件夹子目录显示；换一个被映射的文件夹，不动原文件夹内容。' },
   clear: { label: '清空子目录项目', hint: '清空当前普通子目录中的快捷项目。' },
   delete: { label: '删除子目录', hint: '删除当前子目录。' },
+  linkRefresh: { label: '立即同步链接', hint: '仅链接子目录显示；马上从源目录拉一次最新内容。' },
+  linkLocate: { label: '定位到源子目录', hint: '仅链接子目录显示；切换到链接指向的那个子目录（同配置时）。' },
+  linkRetarget: { label: '更换链接源', hint: '仅链接子目录显示；把链接改成指向别的父目录 / 子目录 / 配置。' },
+  linkDetach: { label: '解除链接', hint: '仅链接子目录显示；断开链接，已同步过来的项目保留成普通项目。' },
 };
 
 const GROUP_LABELS: Record<GroupContextMenuItemId, { label: string; hint: string }> = {
@@ -45,6 +49,10 @@ const GROUP_LABELS: Record<GroupContextMenuItemId, { label: string; hint: string
   merge: { label: '合并到父目录', hint: '把当前父目录合并到另一个父目录。' },
   color: { label: '父目录背景色', hint: '给父目录标签设置不同的背景颜色。' },
   delete: { label: '删除父目录', hint: '删除当前父目录及其中内容。' },
+  linkDirectory: { label: '链接子目录', hint: '把一个别的子目录（可跨配置）链接进当前父目录，内容实时镜像。' },
+  linkGroup: { label: '链接父目录', hint: '新建一个链接父目录，整个父目录（含子目录与项目，可跨配置）实时镜像过来。' },
+  linkRefresh: { label: '立即同步链接', hint: '仅链接父目录显示；马上从源父目录拉一次最新内容。' },
+  linkDetach: { label: '解除链接', hint: '仅链接父目录显示；断开链接，已同步过来的子目录与项目保留。' },
 };
 
 const AREA_LABELS: Record<AreaContextMenuItemId, { label: string; hint: string }> = {
@@ -63,6 +71,8 @@ const AREA_LABELS: Record<AreaContextMenuItemId, { label: string; hint: string }
   globalViewMode: { label: '统一查看方式', hint: '调整所有子目录的默认查看方式。' },
   globalSortMode: { label: '统一排序方式', hint: '调整所有子目录的默认排序方式。' },
   refreshIcons: { label: '刷新本页图标', hint: '只补齐当前页没有图标的项目。' },
+  linkDirectory: { label: '链接子目录', hint: '新建一个链接子目录，内容从别的子目录（可跨配置）实时镜像过来。' },
+  linkGroup: { label: '链接父目录', hint: '新建一个链接父目录，整个父目录（可跨配置）实时镜像过来。' },
 };
 
 const CATEGORY_META: Record<MenuCategory, { label: string; hint: string; icon: typeof Folder }> = {

@@ -1,4 +1,4 @@
-import { ChevronRight, ClipboardPaste, Copy, FolderPlus, Merge, Palette, Scissors, Trash2 } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Copy, FolderPlus, FolderSymlink, Link2, Merge, Palette, RefreshCw, Scissors, Trash2, Unlink } from 'lucide-react';
 import { useMemo, useState, type MouseEvent } from 'react';
 import type { ContextMenuState } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -7,6 +7,9 @@ import { byOrder } from '../../lib/sort';
 import { uiAlert, uiConfirm, uiPrompt } from '../../lib/uiDialog';
 import { showLauncherNotice } from '../../lib/notify';
 import { canPasteDirectoryIntoGroup } from '../../lib/navigationClipboard';
+import { uiPickLinkSource } from '../../lib/linkSourcePicker';
+import { describeLinkSource } from '../../lib/directoryLinks';
+import { getActiveConfigProfileId } from '../../lib/configProfiles';
 
 const GROUP_COLOR_PRESETS = [
   { label: '默认', value: '' },
@@ -39,6 +42,10 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
   const pasteGroupFromClipboard = useAppStore((state) => state.pasteGroupFromClipboard);
   const pasteDirectoryToGroup = useAppStore((state) => state.pasteDirectoryToGroup);
   const experience = useAppStore((state) => state.experience);
+  const addLinkedDirectory = useAppStore((state) => state.addLinkedDirectory);
+  const addLinkedGroup = useAppStore((state) => state.addLinkedGroup);
+  const detachLink = useAppStore((state) => state.detachLink);
+  const syncLinks = useAppStore((state) => state.syncLinks);
   const hiddenItems = new Set(experience.groupContextMenuHiddenItems ?? []);
   const show = (id: import('../../types').GroupContextMenuItemId) => !hiddenItems.has(id);
   const { ref, style, submenuClassName } = useSmartMenuPosition(menu.x, menu.y, 8, 260);
@@ -141,6 +148,43 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
     onClose();
   }
 
+  async function linkDirectoryIntoGroup() {
+    const ref = await uiPickLinkSource('directory', `把子目录链接进「${currentGroup.name}」`);
+    if (!ref) { onClose(); return; }
+    const created = addLinkedDirectory(currentGroup.id, ref);
+    if (created) {
+      showLauncherNotice(`已建立链接子目录：${describeLinkSource(ref, { groups: useAppStore.getState().groups, activeProfileId: getActiveConfigProfileId() ?? '' })}`);
+      void syncLinks();
+    }
+    onClose();
+  }
+
+  async function linkNewGroup() {
+    const ref = await uiPickLinkSource('group', '新建链接父目录');
+    if (!ref) { onClose(); return; }
+    const created = addLinkedGroup(ref);
+    if (created) {
+      showLauncherNotice(`已建立链接父目录：${describeLinkSource(ref, { groups: useAppStore.getState().groups, activeProfileId: getActiveConfigProfileId() ?? '' })}`);
+      void syncLinks();
+    }
+    onClose();
+  }
+
+  async function refreshLink() {
+    await syncLinks();
+    showLauncherNotice(`已同步链接父目录「${currentGroup.name}」`);
+    onClose();
+  }
+
+  async function removeLink() {
+    const ok = await uiConfirm(`解除「${currentGroup.name}」的链接吗？已经同步过来的子目录与项目会保留成普通内容。`);
+    if (!ok) { onClose(); return; }
+    if (detachLink({ kind: 'group', id: currentGroup.id })) {
+      showLauncherNotice(`已解除链接父目录「${currentGroup.name}」`);
+    }
+    onClose();
+  }
+
   async function applyCustomColor() {
     const raw = await uiPrompt('请输入父目录颜色（支持 #RGB / #RRGGBB / #RRGGBBAA）', currentGroup.color ?? '#8b5cf6');
     if (raw == null) return;
@@ -170,6 +214,11 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
       {show('pasteDirectory') && <div className={`menu-item ${canPasteDirectory ? '' : 'disabled'}`} title={copiedDirectory && !canPasteDirectory ? '目标父目录已经存在“全部”子目录' : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canPasteDirectory && pasteDirectory()}><span>粘贴子目录{copiedDirectory ? `「${copiedDirectory.name}」` : ''}</span><ClipboardPaste size={15} /></div>}
       {(show('copyGroup') || show('pasteGroup') || show('pasteDirectory')) && (show('create') || show('merge') || show('color') || show('delete')) && <div className="menu-separator" />}
       {show('create') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={createGroup}><span>新建父目录</span><FolderPlus size={15} /></div>}
+      {show('linkGroup') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void linkNewGroup()}><span>链接父目录…</span><FolderSymlink size={15} /></div>}
+      {show('linkDirectory') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void linkDirectoryIntoGroup()}><span>链接子目录…</span><Link2 size={15} /></div>}
+      {currentGroup.link && show('linkRefresh') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void refreshLink()}><span>立即同步链接</span><RefreshCw size={15} /></div>}
+      {currentGroup.link && show('linkDetach') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void removeLink()}><span>解除链接</span><Unlink size={15} /></div>}
+      {currentGroup.link && <div className="menu-empty-hint">链接自：{describeLinkSource(currentGroup.link, { groups, activeProfileId: getActiveConfigProfileId() ?? '' })}（内容自动同步）</div>}
       {show('merge') && <div className={`menu-item with-submenu ${targetGroups.length === 0 ? 'disabled' : ''}`} onMouseEnter={() => setOpenSubmenu('merge')} onClick={() => targetGroups.length > 0 && setOpenSubmenu((value) => value === 'merge' ? null : 'merge')}>
         <span>合并到父目录</span><ChevronRight size={14} />
         {openSubmenu === 'merge' && targetGroups.length > 0 && (
@@ -225,7 +274,7 @@ export function GroupContextMenu({ menu, onClose }: GroupContextMenuProps) {
         )}
       </div>}
       {show('delete') && <div className={`menu-item danger ${groups.length <= 1 ? 'disabled' : ''}`} title={groups.length <= 1 ? '至少保留一个父目录' : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void remove()}><span>删除父目录</span><Trash2 size={15} /></div>}
-      {!show('copyGroup') && !show('pasteGroup') && !show('pasteDirectory') && !show('create') && !show('merge') && !show('color') && !show('delete') && <div className="menu-empty-hint">此菜单项目已全部隐藏，可在设置中恢复</div>}
+      {!show('copyGroup') && !show('pasteGroup') && !show('pasteDirectory') && !show('create') && !show('merge') && !show('color') && !show('delete') && !show('linkGroup') && !show('linkDirectory') && <div className="menu-empty-hint">此菜单项目已全部隐藏，可在设置中恢复</div>}
     </div>
   );
 }

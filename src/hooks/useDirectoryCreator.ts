@@ -13,6 +13,8 @@ const DEFAULT_NAMES: Record<DirectoryKind, string> = {
   all: '全部',
   startMenu: '开始菜单',
   mapped: MAPPED_DEFAULT_NAME,
+  /** v169: 链接子目录由 linkSlice 创建（内容靠同步填充），这里只补一个兜底名。 */
+  link: '链接子目录',
 };
 
 export function useDirectoryCreator() {

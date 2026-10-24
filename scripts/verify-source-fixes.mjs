@@ -164,6 +164,18 @@ const checks = [
   ['src/components/ContextMenu/DirectoryContextMenu.tsx', /复制子目录[\s\S]*?剪切子目录[\s\S]*?粘贴子目录[\s\S]*?移动到父目录/, 'v167 directory context menu must expose cut beside copy'],
   ['src/components/ContextMenu/GroupContextMenu.tsx', /复制父目录[\s\S]*?剪切父目录[\s\S]*?粘贴父目录[\s\S]*?粘贴子目录/, 'v167 group context menu must expose cut beside copy'],
   ['src/components/ContextMenu/GroupContextMenu.tsx', /if \(cutGroup\) \{\s*if \(copiedGroup\.id === currentGroup\.id\)/, 'v168 only a cut parent must refuse to paste into itself'],
+  ['src/lib/directoryLinks.ts', /export function applyLinkSources/, 'v169 link sync must go through applyLinkSources'],
+  ['src/lib/directoryLinks.ts', /changed: false,?\s*\/\*\*|if \(!nameChanged && !contentChanged\) return/, 'v169 link sync must stay idempotent'],
+  ['src/lib/directoryLinks.ts', /LINKED_ITEM_PREFIX = 'linkitem:'/, 'v169 mirrored items must use derived ids'],
+  ['src/lib/linkSyncRunner.ts', /await loadProfileGroups\(profileId\)[\s\S]*?applyLinkSources/, 'v169 cross-profile link sources must be resolved before applying'],
+  ['src/lib/linkSyncRunner.ts', /useAppStore\.setState\(\{ groups: result\.groups \}\)/, 'v169 changed link content must be written back to the store'],
+  ['src/stores/appStore/slices/linkSlice.ts', /addLinkedDirectory:[\s\S]*?addLinkedGroup:[\s\S]*?setLinkedSource:[\s\S]*?detachLink:/, 'v169 the link slice must keep create / retarget / detach actions'],
+  ['src/stores/appStore/normalizers.ts', /export function normalizeDirectoryLinkRef/, 'v169 link refs must survive normalization'],
+  ['src/hooks/useDirectoryLinkSync.ts', /syncDirectoryLinks\(\)[\s\S]*?setInterval/, 'v169 links must resync on change, focus and while visible'],
+  ['src/components/ContextMenu/GroupContextMenu.tsx', /链接父目录[\s\S]*?链接子目录/, 'v169 parent menu must expose both link entries'],
+  ['src/components/ContextMenu/AreaContextMenu.tsx', /链接子目录/, 'v169 blank-area menu must expose 链接子目录'],
+  ['src/components/ContextMenu/DirectoryContextMenu.tsx', /更换链接源[\s\S]*?解除链接/, 'v169 linked directory menu must allow retarget and detach'],
+  ['src/App.tsx', /useDirectoryLinkSync\(\)[\s\S]*?<LinkSourcePicker \/>/, 'v169 App must mount the link sync hook and the source picker'],
 ];
 
 const forbidden = [

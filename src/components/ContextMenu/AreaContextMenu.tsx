@@ -1,7 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardPaste, FilePlus2, FolderPlus, FolderSymlink, Globe, LayoutGrid, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, FilePlus2, FolderPlus, FolderSymlink, Globe, LayoutGrid, Link2, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type } from 'lucide-react';
 import { getMappedPath, isMappedDirectory } from '../../lib/mappedFolder';
+import { uiPickLinkSource } from '../../lib/linkSourcePicker';
+import { describeLinkSource } from '../../lib/directoryLinks';
+import { getActiveConfigProfileId } from '../../lib/configProfiles';
 import { useMemo, useState, type FormEvent } from 'react';
 import type { BrowserRouteOverride, ContextMenuState, Directory, DirectoryKind, ItemClickAction, ShortcutItem, SortMode, ViewMode } from '../../types';
 import { getEffectiveDisplay, useAppStore } from '../../stores/appStore';
@@ -91,11 +94,37 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   const isStartMenuActive = activeKind === 'startMenu';
   const isMappedActive = isMappedDirectory(activeDirectory);
   const activeMappedRoot = isMappedActive ? getMappedPath(activeDirectory) : '';
+  const addLinkedDirectory = useAppStore((state) => state.addLinkedDirectory);
+  const addLinkedGroup = useAppStore((state) => state.addLinkedGroup);
+  const syncLinks = useAppStore((state) => state.syncLinks);
 
   async function addSubdirectory(kind: DirectoryKind, name: string) {
     setOpenSubmenu(null);
     const created = await createDirectory(kind, name);
     if (created) onClose();
+  }
+
+  /** v169: 在这里新建一个链接子目录（内容来自别的子目录，可跨配置）。 */
+  async function addLinkedSubdirectory() {
+    setOpenSubmenu(null);
+    if (!activeGroup) return;
+    const ref = await uiPickLinkSource('directory', `把子目录链接进「${activeGroup.name}」`);
+    if (!ref) return;
+    addLinkedDirectory(activeGroup.id, ref);
+    showLauncherNotice(`已建立链接子目录：${describeLinkSource(ref, { groups: useAppStore.getState().groups, activeProfileId: getActiveConfigProfileId() ?? '' })}`);
+    void syncLinks();
+    onClose();
+  }
+
+  /** v169: 新建一个链接父目录（整个父目录跨配置镜像）。 */
+  async function addLinkedParent() {
+    setOpenSubmenu(null);
+    const ref = await uiPickLinkSource('group', '新建链接父目录');
+    if (!ref) return;
+    addLinkedGroup(ref);
+    showLauncherNotice(`已建立链接父目录：${describeLinkSource(ref, { groups: useAppStore.getState().groups, activeProfileId: getActiveConfigProfileId() ?? '' })}`);
+    void syncLinks();
+    onClose();
   }
 
   async function addPickedPaths(directory: boolean) {
@@ -370,7 +399,7 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   const showPasteSection = show('paste');
   const canPaste = itemClipboard.length > 0 && activeKind !== 'notes' && !isStartMenuActive && !isMappedActive && Boolean(targetDirectoryId);
   const showAddSystemItem = show('addSystem') && !isStartMenuActive && !isMappedActive;
-  const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addUrl') || showAddSystemItem;
+  const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addUrl') || showAddSystemItem || show('linkGroup');
   const showLocalDisplaySection = show('iconSize') || show('viewMode') || show('sortMode') || show('directoryColumns');
   const showGlobalDisplaySection = show('globalIconSize') || show('globalViewMode') || show('globalSortMode');
   const showMaintenanceSection = show('refreshIcons');
@@ -415,9 +444,18 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
             >
               <span>映射文件夹子目录</span><FolderSymlink size={13} />
             </div>
+            <div className="menu-separator" />
+            <div
+              className="menu-item"
+              title="链接一个别的子目录（可以来自其他配置），内容实时同步过来"
+              onClick={(event) => { event.stopPropagation(); void addLinkedSubdirectory(); }}
+            >
+              <span>链接子目录…</span><Link2 size={13} />
+            </div>
           </div>
         )}
       </div>}
+      {show('linkGroup') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void addLinkedParent()}><span>链接父目录…</span><FolderSymlink size={15} /></div>}
       {show('addFile') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(false)}><span>添加文件</span><FilePlus2 size={15} /></div>}
       {show('addFolder') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(true)}><span>添加文件夹</span><FolderPlus size={15} /></div>}
       {show('addUrl') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={addUrl}><span>添加网址</span><Globe size={15} /></div>}

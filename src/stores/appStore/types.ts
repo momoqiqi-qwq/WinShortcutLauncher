@@ -7,6 +7,7 @@ import type {
   Directory,
   DirectoryDisplaySettings,
   DirectoryKind,
+  DirectoryLinkRef,
   DisplaySettings,
   ExperienceSettings,
   Group,
@@ -217,9 +218,28 @@ export interface ConfigSlice {
   resetAll: () => void;
 }
 
+/** v169: 链接作用域 —— 父目录链接或子目录链接。 */
+export type LinkScope = { kind: 'group' | 'directory'; id: string };
+
+/** v169: 「链接子目录 / 链接父目录」的写操作。 */
+export interface LinkSlice {
+  /** 在 groupId 里新建一个链接子目录，返回新子目录 id。 */
+  addLinkedDirectory: (groupId: string, ref: DirectoryLinkRef) => string | null;
+  /** 新建一个链接父目录，返回新父目录 id。 */
+  addLinkedGroup: (ref: DirectoryLinkRef) => string | null;
+  /** 换链接源（保留链接本身，内容下一次同步整替换）。 */
+  setLinkedSource: (scope: LinkScope, ref: DirectoryLinkRef) => boolean;
+  /** 解除链接：保留当前镜像出来的内容，变成普通父目录 / 普通子目录。 */
+  detachLink: (scope: LinkScope) => boolean;
+  /** 立刻同步所有链接（清缓存后重跑）。 */
+  syncLinks: () => Promise<void>;
+}
+
+export type LinkActions = LinkSlice;
+
 export type RequiredAppConfig = Omit<AppConfig, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts' | 'browserRouter' | 'multiAccount'> & Required<Pick<AppConfig, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts' | 'browserRouter' | 'multiAccount'>>;
 
-export type AppState = RequiredAppConfig & NavigationSlice & ItemSlice & SettingsSlice & MediaSlice & CommandUsageSlice & StartMenuSlice & MappedSlice & ConfigSlice & {
+export type AppState = RequiredAppConfig & NavigationSlice & ItemSlice & SettingsSlice & MediaSlice & CommandUsageSlice & StartMenuSlice & MappedSlice & ConfigSlice & LinkSlice & {
   editItemId?: string;
 };
 

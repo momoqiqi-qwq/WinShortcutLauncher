@@ -3,6 +3,7 @@ import type {
   Directory,
   DirectoryDisplaySettings,
   DirectoryKind,
+  DirectoryLinkRef,
   DisplaySettings,
   FaviconProviderId,
   FontApplyArea,
@@ -405,19 +406,23 @@ export function normalizeDirectory(
   const note = getImportedDirectoryNote(raw);
   const rawKind = cleanText(raw.kind, 'normal', 40) as DirectoryKind;
   // 镜像类子目录（开始菜单 / 映射文件夹）的内容是实时扫描出来的，不落盘；这里只保留类型标记。
+  // 链接子目录（v169）的内容则**要**落盘 —— 它是另一个配置的镜像副本，源配置可能读不到。
   const kind: DirectoryKind = rawKind === 'all'
     ? 'all'
     : rawKind === 'startMenu'
       ? 'startMenu'
       : rawKind === 'mapped'
         ? 'mapped'
-        : isImportedNotesDirectory(raw, note, items.length)
-          ? 'notes'
-          : 'normal';
+        : rawKind === 'link'
+          ? (normalizeDirectoryLinkRef(raw.link) ? 'link' : 'normal')
+          : isImportedNotesDirectory(raw, note, items.length)
+            ? 'notes'
+            : 'normal';
   // 映射目录必须记住被镜像的文件夹，否则重启后不知道要扫哪里。
   const mappedPath = kind === 'mapped'
     ? cleanText(raw.mappedPath ?? raw.mirrorPath ?? raw.folderPath, '', 4096).trim()
     : '';
+  const link = kind === 'link' ? normalizeDirectoryLinkRef(raw.link) : undefined;
   const display = normalizeDirectoryDisplay(raw.display);
   const color = normalizeAccentColor(raw.color);
   return {
@@ -426,11 +431,34 @@ export function normalizeDirectory(
     order: finiteNumber(raw.order, fallbackOrder),
     kind,
     ...(mappedPath ? { mappedPath } : {}),
+    ...(link ? { link } : {}),
     ...(display ? { display } : {}),
     note,
     ...(typeof raw.noteShowLineNumbers === 'boolean' ? { noteShowLineNumbers: raw.noteShowLineNumbers } : {}),
     ...(color ? { color } : {}),
     items: kind === 'notes' || kind === 'startMenu' || kind === 'mapped' ? [] : items,
+  };
+}
+
+/**
+ * v169: 链接源规范化。
+ *
+ * 父目录链接没有 `directoryId`，子目录链接必须有 —— 缺 groupId 或（子目录链接时）缺
+ * directoryId 的一律视为无效链接，调用方会把 kind 退回 'normal'，不让半截数据上线。
+ */
+export function normalizeDirectoryLinkRef(value: unknown, requireDirectory = true): DirectoryLinkRef | undefined {
+  const raw = asRecord(value);
+  const groupId = cleanText(raw.groupId, '', 240).trim();
+  const directoryId = cleanText(raw.directoryId, '', 240).trim();
+  if (!groupId) return undefined;
+  if (requireDirectory && !directoryId) return undefined;
+  const profileId = cleanText(raw.profileId, '', 240).trim();
+  const profileName = cleanText(raw.profileName, '', 120).trim();
+  return {
+    profileId,
+    ...(profileName ? { profileName } : {}),
+    groupId,
+    ...(directoryId ? { directoryId } : {}),
   };
 }
 
@@ -466,6 +494,8 @@ export function normalizeGroups(groups: unknown, fallbackGroups?: unknown): Grou
     const sidebarColumns = Number.isFinite(sidebarColumnsRaw)
       ? Math.max(1, Math.min(6, Math.round(sidebarColumnsRaw)))
       : undefined;
+    // v169: 父目录链接（没有 directoryId 的 link 才是父目录链接）。
+    const groupLink = normalizeDirectoryLinkRef(raw.link, false);
     return {
       id: normalizedId(raw.id, 'group', usedGroupIds),
       name: cleanText(raw.name ?? raw.title ?? raw.label, `分组 ${groupIndex + 1}`, 240),
@@ -473,6 +503,7 @@ export function normalizeGroups(groups: unknown, fallbackGroups?: unknown): Grou
       ...(color ? { color } : {}),
       ...(browserRoute ? { browserRoute } : {}),
       ...(sidebarColumns ? { sidebarColumns } : {}),
+      ...(groupLink ? { link: groupLink } : {}),
       directories,
     } satisfies Group;
   });

@@ -37,6 +37,8 @@ import { getProcessIntegrityStatus } from './lib/processIntegrity';
 import { useWebsiteDropController } from './hooks/useWebsiteDropController';
 import { useGlobalShortcutRouter } from './hooks/useGlobalShortcutRouter';
 import { useOverlayRouter } from './hooks/useOverlayRouter';
+import { useDirectoryLinkSync } from './hooks/useDirectoryLinkSync';
+import { LinkSourcePicker } from './components/LinkSourcePicker/LinkSourcePicker';
 import './components/RainbowEffects/RainbowEffects.css';
 
 
@@ -47,6 +49,7 @@ function App() {
   useAutoSave();
   useCtrlWheelZoom();
   useDeferredPanelPreload();
+  useDirectoryLinkSync();
   const behavior = useAppStore((state) => state.behavior);
   useEffect(() => {
     void invoke('set_window_persistence_settings', {
@@ -366,6 +369,7 @@ function App() {
       </div>
       <DeferredSettingsPanel open={settingsOpen} />
       <UiDialogHost />
+      <LinkSourcePicker />
       <RainbowEffects rainbow={rainbow} />
     </div>
   );

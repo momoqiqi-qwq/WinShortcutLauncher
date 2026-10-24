@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardPaste, Copy, Eraser, FolderInput, FolderOpen, FolderSymlink, Merge, Palette, Pencil, RefreshCw, Repeat2, Scissors, StickyNote, Trash2, Type } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Copy, Eraser, FolderInput, FolderOpen, FolderSymlink, Link2, Merge, Palette, Pencil, RefreshCw, Repeat2, Scissors, StickyNote, Trash2, Type, Unlink } from 'lucide-react';
 import { useState, type MouseEvent } from 'react';
 import type { ContextMenuState, DirectoryKind } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -11,6 +11,9 @@ import { showLauncherNotice } from '../../lib/notify';
 import { canPasteDirectoryIntoGroup } from '../../lib/navigationClipboard';
 import { getStartMenuFolder } from '../../lib/startMenu';
 import { getMappedPath, isMappedDirectory, mappedFolderLabel, validateMappedFolder } from '../../lib/mappedFolder';
+import { uiPickLinkSource } from '../../lib/linkSourcePicker';
+import { describeLinkSource, isSameProfileLink } from '../../lib/directoryLinks';
+import { getActiveConfigProfileId } from '../../lib/configProfiles';
 
 // v147: 与父目录背景色共用同一套色板，保证三处（父目录/子目录/项目）观感一致。
 const DIRECTORY_COLOR_PRESETS = [
@@ -53,6 +56,11 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   const refreshMappedFolder = useAppStore((state) => state.refreshMappedFolder);
   const setDirectoryMappedPath = useAppStore((state) => state.setDirectoryMappedPath);
   const mappedError = useAppStore((state) => state.mappedError);
+  const syncLinks = useAppStore((state) => state.syncLinks);
+  const setLinkedSource = useAppStore((state) => state.setLinkedSource);
+  const detachLink = useAppStore((state) => state.detachLink);
+  const setActiveGroup = useAppStore((state) => state.setActiveGroup);
+  const setActiveDirectory = useAppStore((state) => state.setActiveDirectory);
   const hiddenItems = new Set(experience.directoryContextMenuHiddenItems ?? []);
   const show = (id: import('../../types').DirectoryContextMenuItemId) => !hiddenItems.has(id);
   const { ref, style, submenuClassName } = useSmartMenuPosition(menu.x, menu.y, 8, 260);
@@ -67,16 +75,65 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   const isStartMenu = currentKind === 'startMenu';
   const isMapped = isMappedDirectory(currentDirectory);
   const mappedRoot = isMapped ? getMappedPath(currentDirectory) : '';
+  // v169: 链接子目录 —— 内容由 src/lib/directoryLinks.ts 物化，这里只提供同步 / 换源 / 解除。
+  const isLinked = currentKind === 'link';
+  const linkRef = currentDirectory.link;
   const mergeTargets = currentGroup.directories
     .slice()
     .sort(byOrder)
     // 映射子目录各自镜像不同文件夹，合并没有意义。
-    .filter((dir) => dir.id !== currentDirectory.id && (dir.kind ?? 'normal') === currentKind && currentKind !== 'all' && currentKind !== 'mapped');
+    .filter((dir) => dir.id !== currentDirectory.id && (dir.kind ?? 'normal') === currentKind && currentKind !== 'all' && currentKind !== 'mapped' && currentKind !== 'link');
   const moveTargets = groups.slice().sort(byOrder).filter((entry) => entry.id !== currentGroup.id);
   const canSwitchToNotes = currentKind === 'normal' && currentDirectory.items.length === 0;
   const canSwitchToNormal = currentKind === 'notes';
   const copiedDirectory = navigationClipboard?.kind === 'directory' ? navigationClipboard.directory : null;
   const canPasteDirectory = Boolean(copiedDirectory && canPasteDirectoryIntoGroup(copiedDirectory, currentGroup));
+
+  async function refreshLink() {
+    await syncLinks();
+    showLauncherNotice(`已同步链接子目录「${currentDirectory.name}」`);
+    onClose();
+  }
+
+  async function retargetLink() {
+    const ref = await uiPickLinkSource('directory', '更换链接源', linkRef);
+    if (!ref) { onClose(); return; }
+    if (setLinkedSource({ kind: 'directory', id: currentDirectory.id }, ref)) {
+      showLauncherNotice(`链接源已改为：${describeLinkSource(ref, { groups, activeProfileId: getActiveConfigProfileId() ?? '' })}`);
+      void syncLinks();
+    }
+    onClose();
+  }
+
+  function locateLink() {
+    if (!linkRef) { onClose(); return; }
+    const activeId = getActiveConfigProfileId() ?? '';
+    if (!isSameProfileLink(linkRef, activeId)) {
+      showLauncherNotice(`源子目录在配置「${linkRef.profileName || '其他配置'}」里，切换过去才能定位`);
+      onClose();
+      return;
+    }
+    const sourceGroup = groups.find((entry) => entry.id === linkRef.groupId);
+    if (!sourceGroup) {
+      showLauncherNotice('链接源已被删除，可更换链接源或解除链接');
+      onClose();
+      return;
+    }
+    setActiveGroup(sourceGroup.id);
+    if (linkRef.directoryId && sourceGroup.directories.some((dir) => dir.id === linkRef.directoryId)) {
+      setActiveDirectory(linkRef.directoryId);
+    }
+    onClose();
+  }
+
+  async function removeLink() {
+    const ok = await uiConfirm(`解除「${currentDirectory.name}」的链接吗？已经同步过来的项目会保留成普通项目。`);
+    if (!ok) { onClose(); return; }
+    if (detachLink({ kind: 'directory', id: currentDirectory.id })) {
+      showLauncherNotice(`已解除链接子目录「${currentDirectory.name}」`);
+    }
+    onClose();
+  }
 
   async function rename() {
     const next = await uiPrompt('子目录名称', currentDirectory.name);
@@ -266,8 +323,10 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   const showMappedSection = isMapped
     && (show('refreshMappedFolder') || show('openMappedFolder') || show('changeMappedFolder'));
   const showManageSection = show('rename') || show('color') || show('fullNames') || show('merge') || show('switchToNotes') || show('switchToNormal');
+  const showLinkSection = isLinked
+    && (show('linkRefresh') || show('linkRetarget') || show('linkLocate') || show('linkDetach'));
   const showDangerSection = show('clear') || show('delete');
-  const hasVisibleSection = showClipboardSection || showStartMenuSection || showMappedSection || showManageSection || showDangerSection;
+  const hasVisibleSection = showClipboardSection || showStartMenuSection || showMappedSection || showLinkSection || showManageSection || showDangerSection;
 
   return (
     <div
@@ -313,6 +372,12 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
       {show('openMappedFolder') && isMapped && <div className="menu-item" title={mappedRoot || undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void openMappedFolder()}><span>打开映射文件夹</span><FolderOpen size={15} /></div>}
       {show('changeMappedFolder') && isMapped && <div className="menu-item" title={mappedRoot || '还没有选择文件夹'} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void changeMappedFolder()}><span>重新选择文件夹</span><FolderSymlink size={15} /></div>}
       {showMappedSection && (showManageSection || showDangerSection) && <div className="menu-separator" />}
+      {isLinked && (show('linkRefresh') || show('linkRetarget') || show('linkLocate') || show('linkDetach')) && <div className="menu-separator" />}
+      {isLinked && show('linkRefresh') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void refreshLink()}><span>立即同步链接</span><RefreshCw size={15} /></div>}
+      {isLinked && show('linkRetarget') && <div className="menu-item" title={linkRef ? describeLinkSource(linkRef, { groups, activeProfileId: getActiveConfigProfileId() ?? '' }) : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void retargetLink()}><span>更换链接源…</span><Link2 size={15} /></div>}
+      {isLinked && show('linkLocate') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={locateLink}><span>定位到源子目录</span><FolderInput size={15} /></div>}
+      {isLinked && show('linkDetach') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void removeLink()}><span>解除链接</span><Unlink size={15} /></div>}
+      {isLinked && linkRef && <div className="menu-empty-hint">链接自：{describeLinkSource(linkRef, { groups, activeProfileId: getActiveConfigProfileId() ?? '' })}（内容自动同步）</div>}
       {show('rename') && <div className="menu-item" title={isStartMenu ? '只改启动器里的显示名称，不会重命名系统快捷方式' : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void rename()}><span>重命名子目录</span><Pencil size={15} /></div>}
       {show('color') && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('color')} onClick={() => setOpenSubmenu((value) => value === 'color' ? null : 'color')}>
         <span>子目录背景色</span><ChevronRight size={14} />
@@ -369,10 +434,10 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
           </div>
         )}
       </div>}
-      {show('switchToNotes') && !isStartMenu && !isMapped && <div className={`menu-item ${canSwitchToNotes ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canSwitchToNotes && switchKind('notes')}><span>空子目录切换为便签</span><StickyNote size={15} /></div>}
-      {show('switchToNormal') && !isStartMenu && !isMapped && <div className={`menu-item ${canSwitchToNormal ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canSwitchToNormal && switchKind('normal')}><span>便签切换为普通子目录</span><Repeat2 size={15} /></div>}
+      {show('switchToNotes') && !isStartMenu && !isMapped && !isLinked && <div className={`menu-item ${canSwitchToNotes ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canSwitchToNotes && switchKind('notes')}><span>空子目录切换为便签</span><StickyNote size={15} /></div>}
+      {show('switchToNormal') && !isStartMenu && !isMapped && !isLinked && <div className={`menu-item ${canSwitchToNormal ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canSwitchToNormal && switchKind('normal')}><span>便签切换为普通子目录</span><Repeat2 size={15} /></div>}
       {showManageSection && showDangerSection && <div className="menu-separator" />}
-      {show('clear') && <div className={`menu-item ${currentDirectory.kind === 'all' || currentDirectory.kind === 'notes' || isStartMenu || isMapped ? 'disabled' : ''}`} title={isStartMenu || isMapped ? '镜像子目录不能清空，请删除其中的真实项目' : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void clear()}><span>清空子目录项目</span><Eraser size={15} /></div>}
+      {show('clear') && <div className={`menu-item ${currentDirectory.kind === 'all' || currentDirectory.kind === 'notes' || isStartMenu || isMapped || isLinked ? 'disabled' : ''}`} title={isStartMenu || isMapped ? '镜像子目录不能清空，请删除其中的真实项目' : (isLinked ? '链接子目录的内容来自源目录，清空了也会同步回来' : undefined)} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void clear()}><span>清空子目录项目</span><Eraser size={15} /></div>}
       {show('delete') && <div className={`menu-item danger ${currentGroup.directories.length <= 1 ? 'disabled' : ''}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void remove()}><span>删除子目录</span><Trash2 size={15} /></div>}
       {!hasVisibleSection && <div className="menu-empty-hint">此菜单项目已全部隐藏，可在设置中恢复</div>}
     </div>

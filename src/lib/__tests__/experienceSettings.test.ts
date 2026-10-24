@@ -49,9 +49,9 @@ describe('experience settings migration', () => {
   });
 
   it('keeps parent, child and blank-area menu definitions independent', () => {
-    expect(GROUP_CONTEXT_MENU_IDS).toEqual(['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete']);
-    expect(DIRECTORY_CONTEXT_MENU_IDS).toEqual(['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'rename', 'color', 'fullNames', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete']);
-    expect(AREA_CONTEXT_MENU_IDS).toEqual(['paste', 'createDirectory', 'addFile', 'addFolder', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons']);
+    expect(GROUP_CONTEXT_MENU_IDS).toEqual(['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete', 'linkDirectory', 'linkGroup', 'linkRefresh', 'linkDetach']);
+    expect(DIRECTORY_CONTEXT_MENU_IDS).toEqual(['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'rename', 'color', 'fullNames', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete', 'linkRefresh', 'linkLocate', 'linkRetarget', 'linkDetach']);
+    expect(AREA_CONTEXT_MENU_IDS).toEqual(['paste', 'createDirectory', 'addFile', 'addFolder', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons', 'linkDirectory', 'linkGroup']);
     expect(DIRECTORY_CONTEXT_MENU_IDS.filter((id) => AREA_CONTEXT_MENU_IDS.includes(id as never))).toEqual(['paste']);
   });
 

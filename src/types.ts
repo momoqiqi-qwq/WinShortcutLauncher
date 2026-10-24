@@ -2,7 +2,7 @@ import type { GlobalSearchSettings, TransferStationSettings, ImageBrowserSetting
 export type ShortcutType = 'file' | 'folder' | 'url' | 'command';
 export type ViewMode = 'grid' | 'compact';
 export type SortMode = 'custom' | 'name' | 'type' | 'recent' | 'frequent';
-export type DirectoryKind = 'normal' | 'all' | 'notes' | 'startMenu' | 'mapped';
+export type DirectoryKind = 'normal' | 'all' | 'notes' | 'startMenu' | 'mapped' | 'link';
 export type EdgeAnimationStyle =
   | 'animate-window'
   | 'setwindowpos'
@@ -327,6 +327,21 @@ export interface DisplaySettings {
 
 export type DirectoryDisplaySettings = Partial<DisplaySettings>;
 
+/**
+ * v169: 目录链接的源。
+ *
+ * `profileId` 为空串表示「当前配置」——同配置链接，改源目录立即同步；
+ * 非空表示另一个配置档案（IndexedDB 里那份保存好的配置），可以跨配置生效。
+ */
+export interface DirectoryLinkRef {
+  profileId: string;
+  /** 源配置显示名快照，只用于界面提示（配置改名后不会自动更新）。 */
+  profileName?: string;
+  groupId: string;
+  /** 子目录链接必填；父目录链接（Group.link）没有这个字段。 */
+  directoryId?: string;
+}
+
 export interface Directory {
   id: string;
   name: string;
@@ -335,6 +350,8 @@ export interface Directory {
   kind?: DirectoryKind;
   /** 仅 kind='mapped' 使用：被实时镜像的文件夹绝对路径。 */
   mappedPath?: string;
+  /** v169: 仅 kind='link' 使用 —— 内容实时镜像自某个配置里的子目录。 */
+  link?: DirectoryLinkRef;
   display?: DirectoryDisplaySettings;
   note?: string;
   /** 当前便签是否显示行号，仅在 notes.lineNumberScope='current' 时生效。 */
@@ -352,6 +369,8 @@ export interface Group {
   browserRoute?: BrowserRouteOverride;
   /** 当前父目录下子目录列表的列数；未设置时继承 display.sidebarColumns。 */
   sidebarColumns?: number;
+  /** v169: 父目录链接 —— 整个父目录（连同子目录）实时镜像自某个配置里的父目录。 */
+  link?: DirectoryLinkRef;
   directories: Directory[];
 }
 
@@ -474,6 +493,10 @@ export type DirectoryContextMenuItemId =
   | 'refreshMappedFolder'
   | 'openMappedFolder'
   | 'changeMappedFolder'
+  | 'linkRefresh'
+  | 'linkLocate'
+  | 'linkRetarget'
+  | 'linkDetach'
   | 'clear'
   | 'delete';
 
@@ -482,6 +505,10 @@ export type GroupContextMenuItemId =
   | 'pasteGroup'
   | 'pasteDirectory'
   | 'create'
+  | 'linkDirectory'
+  | 'linkGroup'
+  | 'linkRefresh'
+  | 'linkDetach'
   | 'merge'
   | 'color'
   | 'delete';
@@ -489,6 +516,8 @@ export type GroupContextMenuItemId =
 export type AreaContextMenuItemId =
   | 'paste'
   | 'createDirectory'
+  | 'linkDirectory'
+  | 'linkGroup'
   | 'addFile'
   | 'addFolder'
   | 'addUrl'
