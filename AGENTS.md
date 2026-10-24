@@ -62,6 +62,55 @@ PYTHONIOENCODING=utf-8 python \
 - 删不掉的 `.old-*` 留着即可，**下次同步会自动清理**。
 - 这一步**每次构建后都做**，不必等发 GitHub Release。
 - 版本判断：源以 `package.json` 的版本号为准；目标文件版本从 PE 资源里探测（UTF-16LE 搜 `x.y.z`）。
+- 用户说「**关闭，然后替换**」「关掉再更新」时，走下一节的干净替换流程，别只做「改名换新」。
+
+### 干净替换流程（要求「关闭，然后替换」/ 想立刻生效时）
+
+「改名换新」只是让旧进程继续活着、新版等下次启动；用户明确要求**关掉再替换**时按这套走，
+替换完**当场生效，不需要重启**（下次双击 DeskBox 里的 exe 就是新版）。
+
+1. 先确认到底有几个在跑、跑的是哪个文件：
+
+   ```powershell
+   Get-CimInstance Win32_Process -Filter "Name='Yue Launcher.exe'" |
+     Select-Object ProcessId, ExecutablePath
+   ```
+
+   正常会看到多个（主窗口 + WebView2 子进程共用同一个 ExecutablePath）。
+   路径应当指向 `C:\Users\yile\DeskBox\DeskBox\Yue Launcher.exe`；不是的话先停下问本人。
+
+2. 关：先温和后强制（避免打断正在写配置的实例）：
+
+   ```powershell
+   # 先请求正常关闭
+   Get-Process -Name 'Yue Launcher' -ErrorAction SilentlyContinue | ForEach-Object { $_.CloseMainWindow() | Out-Null }
+   Start-Sleep -Seconds 2
+   # 还活着的强制结束
+   Get-Process -Name 'Yue Launcher' -ErrorAction SilentlyContinue | Stop-Process -Force
+   Start-Sleep -Milliseconds 800
+   (Get-Process -Name 'Yue Launcher' -ErrorAction SilentlyContinue | Measure-Object).Count   # 必须是 0
+   ```
+
+   ⚠️ 关闭前提醒本人一次：**未保存的东西会随窗口一起没**（应用本身是自动保存，正常不丢）。
+
+3. 替换：进程清空后直接跑同步脚本 —— 这次是**真覆盖**，不会产生 `.old-*`：
+
+   ```bash
+   PYTHONIOENCODING=utf-8 python \
+     ~/.workbuddy-ai/skills/yue-launcher-release-publish/scripts/sync-portable.py
+   ```
+
+   脚本自带版本探测 + 备份 + sha256 校验；输出里应看到 `校验：✅ 与源一致`。
+
+4. 收尾检查（两步都要过）：
+
+   ```powershell
+   (Get-Item 'C:\Users\yile\DeskBox\DeskBox\Yue Launcher.exe').VersionInfo.FileVersion   # 应为新版本
+   Get-ChildItem 'C:\Users\yile\DeskBox\DeskBox' -Filter 'Yue Launcher.exe.old-*'        # 应为空（有残留就删）
+   ```
+
+5. 汇报口径：关掉了几个进程 → 替换前后版本 → 校验结果 → 有没有 `.old-*` 残留 →
+   告诉本人「已经生效，重新双击打开就是新版」（这一条**区别于**「改名换新」的「重启后生效」）。
 
 ---
 
