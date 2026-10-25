@@ -3,7 +3,7 @@ import { normalizeAfterLaunchAction } from './itemExperience';
 
 export const DIRECTORY_CONTEXT_MENU_IDS: DirectoryContextMenuItemId[] = ['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'rename', 'color', 'fullNames', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete', 'linkRefresh', 'linkLocate', 'linkRetarget', 'linkDetach'];
 export const GROUP_CONTEXT_MENU_IDS: GroupContextMenuItemId[] = ['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete', 'linkDirectory', 'linkGroup', 'linkRefresh', 'linkDetach'];
-export const AREA_CONTEXT_MENU_IDS: AreaContextMenuItemId[] = ['paste', 'createDirectory', 'addFile', 'addFolder', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons', 'linkDirectory', 'linkGroup'];
+export const AREA_CONTEXT_MENU_IDS: AreaContextMenuItemId[] = ['paste', 'createDirectory', 'addFile', 'addFolder', 'addExe', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons', 'linkDirectory', 'linkGroup'];
 
 function normalizeHiddenMenuItems<T extends string>(value: unknown, allowed: readonly T[]): T[] {
   if (!Array.isArray(value)) return [];

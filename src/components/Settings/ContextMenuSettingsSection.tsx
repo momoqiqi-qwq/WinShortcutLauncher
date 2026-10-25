@@ -60,6 +60,7 @@ const AREA_LABELS: Record<AreaContextMenuItemId, { label: string; hint: string }
   createDirectory: { label: '新建子目录', hint: '在当前父目录中创建普通、全部、便签或开始菜单子目录。' },
   addFile: { label: '添加文件', hint: '选择一个或多个文件。' },
   addFolder: { label: '添加文件夹', hint: '选择文件夹并添加快捷项目。' },
+  addExe: { label: '添加EXE', hint: '用光标拾取：把光标移到目标程序窗口上点一下，直接添加它的 exe。' },
   addUrl: { label: '添加网址', hint: '打开添加网站窗口。' },
   addSystem: { label: '添加系统功能', hint: '添加 Windows 系统工具。' },
   iconSize: { label: '当前子目录图标大小', hint: '只调整当前子目录。' },

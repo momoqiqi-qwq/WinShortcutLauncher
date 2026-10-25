@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardPaste, FilePlus2, FolderPlus, FolderSymlink, Globe, LayoutGrid, Link2, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Crosshair, FilePlus2, FolderPlus, FolderSymlink, Globe, LayoutGrid, Link2, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type } from 'lucide-react';
 import { getMappedPath, isMappedDirectory } from '../../lib/mappedFolder';
 import { uiPickLinkSource } from '../../lib/linkSourcePicker';
 import { describeLinkSource } from '../../lib/directoryLinks';
@@ -9,6 +9,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import type { BrowserRouteOverride, ContextMenuState, Directory, DirectoryKind, ItemClickAction, ShortcutItem, SortMode, ViewMode } from '../../types';
 import { getEffectiveDisplay, useAppStore } from '../../stores/appStore';
 import { createShortcutItemsFromPaths, createUrlShortcut } from '../../lib/createShortcutItems';
+import { cancelExePick, startExePick, type ExePickResult } from '../../lib/exePick';
 import { makeId } from '../../lib/id';
 import { systemToolsGroup } from '../../data/systemTools';
 import { useSmartMenuPosition } from './useSmartMenuPosition';
@@ -83,6 +84,11 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   const [urlSingleClickAction, setUrlSingleClickAction] = useState<ItemClickAction>('inherit');
   const [urlDoubleClickAction, setUrlDoubleClickAction] = useState<ItemClickAction>('inherit');
   const [urlError, setUrlError] = useState('');
+  // v172「添加EXE」：先倒计时让用户把光标挪到目标程序上，再隐藏主窗口开始拾取。
+  const [exePickOpen, setExePickOpen] = useState(false);
+  const [exePickPhase, setExePickPhase] = useState<'idle' | 'counting' | 'picking' | 'done'>('idle');
+  const [exePickCountdown, setExePickCountdown] = useState(3);
+  const [exePickResult, setExePickResult] = useState<ExePickResult | null>(null);
   const { catalog: browserCatalog } = useBrowserCatalog(browserRouter.customBrowsers, urlDialogOpen);
   const { ref, style, submenuClassName } = useSmartMenuPosition(menu.x, menu.y, 8, 300);
   const targetDirectoryId = activeDirectory?.kind === 'all' || activeDirectory?.kind === 'notes'
@@ -135,6 +141,12 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     });
     const paths = normalizeOpenResult(picked as string | string[] | null);
     if (!paths.length) return;
+    await addPaths(paths);
+  }
+
+  /** 把一批真实路径加进当前子目录（开始菜单 / 映射文件夹走各自的写入通道）。 */
+  async function addPaths(paths: string[]) {
+    if (!paths.length) return;
 
     if (isStartMenuActive) {
       onClose();
@@ -169,6 +181,51 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     const items = await createShortcutItemsFromPaths(paths);
     addItems(activeGroupId, targetDirectoryId, items);
     onClose();
+  }
+
+  /** 打开「添加EXE」窗口（还没开始拾取，先让用户看清楚怎么操作）。 */
+  function openExePick() {
+    setOpenSubmenu(null);
+    setExePickPhase('idle');
+    setExePickCountdown(3);
+    setExePickResult(null);
+    setExePickOpen(true);
+  }
+
+  function closeExePickDialog() {
+    if (exePickPhase === 'picking') void cancelExePick();
+    setExePickOpen(false);
+    setExePickPhase('idle');
+    setExePickResult(null);
+  }
+
+  const sleep = (ms: number) => new Promise<void>((resolve) => { window.setTimeout(resolve, ms); });
+
+  /**
+   * 倒计时 3 秒 → 隐藏主窗口开始拾取 → 结果回来后再弹确认。
+   * 倒计时是给用户挪光标的：拾取一旦开始主窗口就收起来了，没有第二次准备机会。
+   */
+  async function beginExePick() {
+    setExePickResult(null);
+    setExePickPhase('counting');
+    for (let remaining = 3; remaining >= 1; remaining -= 1) {
+      setExePickCountdown(remaining);
+      await sleep(700);
+    }
+    setExePickPhase('picking');
+    const result = await startExePick();
+    setExePickResult(result);
+    setExePickPhase('done');
+  }
+
+  async function confirmExePick() {
+    const target = exePickResult?.target;
+    if (!target?.path) return;
+    setExePickOpen(false);
+    setExePickPhase('idle');
+    setExePickResult(null);
+    await addPaths([target.path]);
+    showLauncherNotice(`已添加程序：${target.name}`);
   }
 
   function addUrl() {
@@ -399,7 +456,7 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   const showPasteSection = show('paste');
   const canPaste = itemClipboard.length > 0 && activeKind !== 'notes' && !isStartMenuActive && !isMappedActive && Boolean(targetDirectoryId);
   const showAddSystemItem = show('addSystem') && !isStartMenuActive && !isMappedActive;
-  const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addUrl') || showAddSystemItem || show('linkGroup');
+  const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addExe') || show('addUrl') || showAddSystemItem || show('linkGroup');
   const showLocalDisplaySection = show('iconSize') || show('viewMode') || show('sortMode') || show('directoryColumns');
   const showGlobalDisplaySection = show('globalIconSize') || show('globalViewMode') || show('globalSortMode');
   const showMaintenanceSection = show('refreshIcons');
@@ -458,6 +515,7 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
       {show('linkGroup') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void addLinkedParent()}><span>链接父目录…</span><FolderSymlink size={15} /></div>}
       {show('addFile') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(false)}><span>添加文件</span><FilePlus2 size={15} /></div>}
       {show('addFolder') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(true)}><span>添加文件夹</span><FolderPlus size={15} /></div>}
+      {show('addExe') && <div className="menu-item" title="不用翻文件夹：点一下就开始拾取，把光标移到目标程序上再点一下即可" onMouseEnter={() => setOpenSubmenu(null)} onClick={openExePick}><span>添加EXE</span><Crosshair size={15} /></div>}
       {show('addUrl') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={addUrl}><span>添加网址</span><Globe size={15} /></div>}
       {showAddSystemItem && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('system')} onClick={() => setOpenSubmenu((value) => value === 'system' ? null : 'system')}>
         <span>添加系统功能</span><ChevronRight size={14} />
@@ -591,6 +649,79 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
             <button type="submit">添加</button>
           </div>
         </form>
+      </div>
+    )}
+    {exePickOpen && (
+      <div className="url-shortcut-dialog-backdrop" data-no-drag onMouseDown={(event) => { event.stopPropagation(); }} onContextMenu={(event) => event.preventDefault()}>
+        <div className="url-shortcut-dialog exe-pick-dialog" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="url-shortcut-title">
+            <Crosshair size={18} />
+            <span>添加 EXE（光标拾取）</span>
+          </div>
+
+          {exePickPhase === 'idle' && (
+            <>
+              <p className="url-shortcut-hint">
+                不用翻文件夹：点「开始拾取」后本窗口会收起，把光标移到目标程序窗口上
+                <strong>点一下左键</strong>（或者按住拖过去再松开）就能把那个 exe 抓进来。
+              </p>
+              <p className="url-shortcut-hint">拾取过程中按 Esc 取消；120 秒没有任何动作会自动结束。捕获的是光标下窗口所属的进程，不拦截、不注入。</p>
+              <div className="url-shortcut-actions">
+                <button type="button" className="ghost" onClick={closeExePickDialog}>取消</button>
+                <button type="button" onClick={() => void beginExePick()}>开始拾取</button>
+              </div>
+            </>
+          )}
+
+          {exePickPhase === 'counting' && (
+            <>
+              <p className="url-shortcut-hint">把手移开、光标对准备要添加的那个程序窗口……</p>
+              <div className="exe-pick-countdown">{exePickCountdown}</div>
+              <div className="url-shortcut-actions">
+                <button type="button" className="ghost" onClick={closeExePickDialog}>取消</button>
+              </div>
+            </>
+          )}
+
+          {exePickPhase === 'picking' && (
+            <>
+              <p className="url-shortcut-hint">本窗口已收起，正在等你点选目标程序……</p>
+              <div className="exe-pick-countdown">⌖</div>
+              <div className="url-shortcut-actions">
+                <button type="button" className="ghost" onClick={closeExePickDialog}>取消</button>
+              </div>
+            </>
+          )}
+
+          {exePickPhase === 'done' && (
+            <>
+              {exePickResult?.status === 'picked' && exePickResult.target ? (
+                <>
+                  <p className="url-shortcut-hint">拾取到下面这个程序，确认一下再添加：</p>
+                  <div className="exe-pick-result">
+                    <div className="exe-pick-name">{exePickResult.target.name}</div>
+                    <div className="exe-pick-path" title={exePickResult.target.path}>{exePickResult.target.path}</div>
+                    {exePickResult.target.title && <div className="exe-pick-window">窗口：{exePickResult.target.title}</div>}
+                  </div>
+                  <div className="url-shortcut-actions">
+                    <button type="button" className="ghost" onClick={() => void beginExePick()}>重新拾取</button>
+                    <button type="button" className="ghost" onClick={closeExePickDialog}>取消</button>
+                    <button type="button" onClick={() => void confirmExePick()}>添加</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="url-shortcut-error">{exePickResult?.message ?? '没有拾取到程序'}</div>
+                  <p className="url-shortcut-hint">可以再试一次：开始拾取后把光标停在目标程序窗口上，点一下左键即可。本启动器自己的窗口和没有窗口的地方不算目标。</p>
+                  <div className="url-shortcut-actions">
+                    <button type="button" className="ghost" onClick={closeExePickDialog}>取消</button>
+                    <button type="button" onClick={() => void beginExePick()}>重新拾取</button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
       </div>
     )}
     </>

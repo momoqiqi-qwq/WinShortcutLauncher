@@ -520,6 +520,7 @@ export type AreaContextMenuItemId =
   | 'linkGroup'
   | 'addFile'
   | 'addFolder'
+  | 'addExe'
   | 'addUrl'
   | 'addSystem'
   | 'iconSize'

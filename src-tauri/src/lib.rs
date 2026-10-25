@@ -3,6 +3,7 @@ mod blocking;
 mod commands;
 mod edge_dock;
 mod edge_dock_native;
+mod exe_pick;
 mod icon;
 #[cfg(target_os = "windows")]
 mod icon_native;
@@ -382,6 +383,8 @@ pub fn run() {
       }
 
       tray.build(app)?;
+      // v172: 「添加EXE」拖动拾取的运行时状态（当前代号 + 停止旗标）。
+      app.manage(exe_pick::ExePickState::default());
       window_persistence::show_main_window_after_restore(app.handle());
       #[cfg(target_os = "windows")]
       match native_browser_drop::install(app.handle()) {
@@ -406,6 +409,8 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       background_media::cache_background_media,
       background_media::inspect_background_media,
+      exe_pick::start_exe_pick,
+      exe_pick::stop_exe_pick,
       commands::launch_item,
       commands::detect_foreground_browser,
       commands::scan_browsers,

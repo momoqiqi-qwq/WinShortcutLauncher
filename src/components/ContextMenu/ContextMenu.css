@@ -549,3 +549,54 @@
 .item-context-menu .with-submenu:hover > svg:last-child {
   opacity: 1;
 }
+
+/* v172「添加EXE」光标拾取窗口：倒计时与拾取结果显示 */
+.exe-pick-dialog {
+  width: min(520px, calc(100vw - 40px));
+}
+
+.exe-pick-countdown {
+  display: grid;
+  place-items: center;
+  height: 96px;
+  border-radius: 14px;
+  border: 1px dashed color-mix(in srgb, var(--accent, #7ea2ff) 55%, transparent);
+  background: color-mix(in srgb, var(--accent, #7ea2ff) 10%, transparent);
+  color: var(--accent, #7ea2ff);
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.exe-pick-result {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border, rgba(255, 255, 255, .14));
+  background: var(--panel-2, rgba(255, 255, 255, .06));
+}
+
+.exe-pick-name {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text, #fff);
+}
+
+.exe-pick-path {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted, #aaa);
+  word-break: break-all;
+}
+
+.exe-pick-window {
+  font-size: 12px;
+  color: var(--muted, #aaa);
+  opacity: .85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

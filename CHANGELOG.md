@@ -4,7 +4,41 @@
 
 ---
 
-## V171（最新）— 修复深色主题下下拉列表「白底浅字」：原生弹层改为跟随主题
+## V172（最新）— 新增「添加EXE」：光标指哪拾哪，直接把正在运行的程序加进来
+
+> 想法：加个程序不该先翻三层文件夹。子目录右键 →「添加EXE」，把光标移到那个程序的窗口上点一下，它就进来了。
+
+### 用法
+
+1. 子目录空白处右键 → **添加EXE**；
+2. 点「开始拾取」后主窗口收起，并有 3 秒倒计时给你把光标挪到目标程序上；
+3. 在目标程序窗口上**点一下左键**（或按住从启动器拖过去再松开）= 确认；**Esc** 取消；
+4. 主窗口自动回来，弹窗显示拾到的程序名 / exe 路径 / 窗口标题，确认后写入当前子目录。
+
+### 后端（`src-tauri/src/exe_pick.rs`，新增）
+
+- 新增 `start_exe_pick` / `stop_exe_pick` 两条命令，外加 `ExePickState`（当前代号 + 停止旗标）—— 被取消的旧探测线程即使晚到，结果也会因代号对不上而作废。
+- 探测线程每 90ms 一轮：`GetCursorPos` → `WindowFromPoint` → `GetWindowThreadProcessId` → `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `QueryFullProcessImageNameW` 取 exe 全路径，`GetWindowTextW` 顺带取窗口标题。
+- 判定沿用 easy-espanso 的「先看到按下、再看到松开」口径，避免主窗口刚隐藏时残留的鼠标状态造成误判；Esc = 取消；120 秒无动作自动结束；启动后 700ms 内的探测不采信（窗口层级还在变）。
+- 拾取期间只**读**窗口：不注入、不拦截，目标程序照常收到那一次点击；本进程自己的窗口被排除。
+- 收放窗口用 `hide()` / `show()`，不走「隐藏到托盘」语义（不动 `MAIN_HIDDEN_TO_TRAY`，也不动窗口几何记忆），拾取结束后不会把窗口位置搅乱。
+- 复用 `commands::process_executable_path`（可见性改为 `pub(crate)`）。
+
+### 前端
+
+- `src/lib/exePick.ts`（新增）：`startExePick()` 先挂 `exe-pick-end` 监听再 `invoke`，避免探测线程结束太快、事件比监听先到；150 秒兜底超时并顺手 `stop_exe_pick`。
+- `AreaContextMenu.tsx`：新增菜单项「添加EXE」（`Crosshair` 图标，排在「添加文件夹」之后）+ 拾取窗口（操作说明 / 3 秒倒计时 / 结果确认 / 重新拾取）。原「添加文件」里的写入逻辑抽成 `addPaths(paths)` 复用，所以开始菜单子目录、映射文件夹子目录这两条特殊通道同样有效。
+- `types.ts` / `experienceSettings.ts` / `ContextMenuSettingsSection.tsx`：`AreaContextMenuItemId` 增加 `addExe`，可在「设置 → 右键菜单」里隐藏或恢复（默认显示）。
+- `ContextMenu.css`：新增 `.exe-pick-*` 样式（倒计时大字、拾取结果卡片、等宽路径）。
+- 测试：`experienceSettings.test.ts` 的菜单 id 清单同步加入 `addExe`（全量 270 条通过）。
+
+### 验证
+
+- `node scripts/verify-source-fixes.mjs` 通过；`npx tsc --noEmit` 通过；`cargo check` 通过（19.59s，无 warning）；vitest 全量 270 条通过。
+
+---
+
+## V171 — 修复深色主题下下拉列表「白底浅字」：原生弹层改为跟随主题
 
 > 反馈：「太白，修复」。截的是「新建链接父目录」的来源配置下拉——弹层是刺眼的纯白，文字却还是深色主题的浅灰，几乎读不出来。
 

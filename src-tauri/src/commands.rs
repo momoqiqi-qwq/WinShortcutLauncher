@@ -633,7 +633,7 @@ fn test_browser_target_blocking(target: &BrowserLaunchTarget) -> Result<String, 
 }
 
 #[cfg(target_os = "windows")]
-fn process_executable_path(process_id: u32) -> Option<String> {
+pub(crate) fn process_executable_path(process_id: u32) -> Option<String> {
   use windows_sys::Win32::Foundation::CloseHandle;
   use windows_sys::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION};
 
