@@ -49,6 +49,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { id: 'compact-settings', label: '设置简洁模式', description: '紧凑分类并隐藏辅助描述', tab: 'experience', focusText: '设置', keywords: ['简洁', '描述', '紧凑'] },
   { id: 'directory-create', label: '新建子目录行为', description: '命名、重名编号和创建后切换', tab: 'navigation', focusText: '新建', keywords: ['子目录', '重名', '编号'] },
   { id: 'directory-count', label: '子目录项目数量', description: '在侧栏显示项目或便签行数', tab: 'navigation', focusText: '数量', keywords: ['侧栏', '项目数', '行数'] },
+  { id: 'directory-kind-style', label: '特殊子目录区分边框', description: 'HTML 目录、链接目录的边框形式与总开关', tab: 'navigation', focusText: '区分特殊子目录', keywords: ['特殊子目录', 'HTML 目录', '链接目录', '边框', '描边', '角标', '强调条', '区分', '标记'] },
   { id: 'parent-group-colors', label: '父目录配色', description: '给每个父目录单独设置背景颜色或一键彩色分组', tab: 'navigation', focusText: '父目录配色', keywords: ['父目录', '颜色', '背景色', '彩色', '分组框', '色板'] },
   { id: 'directory-item-colors', label: '子目录与项目配色', description: '给左侧子目录和项目单独设置背景颜色，或一键彩色上色', tab: 'navigation', focusText: '子目录与项目配色', keywords: ['子目录', '项目', '快捷方式', '颜色', '背景色', '彩色', '彩色框', '色板'] },
   { id: 'parent-group-browser-route', label: '父目录默认浏览器', description: '给父目录设置默认浏览器和 Profile，让其中网址自动继承', tab: 'navigation', focusText: '父目录默认浏览器', keywords: ['父目录', '浏览器', 'profile', '账号', '继承', 'floorp'] },

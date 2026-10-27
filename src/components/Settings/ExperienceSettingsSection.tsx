@@ -3,37 +3,7 @@ import { useAppStore } from '../../stores/appStore';
 import { defaultExperience } from '../../lib/experienceSettings';
 import type { AfterLaunchAction, ItemTooltipMode } from '../../types';
 import { formatShortcut } from '../../lib/keyboardShortcuts';
-import { ToggleCard as ToggleRow } from './SettingsPrimitives';
-
-function ChoiceRow<T extends string>({ label, hint, value, options, onChange }: {
-  label: string;
-  hint: string;
-  value: T;
-  options: Array<{ value: T; label: string }>;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="experience-choice-card">
-      <span className="experience-toggle-copy">
-        <strong>{label}</strong>
-        <small>{hint}</small>
-      </span>
-      <div className="segmented experience-segmented">
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            className={value === option.value ? 'active' : ''}
-            aria-pressed={value === option.value}
-            onClick={() => onChange(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
+import { ChoiceCard as ChoiceRow, ToggleCard as ToggleRow } from './SettingsPrimitives';
 
 export function ExperienceSettingsSection() {
   const experience = useAppStore((state) => state.experience);

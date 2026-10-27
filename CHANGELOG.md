@@ -4,7 +4,27 @@
 
 ---
 
-## V173（最新）— 新增「HTML 目录」：文件夹里的网页变成可拖拽的预览卡片墙
+## V174（最新）— 特殊子目录加区分边框，形式可切换、可关闭
+
+> 想法：侧栏里「HTML 目录」「链接目录」和普通子目录长得一模一样，扫一眼分不出来。现在它们各有一套边框，形式能换（描边 / 角标 / 强调条），不想要就整个关掉。
+
+### 用法
+
+1. 设置 → 导航 → **子目录侧栏显示** 里新增两项：
+   - **区分特殊子目录**：总开关，默认开。关掉后所有子目录回到统一样式；
+   - **区分形式**：`描边`（HTML 实线、链接虚线）/ `角标`（右侧 `HTML` / `LINK` 小标签）/ `强调条`（左侧竖条，和开始菜单、映射文件夹同一套语言）。开关关着时这一项自动收起。
+2. 只作用于 `html` 和 `link` 两种子目录；普通、全部、便签、开始菜单、映射文件夹的样式一律不变。
+
+### 实现要点
+
+- `ExperienceSettings` 新增 `showSpecialDirectoryMarkers: boolean`（默认 `true`）与 `specialDirectoryStyle: SpecialDirectoryStyle`（`'outline' | 'ribbon' | 'bar'`，默认 `'outline'`）；`normalizeExperience` 里做白名单回落，非法值回到 `outline`。
+- 形式靠侧栏容器上的 `kind-style-<style>` 类切换（`Sidebar.tsx` 的 `.sidebar-tabs`），关掉时挂 `kind-style-off`；子目录本身沿用已有的 `side-tab-<kind>` 类，CSS 全部集中在 `Sidebar.css` 末尾。
+- 颜色走 `--kind-accent: var(--directory-accent, var(--kind-color))` —— **用户给这个子目录上过色就用用户的色**，没上色才用类型色（HTML 橙 `#e0862c`、链接紫 `#8b5cf6`）。这样「形式」永远能区分，同时不盖掉自定义配色。
+- 设置项复用抽到 `SettingsPrimitives.tsx` 的 `ChoiceCard`（原来在 `ExperienceSettingsSection.tsx` 里是局部组件，这次提出来两边共用）。
+- 设置搜索新增「特殊子目录区分边框」条目（关键词：HTML 目录 / 链接目录 / 描边 / 角标 / 强调条）。
+
+---
+## V173 — 新增「HTML 目录」：文件夹里的网页变成可拖拽的预览卡片墙
 
 > 想法：手头那一堆 `index.html` 每次都要翻资源管理器。新建一个 HTML 子目录、指一个文件夹，它就把里面所有网页铺成一墙卡片，每张卡片直接显示那个页面的**首页真实样子**，边框还能用鼠标拖着改大小。
 

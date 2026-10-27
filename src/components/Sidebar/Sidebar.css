@@ -283,3 +283,105 @@
   background: color-mix(in srgb, var(--accent), transparent 82%);
   color: var(--accent);
 }
+
+/* ---------- v174: 特殊子目录（HTML / 链接）的区分边框 ----------
+   目标：一眼看出「这不是普通子目录」，但又不能盖掉用户自己上的颜色。
+   做法：形式由侧栏容器上的 kind-style-* 决定（设置里可切换/关闭），
+   颜色走 --kind-accent —— 用户给这个子目录上过色就用用户的色，否则用类型色。 */
+
+.side-tab-html { --kind-color: #e0862c; }
+.side-tab-link { --kind-color: #8b5cf6; }
+
+.side-tab-html,
+.side-tab-link {
+  position: relative;
+  --kind-accent: var(--directory-accent, var(--kind-color));
+}
+
+/* 形式一：整圈描边 —— HTML 实线、链接虚线，普通子目录没有边框。 */
+.sidebar-tabs.kind-style-outline .side-tab-html,
+.sidebar-tabs.kind-style-outline .side-tab-link {
+  border-color: color-mix(in srgb, var(--kind-accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--panel-2), var(--kind-accent) 7%);
+}
+
+.sidebar-tabs.kind-style-outline .side-tab-link {
+  border-style: dashed;
+}
+
+.sidebar-tabs.kind-style-outline .side-tab-html.active,
+.sidebar-tabs.kind-style-outline .side-tab-link.active {
+  border-color: var(--kind-accent);
+  background: color-mix(in srgb, var(--panel-2), var(--kind-accent) 15%);
+  color: color-mix(in srgb, var(--kind-accent) 78%, var(--text));
+}
+
+/* 形式二：右侧小角标 —— 边框更淡，靠 HTML / LINK 两个字认。 */
+.sidebar-tabs.kind-style-ribbon .side-tab-html,
+.sidebar-tabs.kind-style-ribbon .side-tab-link {
+  border-color: color-mix(in srgb, var(--kind-accent) 38%, var(--border));
+  padding-right: 46px;
+}
+
+.sidebar-tabs.kind-style-ribbon .side-tab-html::after,
+.sidebar-tabs.kind-style-ribbon .side-tab-link::after {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: var(--kind-accent);
+  pointer-events: none;
+}
+
+.sidebar-tabs.kind-style-ribbon .side-tab-html::after { content: "HTML"; }
+.sidebar-tabs.kind-style-ribbon .side-tab-link::after { content: "LINK"; }
+
+.sidebar-tabs.kind-style-ribbon .side-tab-html.active,
+.sidebar-tabs.kind-style-ribbon .side-tab-link.active {
+  border-color: color-mix(in srgb, var(--kind-accent) 62%, var(--border));
+  background: color-mix(in srgb, var(--panel-2), var(--kind-accent) 12%);
+  color: color-mix(in srgb, var(--kind-accent) 72%, var(--text));
+}
+
+/* 形式三：左侧强调条 —— 和开始菜单 / 映射文件夹同一套语言，HTML 实线、链接虚线。 */
+.sidebar-tabs.kind-style-bar .side-tab-html,
+.sidebar-tabs.kind-style-bar .side-tab-link {
+  background: color-mix(in srgb, var(--panel-2), var(--kind-accent) 6%);
+  padding-left: 15px;
+}
+
+.sidebar-tabs.kind-style-bar .side-tab-html::before,
+.sidebar-tabs.kind-style-bar .side-tab-link::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+}
+
+.sidebar-tabs.kind-style-bar .side-tab-html::before {
+  background: var(--kind-accent);
+}
+
+.sidebar-tabs.kind-style-bar .side-tab-link::before {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--kind-accent) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.sidebar-tabs.kind-style-bar .side-tab-html.active,
+.sidebar-tabs.kind-style-bar .side-tab-link.active {
+  background: color-mix(in srgb, var(--panel-2), var(--kind-accent) 13%);
+  color: color-mix(in srgb, var(--kind-accent) 72%, var(--text));
+}

@@ -265,7 +265,7 @@ export function Sidebar({
         <SortableContext items={ids} strategy={sidebarColumns > 1 ? rectSortingStrategy : verticalListSortingStrategy}>
           <div
             ref={tabsRef}
-            className={`sidebar-tabs ${globalDisplay.sidebarShowFullNames ? 'full-names' : ''}`}
+            className={`sidebar-tabs ${globalDisplay.sidebarShowFullNames ? 'full-names' : ''} ${experience.showSpecialDirectoryMarkers ? `kind-style-${experience.specialDirectoryStyle}` : 'kind-style-off'}`}
             style={{ '--sidebar-columns': sidebarColumns } as CSSProperties}
           >
             {/* v166: 同色相邻子目录的成组框。绝对定位在网格里，不占格、不吃事件（拖动排序时淡出）。 */}

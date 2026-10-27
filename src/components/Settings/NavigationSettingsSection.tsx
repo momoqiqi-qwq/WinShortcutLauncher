@@ -3,7 +3,7 @@ import { useAppStore } from '../../stores/appStore';
 import { ParentGroupColorSettings } from './ParentGroupColorSettings';
 import { DirectoryItemColorSettings } from './DirectoryItemColorSettings';
 import { ParentGroupBrowserRoutingSettings } from './ParentGroupBrowserRoutingSettings';
-import { ToggleCard } from './SettingsPrimitives';
+import { ChoiceCard, ToggleCard } from './SettingsPrimitives';
 
 export function NavigationSettingsSection() {
   const experience = useAppStore((state) => state.experience);
@@ -60,6 +60,25 @@ export function NavigationSettingsSection() {
       <section className="settings-section narrow-section experience-settings-section">
         <div className="settings-section-title-row"><h3><Menu size={17} /> 子目录侧栏显示</h3></div>
         <ToggleCard label="显示项目数量" hint="普通目录显示项目数，便签显示文本行数，“全部”显示普通目录项目总数。" checked={experience.showDirectoryItemCount} onChange={(showDirectoryItemCount) => updateExperience({ showDirectoryItemCount })} />
+        <ToggleCard
+          label="区分特殊子目录"
+          hint="给「HTML 目录」「链接目录」加上各自的边框，和普通子目录一眼分开；关掉后所有子目录长得一样。"
+          checked={experience.showSpecialDirectoryMarkers}
+          onChange={(showSpecialDirectoryMarkers) => updateExperience({ showSpecialDirectoryMarkers })}
+        />
+        {experience.showSpecialDirectoryMarkers && (
+          <ChoiceCard
+            label="区分形式"
+            hint="描边：HTML 实线、链接虚线；角标：右侧 HTML / LINK 小标签；强调条：左侧竖条（和开始菜单同一套）。"
+            value={experience.specialDirectoryStyle}
+            options={[
+              { value: 'outline', label: '描边' },
+              { value: 'ribbon', label: '角标' },
+              { value: 'bar', label: '强调条' },
+            ]}
+            onChange={(specialDirectoryStyle) => updateExperience({ specialDirectoryStyle })}
+          />
+        )}
         <p className="settings-hint">当前激活的子目录会自动滚动到可见位置；新增后自动进入开启时也会自动定位。</p>
       </section>
 

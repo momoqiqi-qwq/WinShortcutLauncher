@@ -592,6 +592,14 @@ export interface CommandUsage {
   lastUsedAt: number;
 }
 
+/**
+ * v174: 侧栏特殊子目录（HTML / 链接）的区分边框形式。
+ * - `outline`：整圈描边，HTML 实线、链接虚线
+ * - `ribbon`：右侧小角标（HTML / LINK），带一圈淡淡的描边
+ * - `bar`：左侧强调条，HTML 实线、链接虚线（与开始菜单、映射文件夹同一套语言）
+ */
+export type SpecialDirectoryStyle = 'outline' | 'ribbon' | 'bar';
+
 export interface ExperienceSettings {
   /** 重新打开程序时回到上次使用的父目录和子目录。 */
   rememberLastPage: boolean;
@@ -651,6 +659,13 @@ export interface ExperienceSettings {
   showDirectoryItemCount: boolean;
   /** 双击左侧子目录空白区域时新建子目录。 */
   doubleClickSidebarToCreate: boolean;
+  /**
+   * v174: 侧栏是否给「HTML 目录」「链接目录」这类特殊子目录加区分边框。
+   * 关掉之后所有子目录长得一样（最省视觉噪音）。
+   */
+  showSpecialDirectoryMarkers: boolean;
+  /** v174: 特殊子目录边框的形式；`outline` 整圈描边、`ribbon` 角标、`bar` 左侧强调条。 */
+  specialDirectoryStyle: SpecialDirectoryStyle;
   /** 使用更紧凑的右键菜单间距。 */
   compactContextMenus: boolean;
   /** 在右键菜单中显示功能图标。 */

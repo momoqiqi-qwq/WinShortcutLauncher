@@ -1,5 +1,12 @@
-import type { AreaContextMenuItemId, DirectoryContextMenuItemId, ExperienceSettings, GroupContextMenuItemId } from '../types';
+import type { AreaContextMenuItemId, DirectoryContextMenuItemId, ExperienceSettings, GroupContextMenuItemId, SpecialDirectoryStyle } from '../types';
 import { normalizeAfterLaunchAction } from './itemExperience';
+
+/** v174: 特殊子目录边框形式白名单，非法值统一回落到 `outline`。 */
+export const SPECIAL_DIRECTORY_STYLES: SpecialDirectoryStyle[] = ['outline', 'ribbon', 'bar'];
+
+export function normalizeSpecialDirectoryStyle(value: unknown): SpecialDirectoryStyle {
+  return SPECIAL_DIRECTORY_STYLES.includes(value as SpecialDirectoryStyle) ? value as SpecialDirectoryStyle : 'outline';
+}
 
 export const DIRECTORY_CONTEXT_MENU_IDS: DirectoryContextMenuItemId[] = ['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'refreshHtmlFolder', 'openHtmlFolder', 'changeHtmlFolder', 'toggleHtmlPreview', 'resetHtmlCardSizes', 'rename', 'color', 'fullNames', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete', 'linkRefresh', 'linkLocate', 'linkRetarget', 'linkDetach'];
 export const GROUP_CONTEXT_MENU_IDS: GroupContextMenuItemId[] = ['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete', 'linkDirectory', 'linkGroup', 'linkRefresh', 'linkDetach'];
@@ -40,6 +47,8 @@ export const defaultExperience: ExperienceSettings = {
   autoNumberDuplicateDirectories: true,
   showDirectoryItemCount: false,
   doubleClickSidebarToCreate: false,
+  showSpecialDirectoryMarkers: true,
+  specialDirectoryStyle: 'outline',
   compactContextMenus: false,
   showContextMenuIcons: true,
   showContextMenuDirectoryHeader: true,
@@ -80,6 +89,8 @@ export function normalizeExperience(settings?: Partial<ExperienceSettings>): Exp
     autoNumberDuplicateDirectories: merged.autoNumberDuplicateDirectories !== false,
     showDirectoryItemCount: merged.showDirectoryItemCount === true,
     doubleClickSidebarToCreate: merged.doubleClickSidebarToCreate === true,
+    showSpecialDirectoryMarkers: merged.showSpecialDirectoryMarkers !== false,
+    specialDirectoryStyle: normalizeSpecialDirectoryStyle(merged.specialDirectoryStyle),
     compactContextMenus: merged.compactContextMenus === true,
     showContextMenuIcons: merged.showContextMenuIcons !== false,
     showContextMenuDirectoryHeader: merged.showContextMenuDirectoryHeader !== false,
