@@ -120,6 +120,8 @@ export function Sidebar({
   const experience = useAppStore((state) => state.experience);
   const startMenuCount = useAppStore((state) => state.startMenuItems.length);
   const mappedItemsByDirectory = useAppStore((state) => state.mappedItems);
+  // v173: HTML 子目录的页面数是运行时扫出来的，和映射目录一样从 store 里取。
+  const htmlPagesByDirectory = useAppStore((state) => state.htmlPages);
   const createDirectory = useDirectoryCreator();
   const directories = useMemo(() => activeGroup?.directories.slice().sort(byOrder) ?? [], [activeGroup]);
   const sidebarColumns = Math.max(1, Math.min(6, Math.round(activeGroup?.sidebarColumns ?? globalDisplay.sidebarColumns ?? 1)));
@@ -283,7 +285,7 @@ export function Sidebar({
             {directories.map((directory) => (
               <EditableDirectory
                 directory={directory}
-                count={getDirectoryDisplayCount(directory, directories, startMenuCount, mappedItemsByDirectory[directory.id]?.length ?? 0)}
+                count={getDirectoryDisplayCount(directory, directories, startMenuCount, mappedItemsByDirectory[directory.id]?.length ?? 0, htmlPagesByDirectory[directory.id]?.length ?? 0)}
                 frameColor={frameColors[directory.id]}
                 key={directory.id}
                 onContextMenu={onContextMenuDirectory}

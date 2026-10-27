@@ -4,7 +4,33 @@
 
 ---
 
-## V172（最新）— 新增「添加EXE」：光标指哪拾哪，直接把正在运行的程序加进来
+## V173（最新）— 新增「HTML 目录」：文件夹里的网页变成可拖拽的预览卡片墙
+
+> 想法：手头那一堆 `index.html` 每次都要翻资源管理器。新建一个 HTML 子目录、指一个文件夹，它就把里面所有网页铺成一墙卡片，每张卡片直接显示那个页面的**首页真实样子**，边框还能用鼠标拖着改大小。
+
+### 用法
+
+1. 父目录空白处右键 → 新建子目录 → **HTML 目录子目录**（已存在时用子目录右键「重新选择文件夹」换一个）；
+2. 选一个文件夹，自动递归认出里面的 `.html` / `.htm`（跳过 `node_modules`、`dist`、`.git` 等目录，最多 4 层、800 个页面）；
+3. 卡片里是**实时首页预览**（真 iframe，不是截图）；双击卡片在浏览器里打开；
+4. 鼠标移到卡片边框会变成双向箭头，拖一下就能改这张卡片的大小 —— 尺寸按文件路径记住，下次进来还是你调好的样子；
+5. 工具栏可切换「首页预览」开关（关掉只显示文件名，省性能）、一键把卡片恢复默认大小、打开文件夹、重新扫描、换文件夹。
+
+### 前端
+
+- 新子目录类型 `html`（`DirectoryKind`），目录配置新增 `htmlPath` / `htmlCards`（单卡尺寸）/ `htmlView`（目录级默认尺寸、预览开关、是否递归）；`normalizers.ts` 负责清洗（尺寸夹在 160×120 ~ 1600×1200，最多记 4000 张卡）。
+- 新组件 `src/components/ContentArea/HtmlGallery/`：8 向缩放手柄 + `n/ew/ns/ne/nw/se/sw-resize` 光标，拖拽过程中只改本地 state（不每帧落盘），松手才写进配置。
+- 预览用 **iframe + Tauri asset 协议**（`convertFileSrc` → `http://asset.localhost/...`），页面里的相对路径图片/CSS 天然能解析；iframe 用 `IntersectionObserver` 懒挂载（滚到眼前才挂），避免几十个页面同时开 WebView。
+- 子目录右键新增：刷新 HTML 页面 / 打开 HTML 文件夹 / 重新选择文件夹 / 首页预览开关 / 卡片恢复默认大小（都能在设置-右键菜单里隐藏）。
+- 侧栏计数、命令面板副标题、右键菜单注册表、设置项文案全部接上；HTML 子目录不参与粘贴/添加项目（内容来自文件夹）。
+
+### 后端（`src-tauri/src/html_folder.rs`，新增）
+
+- `validate_html_folder` / `list_html_folder` / `allow_html_preview` / `open_html_folder_location` 四条命令，全部 `async` + `blocking::offload`（扫盘不进主线程）。
+- `allow_html_preview` 调 `app.asset_protocol_scope().allow_directory(root, true)` 递归放开作用域 —— 否则 iframe 里的 `asset.localhost` 请求会被协议层拒掉、卡片白屏。
+
+---
+## V172 — 新增「添加EXE」：光标指哪拾哪，直接把正在运行的程序加进来
 
 > 想法：加个程序不该先翻三层文件夹。子目录右键 →「添加EXE」，把光标移到那个程序的窗口上点一下，它就进来了。
 

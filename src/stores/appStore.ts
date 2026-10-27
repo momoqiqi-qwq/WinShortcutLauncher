@@ -12,6 +12,7 @@ import { createNavigationSlice } from './appStore/slices/navigationSlice';
 import { createSettingsSlice } from './appStore/slices/settingsSlice';
 import { createStartMenuSlice } from './appStore/slices/startMenuSlice';
 import { createMappedSlice } from './appStore/slices/mappedSlice';
+import { createHtmlSlice } from './appStore/slices/htmlSlice';
 import { createLinkSlice } from './appStore/slices/linkSlice';
 import type { AppState } from './appStore/types';
 
@@ -53,6 +54,7 @@ export const useAppStore = create<AppState>()(
         ...createCommandSlice(set, get),
         ...createStartMenuSlice(set, get),
         ...createMappedSlice(set, get),
+        ...createHtmlSlice(set, get),
         ...createLinkSlice(set, get),
         ...defaults,
         activeGroupId: first.groupId,
@@ -85,6 +87,10 @@ export const useAppStore = create<AppState>()(
         mappedLoading: {},
         mappedError: {},
         mappedLoadedAt: {},
+        htmlPages: {},
+        htmlLoading: {},
+        htmlError: {},
+        htmlLoadedAt: {},
       };
     },
     appPersistOptions,

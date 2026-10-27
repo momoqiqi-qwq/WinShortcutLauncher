@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardPaste, Copy, Eraser, FolderInput, FolderOpen, FolderSymlink, Link2, Merge, Palette, Pencil, RefreshCw, Repeat2, Scissors, StickyNote, Trash2, Type, Unlink } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Copy, Eraser, FolderInput, FolderOpen, FolderSymlink, Link2, Merge, Palette, Pencil, RefreshCw, Repeat2, RotateCcw, MonitorOff, Scissors, StickyNote, Trash2, Type, Unlink } from 'lucide-react';
 import { useState, type MouseEvent } from 'react';
 import type { ContextMenuState, DirectoryKind } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -11,6 +11,7 @@ import { showLauncherNotice } from '../../lib/notify';
 import { canPasteDirectoryIntoGroup } from '../../lib/navigationClipboard';
 import { getStartMenuFolder } from '../../lib/startMenu';
 import { getMappedPath, isMappedDirectory, mappedFolderLabel, validateMappedFolder } from '../../lib/mappedFolder';
+import { getHtmlPath, htmlFolderLabel, isHtmlDirectory, validateHtmlFolder } from '../../lib/htmlFolder';
 import { uiPickLinkSource } from '../../lib/linkSourcePicker';
 import { describeLinkSource, isSameProfileLink } from '../../lib/directoryLinks';
 import { getActiveConfigProfileId } from '../../lib/configProfiles';
@@ -56,6 +57,12 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   const refreshMappedFolder = useAppStore((state) => state.refreshMappedFolder);
   const setDirectoryMappedPath = useAppStore((state) => state.setDirectoryMappedPath);
   const mappedError = useAppStore((state) => state.mappedError);
+  // v173: HTML 子目录的刷新 / 换文件夹 / 预览开关。
+  const refreshHtmlFolder = useAppStore((state) => state.refreshHtmlFolder);
+  const setDirectoryHtmlPath = useAppStore((state) => state.setDirectoryHtmlPath);
+  const updateHtmlView = useAppStore((state) => state.updateHtmlView);
+  const resetHtmlCardSizes = useAppStore((state) => state.resetHtmlCardSizes);
+  const htmlError = useAppStore((state) => state.htmlError);
   const syncLinks = useAppStore((state) => state.syncLinks);
   const setLinkedSource = useAppStore((state) => state.setLinkedSource);
   const detachLink = useAppStore((state) => state.detachLink);
@@ -75,6 +82,8 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   const isStartMenu = currentKind === 'startMenu';
   const isMapped = isMappedDirectory(currentDirectory);
   const mappedRoot = isMapped ? getMappedPath(currentDirectory) : '';
+  const isHtml = isHtmlDirectory(currentDirectory);
+  const htmlRoot = isHtml ? getHtmlPath(currentDirectory) : '';
   // v169: 链接子目录 —— 内容由 src/lib/directoryLinks.ts 物化，这里只提供同步 / 换源 / 解除。
   const isLinked = currentKind === 'link';
   const linkRef = currentDirectory.link;
@@ -82,7 +91,7 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
     .slice()
     .sort(byOrder)
     // 映射子目录各自镜像不同文件夹，合并没有意义。
-    .filter((dir) => dir.id !== currentDirectory.id && (dir.kind ?? 'normal') === currentKind && currentKind !== 'all' && currentKind !== 'mapped' && currentKind !== 'link');
+    .filter((dir) => dir.id !== currentDirectory.id && (dir.kind ?? 'normal') === currentKind && currentKind !== 'all' && currentKind !== 'mapped' && currentKind !== 'link' && currentKind !== 'html');
   const moveTargets = groups.slice().sort(byOrder).filter((entry) => entry.id !== currentGroup.id);
   const canSwitchToNotes = currentKind === 'normal' && currentDirectory.items.length === 0;
   const canSwitchToNormal = currentKind === 'notes';
@@ -163,7 +172,7 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   }
 
   async function clear() {
-    if (currentDirectory.kind === 'all' || currentDirectory.kind === 'notes' || isMapped) return;
+    if (currentDirectory.kind === 'all' || currentDirectory.kind === 'notes' || isMapped || isHtml) return;
     const ok = !experience.confirmClearDirectory || await uiConfirm(`确定清空「${currentDirectory.name}」中的全部快捷项目吗？`);
     if (ok) clearDirectoryItems(currentDirectory.id);
     onClose();
@@ -264,6 +273,70 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
     onClose();
   }
 
+  // ---------- v173: HTML 子目录 ----------
+
+  async function refreshHtmlFolderItems() {
+    onClose();
+    if (!htmlRoot) {
+      showLauncherNotice('该 HTML 子目录还没有选择文件夹，请用「重新选择文件夹」指定');
+      return;
+    }
+    await refreshHtmlFolder(currentDirectory.id);
+    const error = useAppStore.getState().htmlError[currentDirectory.id];
+    if (error) {
+      showLauncherNotice(`刷新 HTML 目录失败：${error}`);
+      return;
+    }
+    showLauncherNotice(`已刷新 HTML 目录：${useAppStore.getState().getHtmlPages(currentDirectory.id).length} 个页面`);
+  }
+
+  async function openHtmlFolder() {
+    onClose();
+    if (!htmlRoot) {
+      showLauncherNotice('该 HTML 子目录还没有选择文件夹，请用「重新选择文件夹」指定');
+      return;
+    }
+    try {
+      await invoke('open_file_location', { path: htmlRoot });
+    } catch (error) {
+      void uiAlert(`打开 HTML 文件夹失败：${String(error)}`);
+    }
+  }
+
+  /** 重新指定被扫描的文件夹；卡片尺寸按路径记着，换目录后旧 key 自然不再命中。 */
+  async function changeHtmlFolder() {
+    const picked = await open({ directory: true, multiple: false, title: '选择 HTML 所在文件夹' });
+    if (typeof picked !== 'string' || !picked.trim()) {
+      onClose();
+      return;
+    }
+    try {
+      const resolved = await validateHtmlFolder(picked);
+      setDirectoryHtmlPath(currentDirectory.id, resolved);
+      await refreshHtmlFolder(currentDirectory.id);
+      const error = useAppStore.getState().htmlError[currentDirectory.id];
+      showLauncherNotice(error
+        ? `已切换文件夹，但读取失败：${error}`
+        : `已切换到「${htmlFolderLabel(resolved)}」`);
+    } catch (error) {
+      void uiAlert(`无法使用该文件夹：${String(error)}`);
+    }
+    onClose();
+  }
+
+  function toggleHtmlPreview() {
+    const current = currentDirectory.htmlView?.preview ?? true;
+    updateHtmlView(currentDirectory.id, { preview: !current });
+    showLauncherNotice(current ? '已关闭首页预览' : '已打开首页预览');
+    onClose();
+  }
+
+  function resetHtmlCardSize() {
+    resetHtmlCardSizes(currentDirectory.id);
+    showLauncherNotice('已把所有卡片恢复成默认大小');
+    onClose();
+  }
+
   function copyDirectory() {
     if (copyDirectoryToClipboard(currentDirectory.id)) {
       showLauncherNotice(`已复制子目录「${currentDirectory.name}」；可粘贴到其他父目录`);
@@ -320,13 +393,15 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
   const canPaste = currentKind === 'normal' && itemClipboard.length > 0;
   const showClipboardSection = show('copyDirectory') || show('pasteDirectory') || show('moveToGroup') || show('paste');
   const showStartMenuSection = isStartMenu && (show('refreshStartMenu') || show('openStartMenuFolder'));
+  const showHtmlSection = isHtml
+    && (show('refreshHtmlFolder') || show('openHtmlFolder') || show('changeHtmlFolder') || show('toggleHtmlPreview') || show('resetHtmlCardSizes'));
   const showMappedSection = isMapped
     && (show('refreshMappedFolder') || show('openMappedFolder') || show('changeMappedFolder'));
   const showManageSection = show('rename') || show('color') || show('fullNames') || show('merge') || show('switchToNotes') || show('switchToNormal');
   const showLinkSection = isLinked
     && (show('linkRefresh') || show('linkRetarget') || show('linkLocate') || show('linkDetach'));
   const showDangerSection = show('clear') || show('delete');
-  const hasVisibleSection = showClipboardSection || showStartMenuSection || showMappedSection || showLinkSection || showManageSection || showDangerSection;
+  const hasVisibleSection = showClipboardSection || showStartMenuSection || showMappedSection || showHtmlSection || showLinkSection || showManageSection || showDangerSection;
 
   return (
     <div
@@ -364,14 +439,19 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
         )}
       </div>}
       {show('paste') && <div className={`menu-item ${canPaste ? '' : 'disabled'}`} title={isStartMenu || isMapped ? '镜像子目录的内容来自真实文件夹，不能粘贴普通项目' : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canPaste && pasteItems()}><span>粘贴项目{itemClipboard.length ? `（${itemClipboard.length} 项）` : ''}</span><ClipboardPaste size={15} /></div>}
-      {showClipboardSection && (showStartMenuSection || showMappedSection || showManageSection || showDangerSection) && <div className="menu-separator" />}
+      {showClipboardSection && (showStartMenuSection || showMappedSection || showHtmlSection || showManageSection || showDangerSection) && <div className="menu-separator" />}
       {show('refreshStartMenu') && isStartMenu && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void refreshStartMenuItems()}><span>刷新开始菜单</span><RefreshCw size={15} /></div>}
       {show('openStartMenuFolder') && isStartMenu && <div className="menu-item" title={startMenuFolder || undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void openStartMenuFolder()}><span>打开开始菜单文件夹</span><FolderOpen size={15} /></div>}
-      {showStartMenuSection && (showMappedSection || showManageSection || showDangerSection) && <div className="menu-separator" />}
+      {showStartMenuSection && (showMappedSection || showHtmlSection || showManageSection || showDangerSection) && <div className="menu-separator" />}
       {show('refreshMappedFolder') && isMapped && <div className="menu-item" title={mappedError[currentDirectory.id] || mappedRoot || undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void refreshMappedFolderItems()}><span>刷新映射文件夹</span><RefreshCw size={15} /></div>}
       {show('openMappedFolder') && isMapped && <div className="menu-item" title={mappedRoot || undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void openMappedFolder()}><span>打开映射文件夹</span><FolderOpen size={15} /></div>}
       {show('changeMappedFolder') && isMapped && <div className="menu-item" title={mappedRoot || '还没有选择文件夹'} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void changeMappedFolder()}><span>重新选择文件夹</span><FolderSymlink size={15} /></div>}
-      {showMappedSection && (showManageSection || showDangerSection) && <div className="menu-separator" />}
+      {show('refreshHtmlFolder') && isHtml && <div className="menu-item" title={htmlError[currentDirectory.id] || htmlRoot || undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void refreshHtmlFolderItems()}><span>刷新 HTML 页面</span><RefreshCw size={15} /></div>}
+      {show('openHtmlFolder') && isHtml && <div className="menu-item" title={htmlRoot || undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void openHtmlFolder()}><span>打开 HTML 文件夹</span><FolderOpen size={15} /></div>}
+      {show('changeHtmlFolder') && isHtml && <div className="menu-item" title={htmlRoot || '还没有选择文件夹'} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void changeHtmlFolder()}><span>重新选择文件夹</span><FolderSymlink size={15} /></div>}
+      {show('toggleHtmlPreview') && isHtml && <div className="menu-item" title="关掉预览可以省下每个卡片一个 WebView 的开销" onMouseEnter={() => setOpenSubmenu(null)} onClick={toggleHtmlPreview}><span>{(currentDirectory.htmlView?.preview ?? true) ? '关闭首页预览' : '打开首页预览'}</span><MonitorOff size={15} /></div>}
+      {show('resetHtmlCardSizes') && isHtml && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={resetHtmlCardSize}><span>卡片恢复默认大小</span><RotateCcw size={15} /></div>}
+      {(showMappedSection || showHtmlSection) && (showManageSection || showDangerSection) && <div className="menu-separator" />}
       {isLinked && (show('linkRefresh') || show('linkRetarget') || show('linkLocate') || show('linkDetach')) && <div className="menu-separator" />}
       {isLinked && show('linkRefresh') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void refreshLink()}><span>立即同步链接</span><RefreshCw size={15} /></div>}
       {isLinked && show('linkRetarget') && <div className="menu-item" title={linkRef ? describeLinkSource(linkRef, { groups, activeProfileId: getActiveConfigProfileId() ?? '' }) : undefined} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void retargetLink()}><span>更换链接源…</span><Link2 size={15} /></div>}
@@ -437,7 +517,7 @@ export function DirectoryContextMenu({ menu, onClose }: DirectoryContextMenuProp
       {show('switchToNotes') && !isStartMenu && !isMapped && !isLinked && <div className={`menu-item ${canSwitchToNotes ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canSwitchToNotes && switchKind('notes')}><span>空子目录切换为便签</span><StickyNote size={15} /></div>}
       {show('switchToNormal') && !isStartMenu && !isMapped && !isLinked && <div className={`menu-item ${canSwitchToNormal ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => canSwitchToNormal && switchKind('normal')}><span>便签切换为普通子目录</span><Repeat2 size={15} /></div>}
       {showManageSection && showDangerSection && <div className="menu-separator" />}
-      {show('clear') && <div className={`menu-item ${currentDirectory.kind === 'all' || currentDirectory.kind === 'notes' || isStartMenu || isMapped || isLinked ? 'disabled' : ''}`} title={isStartMenu || isMapped ? '镜像子目录不能清空，请删除其中的真实项目' : (isLinked ? '链接子目录的内容来自源目录，清空了也会同步回来' : undefined)} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void clear()}><span>清空子目录项目</span><Eraser size={15} /></div>}
+      {show('clear') && <div className={`menu-item ${currentDirectory.kind === 'all' || currentDirectory.kind === 'notes' || isStartMenu || isMapped || isLinked ? 'disabled' : ''}`} title={isStartMenu || isMapped || isHtml ? '镜像子目录不能清空，请删除其中的真实项目' : (isLinked ? '链接子目录的内容来自源目录，清空了也会同步回来' : undefined)} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void clear()}><span>清空子目录项目</span><Eraser size={15} /></div>}
       {show('delete') && <div className={`menu-item danger ${currentGroup.directories.length <= 1 ? 'disabled' : ''}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void remove()}><span>删除子目录</span><Trash2 size={15} /></div>}
       {!hasVisibleSection && <div className="menu-empty-hint">此菜单项目已全部隐藏，可在设置中恢复</div>}
     </div>

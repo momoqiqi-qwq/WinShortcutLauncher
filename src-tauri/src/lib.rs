@@ -12,6 +12,7 @@ mod process_integrity;
 #[cfg(target_os = "windows")]
 mod native_browser_drop;
 mod folder_mirror;
+mod html_folder;
 mod mapped_folder;
 mod start_menu;
 mod transfer_station;
@@ -429,6 +430,10 @@ pub fn run() {
       mapped_folder::create_mapped_url,
       mapped_folder::remove_mapped_entries,
       mapped_folder::rename_mapped_entry,
+      html_folder::validate_html_folder,
+      html_folder::list_html_folder,
+      html_folder::allow_html_preview,
+      html_folder::open_html_folder_location,
       commands::save_config,
       commands::load_config,
       commands::get_file_info,

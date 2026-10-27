@@ -15,11 +15,13 @@ export function getDirectoryDisplayCount(
   siblingDirectories: readonly Directory[],
   startMenuCount = 0,
   mappedCount = 0,
+  htmlCount = 0,
 ) {
   const kind = directory.kind ?? 'normal';
   // 镜像子目录的条目是运行时扫出来的，数量由调用方传入。
   if (kind === 'startMenu') return startMenuCount;
   if (kind === 'mapped') return mappedCount;
+  if (kind === 'html') return htmlCount;
   if (kind === 'all') {
     return siblingDirectories
       .filter((entry) => (entry.kind ?? 'normal') === 'normal')

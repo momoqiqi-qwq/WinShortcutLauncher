@@ -8,6 +8,7 @@ import {
   snapshotGroup,
 } from '../../../lib/navigationClipboard';
 import type { Directory, Group } from '../../../types';
+import { clampCardSize } from '../../../lib/htmlFolder';
 import { getFirstDirectory, normalizeGroups } from '../normalizers';
 import type { AppSliceCreator, NavigationActions } from '../types';
 
@@ -393,6 +394,73 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
           const next: Directory = { ...directory };
           if (clean) next.mappedPath = clean;
           else delete next.mappedPath;
+          return next;
+        }),
+      })),
+    }));
+  },
+  /**
+   * v173: 设置 / 清除 HTML 子目录被扫描的文件夹。
+   *
+   * 换文件夹要顺手清掉旧页面的缓存，否则卡片会先闪一下上一个目录的内容。
+   * `htmlCards` 里按绝对路径记的尺寸不用动 —— 换目录后旧 key 自然不再命中。
+   */
+  setDirectoryHtmlPath: (directoryId, htmlPath) => {
+    const clean = htmlPath.trim();
+    set((state) => ({
+      groups: state.groups.map((group) => ({
+        ...group,
+        directories: group.directories.map((directory) => {
+          if (directory.id !== directoryId) return directory;
+          const next: Directory = { ...directory };
+          if (clean) next.htmlPath = clean;
+          else delete next.htmlPath;
+          return next;
+        }),
+      })),
+    }));
+    get().clearHtmlFolder(directoryId);
+  },
+  /** v173: 记住单个页面卡片被拖出来的尺寸（key 是文件绝对路径）。 */
+  setHtmlCardSize: (directoryId, pagePath, size) => {
+    const key = pagePath.trim();
+    if (!key) return;
+    const next = clampCardSize(size);
+    set((state) => ({
+      groups: state.groups.map((group) => ({
+        ...group,
+        directories: group.directories.map((directory) => directory.id === directoryId
+          ? { ...directory, htmlCards: { ...(directory.htmlCards ?? {}), [key]: next } }
+          : directory),
+      })),
+    }));
+  },
+  /** v173: 清掉所有单卡尺寸，回到目录默认大小。 */
+  resetHtmlCardSizes: (directoryId) => set((state) => ({
+    groups: state.groups.map((group) => ({
+      ...group,
+      directories: group.directories.map((directory) => {
+        if (directory.id !== directoryId) return directory;
+        const next: Directory = { ...directory };
+        delete next.htmlCards;
+        return next;
+      }),
+    })),
+  })),
+  /** v173: 改 HTML 子目录的显示设置；传 undefined 的字段会被忽略。 */
+  updateHtmlView: (directoryId, patch) => {
+    const cleaned = Object.fromEntries(
+      Object.entries(patch ?? {}).filter(([, value]) => value !== undefined),
+    );
+    set((state) => ({
+      groups: state.groups.map((group) => ({
+        ...group,
+        directories: group.directories.map((directory) => {
+          if (directory.id !== directoryId) return directory;
+          const merged = { ...(directory.htmlView ?? {}), ...cleaned };
+          const next: Directory = { ...directory };
+          if (Object.keys(merged).length > 0) next.htmlView = merged;
+          else delete next.htmlView;
           return next;
         }),
       })),

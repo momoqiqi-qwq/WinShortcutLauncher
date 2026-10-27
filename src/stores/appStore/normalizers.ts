@@ -8,6 +8,8 @@ import type {
   FaviconProviderId,
   FontApplyArea,
   Group,
+  HtmlCardSize,
+  HtmlViewSettings,
   MultiAccountSettings,
   NoteSettings,
   RainbowSettings,
@@ -17,6 +19,7 @@ import type {
 } from '../../types';
 import { makeId } from '../../lib/id';
 import { byOrder, reindex } from '../../lib/sort';
+import { clampCardSize } from '../../lib/htmlFolder';
 import {
   DEFAULT_IMAGE_BROWSER_SETTINGS,
   type ImageBrowserGroup,
@@ -390,6 +393,55 @@ function isImportedNotesDirectory(value: unknown, note: string, itemCount: numbe
   return Boolean(note.trim()) && itemCount === 0;
 }
 
+/** v173: 单个页面卡片的尺寸上限，和 `lib/htmlFolder` 的常量保持一致。 */
+const HTML_CARD_LIMITS = { minWidth: 160, minHeight: 120, maxWidth: 1600, maxHeight: 1200 };
+/** v173: 一个 HTML 目录最多记住多少张卡的尺寸，防止配置被拖到几十兆。 */
+const HTML_MAX_CARD_ENTRIES = 4000;
+
+/**
+ * v173: 规范化 `Directory.htmlCards`（key = 页面绝对路径）。
+ *
+ * 这是用户拖拽出来的尺寸，坏了就退回「用目录默认值」，所以宁可丢掉可疑项，
+ * 也不要把 NaN 写进样式里（`width: NaNpx` 会让整张卡片塌掉）。
+ */
+function normalizeHtmlCards(value: unknown): Record<string, HtmlCardSize> | undefined {
+  const raw = asRecord(value);
+  const result: Record<string, HtmlCardSize> = {};
+  let count = 0;
+  for (const [rawKey, rawSize] of Object.entries(raw)) {
+    const key = rawKey.trim();
+    if (!key) continue;
+    const size = asRecord(rawSize);
+    const width = Number(size.width ?? size.w);
+    const height = Number(size.height ?? size.h);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) continue;
+    if (width <= 0 || height <= 0) continue;
+    result[key] = clampCardSize({ width, height });
+    count += 1;
+    if (count >= HTML_MAX_CARD_ENTRIES) break;
+  }
+  return count > 0 ? result : undefined;
+}
+
+/** v173: 规范化 `Directory.htmlView`；没设置过的字段不写进去（保持「跟随默认」）。 */
+function normalizeHtmlView(value: unknown): HtmlViewSettings | undefined {
+  const raw = asRecord(value);
+  const result: HtmlViewSettings = {};
+  const width = Number(raw.cardWidth ?? raw.width);
+  const height = Number(raw.cardHeight ?? raw.height);
+  if (Number.isFinite(width) && width > 0) {
+    result.cardWidth = Math.min(HTML_CARD_LIMITS.maxWidth, Math.max(HTML_CARD_LIMITS.minWidth, Math.round(width)));
+  }
+  if (Number.isFinite(height) && height > 0) {
+    result.cardHeight = Math.min(HTML_CARD_LIMITS.maxHeight, Math.max(HTML_CARD_LIMITS.minHeight, Math.round(height)));
+  }
+  if (typeof raw.preview === 'boolean') result.preview = raw.preview;
+  const scale = cleanText(raw.previewScale ?? raw.scale, '', 20).toLowerCase();
+  if (scale === 'fit' || scale === 'actual') result.previewScale = scale;
+  if (typeof raw.recursive === 'boolean') result.recursive = raw.recursive;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 export function normalizeDirectory(
   value: unknown,
   fallbackOrder = 0,
@@ -413,7 +465,9 @@ export function normalizeDirectory(
       ? 'startMenu'
       : rawKind === 'mapped'
         ? 'mapped'
-        : rawKind === 'link'
+        : rawKind === 'html'
+          ? 'html'
+          : rawKind === 'link'
           ? (normalizeDirectoryLinkRef(raw.link) ? 'link' : 'normal')
           : isImportedNotesDirectory(raw, note, items.length)
             ? 'notes'
@@ -422,6 +476,12 @@ export function normalizeDirectory(
   const mappedPath = kind === 'mapped'
     ? cleanText(raw.mappedPath ?? raw.mirrorPath ?? raw.folderPath, '', 4096).trim()
     : '';
+  // v173: HTML 目录同理，必须记住被扫描的文件夹；卡片尺寸/显示设置也只在 html 下有意义。
+  const htmlPath = kind === 'html'
+    ? cleanText(raw.htmlPath ?? raw.htmlRoot ?? raw.htmlFolder, '', 4096).trim()
+    : '';
+  const htmlCards = kind === 'html' ? normalizeHtmlCards(raw.htmlCards) : undefined;
+  const htmlView = kind === 'html' ? normalizeHtmlView(raw.htmlView) : undefined;
   const link = kind === 'link' ? normalizeDirectoryLinkRef(raw.link) : undefined;
   const display = normalizeDirectoryDisplay(raw.display);
   const color = normalizeAccentColor(raw.color);
@@ -431,12 +491,15 @@ export function normalizeDirectory(
     order: finiteNumber(raw.order, fallbackOrder),
     kind,
     ...(mappedPath ? { mappedPath } : {}),
+    ...(htmlPath ? { htmlPath } : {}),
+    ...(htmlCards ? { htmlCards } : {}),
+    ...(htmlView ? { htmlView } : {}),
     ...(link ? { link } : {}),
     ...(display ? { display } : {}),
     note,
     ...(typeof raw.noteShowLineNumbers === 'boolean' ? { noteShowLineNumbers: raw.noteShowLineNumbers } : {}),
     ...(color ? { color } : {}),
-    items: kind === 'notes' || kind === 'startMenu' || kind === 'mapped' ? [] : items,
+    items: kind === 'notes' || kind === 'startMenu' || kind === 'mapped' || kind === 'html' ? [] : items,
   };
 }
 

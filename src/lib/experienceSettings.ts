@@ -1,7 +1,7 @@
 import type { AreaContextMenuItemId, DirectoryContextMenuItemId, ExperienceSettings, GroupContextMenuItemId } from '../types';
 import { normalizeAfterLaunchAction } from './itemExperience';
 
-export const DIRECTORY_CONTEXT_MENU_IDS: DirectoryContextMenuItemId[] = ['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'rename', 'color', 'fullNames', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete', 'linkRefresh', 'linkLocate', 'linkRetarget', 'linkDetach'];
+export const DIRECTORY_CONTEXT_MENU_IDS: DirectoryContextMenuItemId[] = ['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'refreshHtmlFolder', 'openHtmlFolder', 'changeHtmlFolder', 'toggleHtmlPreview', 'resetHtmlCardSizes', 'rename', 'color', 'fullNames', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete', 'linkRefresh', 'linkLocate', 'linkRetarget', 'linkDetach'];
 export const GROUP_CONTEXT_MENU_IDS: GroupContextMenuItemId[] = ['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete', 'linkDirectory', 'linkGroup', 'linkRefresh', 'linkDetach'];
 export const AREA_CONTEXT_MENU_IDS: AreaContextMenuItemId[] = ['paste', 'createDirectory', 'addFile', 'addFolder', 'addExe', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons', 'linkDirectory', 'linkGroup'];
 

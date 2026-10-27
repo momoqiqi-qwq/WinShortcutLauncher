@@ -8,6 +8,8 @@ import type {
   DirectoryDisplaySettings,
   DirectoryKind,
   DirectoryLinkRef,
+  HtmlCardSize,
+  HtmlViewSettings,
   DisplaySettings,
   ExperienceSettings,
   Group,
@@ -30,6 +32,7 @@ import type {
 import type { NavigationClipboard } from '../../lib/navigationClipboard';
 import type { ClipboardMode } from '../../lib/clipboardMode';
 import type { CreateShortcutsResult } from '../../lib/folderMirror';
+import type { HtmlPage } from '../../lib/htmlFolder';
 
 export interface NavigationSlice {
   activeGroupId: string;
@@ -78,6 +81,14 @@ export interface NavigationSlice {
   mergeGroup: (sourceGroupId: string, targetGroupId: string) => void;
   mergeDirectory: (sourceDirectoryId: string, targetDirectoryId: string) => void;
   setDirectoryKind: (directoryId: string, kind: DirectoryKind) => void;
+  /** v173: 设置 / 清除 HTML 子目录被扫描的文件夹；传空串表示清除。 */
+  setDirectoryHtmlPath: (directoryId: string, htmlPath: string) => void;
+  /** v173: 记住单个页面卡片被拖出来的尺寸（按文件绝对路径）。 */
+  setHtmlCardSize: (directoryId: string, pagePath: string, size: HtmlCardSize) => void;
+  /** v173: 清掉所有单卡尺寸，回到目录默认大小。 */
+  resetHtmlCardSizes: (directoryId: string) => void;
+  /** v173: 改 HTML 子目录的显示设置（预览开关 / 默认卡片尺寸 / 是否递归）。 */
+  updateHtmlView: (directoryId: string, patch: HtmlViewSettings) => void;
   getActiveGroup: () => Group | undefined;
   getActiveDirectory: () => Directory | undefined;
 }
@@ -199,11 +210,31 @@ export interface MappedSlice {
   findMappedDirectoryIdByItemId: (itemId: string) => string | undefined;
 }
 
+/**
+ * v173: HTML 子目录的运行时状态。
+ *
+ * 页面清单不落盘（扫出来的），所以这里全是 `Record<子目录 id, ...>`，
+ * 和 `MappedSlice` 一个套路 —— 多个 HTML 子目录可以各自指向不同文件夹。
+ */
+export interface HtmlSlice {
+  htmlPages: Record<string, HtmlPage[]>;
+  htmlLoading: Record<string, boolean>;
+  htmlError: Record<string, string | null>;
+  htmlLoadedAt: Record<string, number>;
+  /** 重新扫描某个 HTML 子目录（顺带授权预览作用域）；返回页面数。 */
+  refreshHtmlFolder: (directoryId: string) => Promise<number>;
+  /** 某个 HTML 子目录的页面清单；未加载时返回稳定的空数组。 */
+  getHtmlPages: (directoryId: string) => HtmlPage[];
+  /** 子目录被删除 / 换文件夹时清掉缓存。 */
+  clearHtmlFolder: (directoryId: string) => void;
+}
+
 export type NavigationActions = Omit<NavigationSlice, 'activeGroupId' | 'activeDirectoryId' | 'selectedNavTarget' | 'navigationClipboard' | 'settingsOpen'>;
 export type ItemActions = Omit<ItemSlice, 'selectedItemIds' | 'multiSelectMode' | 'itemClipboard' | 'itemClipboardMode'>;
 export type MediaActions = Omit<MediaSlice, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts'>;
 export type StartMenuActions = Omit<StartMenuSlice, 'startMenuItems' | 'startMenuLoading' | 'startMenuError' | 'startMenuFolder' | 'startMenuLoadedAt'>;
 export type MappedActions = Omit<MappedSlice, 'mappedItems' | 'mappedLoading' | 'mappedError' | 'mappedLoadedAt'>;
+export type HtmlActions = Omit<HtmlSlice, 'htmlPages' | 'htmlLoading' | 'htmlError' | 'htmlLoadedAt'>;
 
 
 export interface CommandUsageSlice {
@@ -239,7 +270,7 @@ export type LinkActions = LinkSlice;
 
 export type RequiredAppConfig = Omit<AppConfig, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts' | 'browserRouter' | 'multiAccount'> & Required<Pick<AppConfig, 'transferItems' | 'imageBrowserItems' | 'globalSearch' | 'transferStation' | 'imageBrowser' | 'notes' | 'rainbow' | 'experience' | 'shortcuts' | 'browserRouter' | 'multiAccount'>>;
 
-export type AppState = RequiredAppConfig & NavigationSlice & ItemSlice & SettingsSlice & MediaSlice & CommandUsageSlice & StartMenuSlice & MappedSlice & ConfigSlice & LinkSlice & {
+export type AppState = RequiredAppConfig & NavigationSlice & ItemSlice & SettingsSlice & MediaSlice & CommandUsageSlice & StartMenuSlice & MappedSlice & HtmlSlice & ConfigSlice & LinkSlice & {
   editItemId?: string;
 };
 

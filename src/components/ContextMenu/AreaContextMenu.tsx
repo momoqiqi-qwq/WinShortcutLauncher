@@ -1,7 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardPaste, Crosshair, FilePlus2, FolderPlus, FolderSymlink, Globe, LayoutGrid, Link2, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Crosshair, FilePlus2, FolderPlus, FolderSymlink, Globe, LayoutGrid, Link2, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type, FileCode2 } from 'lucide-react';
 import { getMappedPath, isMappedDirectory } from '../../lib/mappedFolder';
+import { isHtmlDirectory } from '../../lib/htmlFolder';
 import { uiPickLinkSource } from '../../lib/linkSourcePicker';
 import { describeLinkSource } from '../../lib/directoryLinks';
 import { getActiveConfigProfileId } from '../../lib/configProfiles';
@@ -100,6 +101,8 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   const isStartMenuActive = activeKind === 'startMenu';
   const isMappedActive = isMappedDirectory(activeDirectory);
   const activeMappedRoot = isMappedActive ? getMappedPath(activeDirectory) : '';
+  // v173: HTML 子目录的内容来自被扫描的文件夹，配置侧不存项目，添加/粘贴一律不适用。
+  const isHtmlActive = isHtmlDirectory(activeDirectory);
   const addLinkedDirectory = useAppStore((state) => state.addLinkedDirectory);
   const addLinkedGroup = useAppStore((state) => state.addLinkedGroup);
   const syncLinks = useAppStore((state) => state.syncLinks);
@@ -454,8 +457,8 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   }
 
   const showPasteSection = show('paste');
-  const canPaste = itemClipboard.length > 0 && activeKind !== 'notes' && !isStartMenuActive && !isMappedActive && Boolean(targetDirectoryId);
-  const showAddSystemItem = show('addSystem') && !isStartMenuActive && !isMappedActive;
+  const canPaste = itemClipboard.length > 0 && activeKind !== 'notes' && !isStartMenuActive && !isMappedActive && !isHtmlActive && Boolean(targetDirectoryId);
+  const showAddSystemItem = show('addSystem') && !isStartMenuActive && !isMappedActive && !isHtmlActive;
   const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addExe') || show('addUrl') || showAddSystemItem || show('linkGroup');
   const showLocalDisplaySection = show('iconSize') || show('viewMode') || show('sortMode') || show('directoryColumns');
   const showGlobalDisplaySection = show('globalIconSize') || show('globalViewMode') || show('globalSortMode');
@@ -501,6 +504,13 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
             >
               <span>映射文件夹子目录</span><FolderSymlink size={13} />
             </div>
+            <div
+              className="menu-item"
+              title="选一个文件夹，自动认出里面所有 html/htm 页面，每张卡片带首页实时预览"
+              onClick={(event) => { event.stopPropagation(); void addSubdirectory('html', ''); }}
+            >
+              <span>HTML 目录子目录</span><FileCode2 size={13} />
+            </div>
             <div className="menu-separator" />
             <div
               className="menu-item"
@@ -513,10 +523,10 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
         )}
       </div>}
       {show('linkGroup') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void addLinkedParent()}><span>链接父目录…</span><FolderSymlink size={15} /></div>}
-      {show('addFile') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(false)}><span>添加文件</span><FilePlus2 size={15} /></div>}
-      {show('addFolder') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(true)}><span>添加文件夹</span><FolderPlus size={15} /></div>}
-      {show('addExe') && <div className="menu-item" title="不用翻文件夹：点一下就开始拾取，把光标移到目标程序上再点一下即可" onMouseEnter={() => setOpenSubmenu(null)} onClick={openExePick}><span>添加EXE</span><Crosshair size={15} /></div>}
-      {show('addUrl') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={addUrl}><span>添加网址</span><Globe size={15} /></div>}
+      {show('addFile') && !isHtmlActive && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(false)}><span>添加文件</span><FilePlus2 size={15} /></div>}
+      {show('addFolder') && !isHtmlActive && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(true)}><span>添加文件夹</span><FolderPlus size={15} /></div>}
+      {show('addExe') && !isHtmlActive && <div className="menu-item" title="不用翻文件夹：点一下就开始拾取，把光标移到目标程序上再点一下即可" onMouseEnter={() => setOpenSubmenu(null)} onClick={openExePick}><span>添加EXE</span><Crosshair size={15} /></div>}
+      {show('addUrl') && !isHtmlActive && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={addUrl}><span>添加网址</span><Globe size={15} /></div>}
       {showAddSystemItem && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('system')} onClick={() => setOpenSubmenu((value) => value === 'system' ? null : 'system')}>
         <span>添加系统功能</span><ChevronRight size={14} />
         {openSubmenu === 'system' && (

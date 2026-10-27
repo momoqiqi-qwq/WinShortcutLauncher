@@ -4,6 +4,7 @@ import type { DirectoryKind } from '../types';
 import { useAppStore } from '../stores/appStore';
 import { getUniqueDirectoryName } from '../lib/directoryExperience';
 import { MAPPED_DEFAULT_NAME, mappedFolderLabel, validateMappedFolder } from '../lib/mappedFolder';
+import { HTML_DEFAULT_NAME, htmlFolderLabel, validateHtmlFolder } from '../lib/htmlFolder';
 import { showLauncherNotice } from '../lib/notify';
 import { uiPrompt } from '../lib/uiDialog';
 
@@ -13,6 +14,8 @@ const DEFAULT_NAMES: Record<DirectoryKind, string> = {
   all: '全部',
   startMenu: '开始菜单',
   mapped: MAPPED_DEFAULT_NAME,
+  /** v173: HTML 子目录 —— 扫描文件夹里的 html 页面并生成预览卡片。 */
+  html: HTML_DEFAULT_NAME,
   /** v169: 链接子目录由 linkSlice 创建（内容靠同步填充），这里只补一个兜底名。 */
   link: '链接子目录',
 };
@@ -23,6 +26,7 @@ export function useDirectoryCreator() {
   const experience = useAppStore((state) => state.experience);
   const addDirectory = useAppStore((state) => state.addDirectory);
   const setDirectoryMappedPath = useAppStore((state) => state.setDirectoryMappedPath);
+  const setDirectoryHtmlPath = useAppStore((state) => state.setDirectoryHtmlPath);
   const setActiveDirectory = useAppStore((state) => state.setActiveDirectory);
 
   return useCallback(async (kind: DirectoryKind = 'normal', requestedName?: string) => {
@@ -53,9 +57,26 @@ export function useDirectoryCreator() {
       }
     }
 
+    // v173: HTML 子目录同理 —— 先选文件夹，取消就不建空目录。
+    let htmlPath = '';
+    if (kind === 'html') {
+      const picked = await open({ directory: true, multiple: false, title: '选择 HTML 所在文件夹' });
+      if (typeof picked !== 'string' || !picked.trim()) return null;
+      try {
+        htmlPath = await validateHtmlFolder(picked);
+      } catch (error) {
+        showLauncherNotice(`无法使用该文件夹：${String(error)}`);
+        return null;
+      }
+    }
+
     const existingNames = activeGroup.directories.map((directory) => directory.name);
-    // 映射目录默认直接用被映射文件夹的名字，比「映射文件夹」有辨识度。
-    const fallbackName = kind === 'mapped' && mappedPath ? mappedFolderLabel(mappedPath) : DEFAULT_NAMES[kind];
+    // 映射 / HTML 目录默认直接用被选中文件夹的名字，比「映射文件夹」「HTML 目录」有辨识度。
+    const fallbackName = kind === 'mapped' && mappedPath
+      ? mappedFolderLabel(mappedPath)
+      : kind === 'html' && htmlPath
+        ? htmlFolderLabel(htmlPath)
+        : DEFAULT_NAMES[kind];
     const baseName = requestedName?.trim() || fallbackName || DEFAULT_NAMES[kind];
     const suggestedName = experience.autoNumberDuplicateDirectories
       ? getUniqueDirectoryName(existingNames, baseName)
@@ -78,7 +99,8 @@ export function useDirectoryCreator() {
 
     const directoryId = addDirectory(activeGroup.id, name, kind);
     if (kind === 'mapped') setDirectoryMappedPath(directoryId, mappedPath);
+    if (kind === 'html') setDirectoryHtmlPath(directoryId, htmlPath);
     if (experience.activateNewDirectoryAfterCreate) setActiveDirectory(directoryId);
     return directoryId;
-  }, [activeDirectory?.kind, activeGroup, addDirectory, experience.activateNewDirectoryAfterCreate, experience.autoNumberDuplicateDirectories, experience.promptDirectoryNameOnCreate, setActiveDirectory, setDirectoryMappedPath]);
+  }, [activeDirectory?.kind, activeGroup, addDirectory, experience.activateNewDirectoryAfterCreate, experience.autoNumberDuplicateDirectories, experience.promptDirectoryNameOnCreate, setActiveDirectory, setDirectoryMappedPath, setDirectoryHtmlPath]);
 }

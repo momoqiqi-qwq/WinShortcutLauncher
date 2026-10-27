@@ -179,7 +179,10 @@ export function buildPaletteEntries(
         const isStartMenuDirectory = directory.kind === 'startMenu';
         const isMappedDirectory = directory.kind === 'mapped';
         const mappedPath = isMappedDirectory ? String(directory.mappedPath ?? '') : '';
-        const mirrorLabel = isStartMenuDirectory ? '开始菜单' : isMappedDirectory ? '映射文件夹' : '';
+        // v173: HTML 子目录 —— 副标题/详情显示被扫描的文件夹。
+        const isHtmlDirectory = directory.kind === 'html';
+        const htmlPath = isHtmlDirectory ? String(directory.htmlPath ?? '') : '';
+        const mirrorLabel = isStartMenuDirectory ? '开始菜单' : isMappedDirectory ? '映射文件夹' : isHtmlDirectory ? 'HTML 目录' : '';
         entries.push({
           id: `directory:${directory.id}`,
           kind: directory.kind === 'notes' ? 'note' : 'directory',
@@ -191,7 +194,9 @@ export function buildPaletteEntries(
               ? '直连系统开始菜单文件夹'
               : isMappedDirectory
                 ? (mappedPath ? `映射：${mappedPath}` : '还没选择要映射的文件夹')
-                : `${Array.isArray(directory.items) ? directory.items.length : 0} 个项目`,
+                : isHtmlDirectory
+                  ? (htmlPath ? `HTML：${htmlPath}` : '还没选择 HTML 文件夹')
+                  : `${Array.isArray(directory.items) ? directory.items.length : 0} 个项目`,
           keywords: ['目录', '子目录', directory.kind === 'notes' ? '便签' : mirrorLabel || '打开目录'],
           usageKey: `directory:${directory.id}`,
           groupId: group.id,

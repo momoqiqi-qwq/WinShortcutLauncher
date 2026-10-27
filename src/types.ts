@@ -2,7 +2,7 @@ import type { GlobalSearchSettings, TransferStationSettings, ImageBrowserSetting
 export type ShortcutType = 'file' | 'folder' | 'url' | 'command';
 export type ViewMode = 'grid' | 'compact';
 export type SortMode = 'custom' | 'name' | 'type' | 'recent' | 'frequent';
-export type DirectoryKind = 'normal' | 'all' | 'notes' | 'startMenu' | 'mapped' | 'link';
+export type DirectoryKind = 'normal' | 'all' | 'notes' | 'startMenu' | 'mapped' | 'link' | 'html';
 export type EdgeAnimationStyle =
   | 'animate-window'
   | 'setwindowpos'
@@ -342,6 +342,26 @@ export interface DirectoryLinkRef {
   directoryId?: string;
 }
 
+/** v173: HTML 目录里单个页面卡片的大小（px，拖拽边框改的就是它）。 */
+export interface HtmlCardSize {
+  width: number;
+  height: number;
+}
+
+/** v173: HTML 目录的显示设置（目录级默认值，单卡片可在 htmlCards 里覆盖）。 */
+export interface HtmlViewSettings {
+  /** 卡片默认宽度（px）；不设置时按内容区宽度自适应。 */
+  cardWidth?: number;
+  /** 卡片默认高度（px）；不设置时按宽度等比推算。 */
+  cardHeight?: number;
+  /** 是否显示首页实时预览（关掉就只显示文件名卡片，省性能）。 */
+  preview?: boolean;
+  /** fit = 把整页按卡片宽度等比缩放（默认）；actual = 1:1 只显示左上角。 */
+  previewScale?: 'fit' | 'actual';
+  /** 是否递归扫描子文件夹。 */
+  recursive?: boolean;
+}
+
 export interface Directory {
   id: string;
   name: string;
@@ -350,6 +370,12 @@ export interface Directory {
   kind?: DirectoryKind;
   /** 仅 kind='mapped' 使用：被实时镜像的文件夹绝对路径。 */
   mappedPath?: string;
+  /** v173: 仅 kind='html' 使用 —— 被自动扫描 html/htm 的文件夹绝对路径。 */
+  htmlPath?: string;
+  /** v173: 仅 kind='html' 使用 —— 单个页面卡片的尺寸覆盖，key 是文件绝对路径。 */
+  htmlCards?: Record<string, HtmlCardSize>;
+  /** v173: 仅 kind='html' 使用 —— 目录级预览/卡片默认设置。 */
+  htmlView?: HtmlViewSettings;
   /** v169: 仅 kind='link' 使用 —— 内容实时镜像自某个配置里的子目录。 */
   link?: DirectoryLinkRef;
   display?: DirectoryDisplaySettings;
@@ -493,6 +519,11 @@ export type DirectoryContextMenuItemId =
   | 'refreshMappedFolder'
   | 'openMappedFolder'
   | 'changeMappedFolder'
+  | 'refreshHtmlFolder'
+  | 'openHtmlFolder'
+  | 'changeHtmlFolder'
+  | 'toggleHtmlPreview'
+  | 'resetHtmlCardSizes'
   | 'linkRefresh'
   | 'linkLocate'
   | 'linkRetarget'
