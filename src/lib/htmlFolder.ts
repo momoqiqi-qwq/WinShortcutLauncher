@@ -87,6 +87,44 @@ export function validateHtmlFolder(path: string): Promise<string> {
   return invoke<string>('validate_html_folder', { path });
 }
 
+/** v175: 把拖进来的页面 / 页面文件夹复制进 HTML 根目录后的结果。 */
+export interface HtmlCopyResult {
+  /** 真正落盘的文件或文件夹（绝对路径）。 */
+  copied: string[];
+  /** 被跳过的来源，附带原因，直接拿来提示用户。 */
+  skipped: string[];
+}
+
+/**
+ * v175: 复制 .html / .htm（或整个页面文件夹）到 HTML 根目录。
+ *
+ * 只复制不移动；同名文件不会覆盖，会自动变成 `xxx (2).html`。
+ */
+export function copyHtmlIntoFolder(path: string, sources: string[]): Promise<HtmlCopyResult> {
+  return invoke<HtmlCopyResult>('copy_html_into_folder', { path, sources });
+}
+
+/**
+ * v175: 取目录指纹（页面清单 + 每个文件的修改时间 / 大小）。
+ *
+ * 卡片墙拿它做自动刷新：指纹没变就不重扫，变了才重新列页面。
+ */
+export function htmlFolderSignature(path: string, recursive = true): Promise<string> {
+  return invoke<string>('html_folder_signature', { path, recursive });
+}
+
+/** v175: 卡片标题 —— 用户改过名就用改过的，否则用文件名（不含扩展名）。 */
+export function resolveHtmlPageName(directory: Directory | null | undefined, page: HtmlPage): string {
+  const custom = directory?.htmlNames?.[page.path]?.trim();
+  return custom || page.stem;
+}
+
+/** v175: 卡片颜色 —— 没上色返回 undefined（跟随主题）。 */
+export function resolveHtmlPageColor(directory: Directory | null | undefined, page: HtmlPage): string | undefined {
+  const color = directory?.htmlColors?.[page.path]?.trim();
+  return color || undefined;
+}
+
 export function listHtmlFolder(path: string, recursive = true): Promise<HtmlPage[]> {
   return invoke<HtmlPage[]>('list_html_folder', { path, recursive });
 }

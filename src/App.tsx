@@ -8,6 +8,7 @@ import { ItemContextMenu } from './components/ContextMenu/ItemContextMenu';
 import { AreaContextMenu } from './components/ContextMenu/AreaContextMenu';
 import { GroupContextMenu } from './components/ContextMenu/GroupContextMenu';
 import { DirectoryContextMenu } from './components/ContextMenu/DirectoryContextMenu';
+import { HtmlPageContextMenu } from './components/ContextMenu/HtmlPageContextMenu';
 import {
   DeferredDropImportDialog,
   DeferredGlobalSearch,
@@ -274,6 +275,10 @@ function App() {
   const openAreaContextMenu = useCallback((x: number, y: number) => {
     setContextMenu({ kind: 'area', x, y });
   }, []);
+  // v175: HTML 目录里的页面卡片右键（改名 / 上色 / 恢复尺寸）。
+  const openHtmlPageContextMenu = useCallback((directoryId: string, pagePath: string, x: number, y: number) => {
+    setContextMenu({ kind: 'htmlPage', directoryId, pagePath, x, y });
+  }, []);
 
 
 
@@ -331,6 +336,7 @@ function App() {
           <ContentArea
             onContextMenuItem={openItemContextMenu}
             onContextMenuArea={openAreaContextMenu}
+            onContextMenuHtmlPage={openHtmlPageContextMenu}
           />
         </div>
         {(dragHover || webDragHover) && (
@@ -355,6 +361,7 @@ function App() {
         {contextMenu?.kind === 'area' && <AreaContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />}
         {contextMenu?.kind === 'group' && <GroupContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />}
         {contextMenu?.kind === 'directory' && <DirectoryContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />}
+        {contextMenu?.kind === 'htmlPage' && <HtmlPageContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />}
         {dropPaths.length > 0 && (
           <DeferredDropImportDialog
             paths={dropPaths}

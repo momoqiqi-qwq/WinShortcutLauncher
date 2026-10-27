@@ -28,6 +28,36 @@
   align-content: flex-start;
   gap: 14px;
   padding: 2px 2px 22px;
+  /* v175: 同色相邻成组框以卡片容器为定位父级（框用卡片的 offsetLeft/offsetTop 定位）。 */
+  position: relative;
+}
+
+/* v175: 同色相邻成组框 —— 与内容区项目卡片同一套画法，框本身不吃事件。 */
+.html-color-clusters {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.html-color-cluster-segment {
+  position: absolute;
+  border: 1.5px solid var(--cluster-accent, var(--accent));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--cluster-accent, var(--accent)) 6%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cluster-accent, var(--accent)) 24%, transparent),
+    0 0 14px color-mix(in srgb, var(--cluster-accent, var(--accent)) 22%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--cluster-accent, var(--accent)) 8%, transparent);
+}
+
+.color-frame-shape-square .html-color-cluster-segment {
+  border-radius: 10px;
+}
+
+.reduce-motion .html-color-clusters {
+  transition: none;
 }
 
 /* ---------- 卡片本体 ---------- */
@@ -50,6 +80,31 @@
 .html-card:hover {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   box-shadow: 0 10px 26px rgba(30, 42, 60, 0.16);
+}
+
+/* v175: 单击启动模式下给个手型，双击模式下保持默认指针（避免暗示「点一下就会开」）。 */
+.html-card[data-launch-mode="single"] {
+  cursor: pointer;
+}
+
+/* v175: 卡片自定义颜色 —— 和项目卡片一样走 color-mix，主题换肤后依然协调。 */
+.html-card.has-custom-color {
+  border-color: color-mix(in srgb, var(--html-accent, var(--accent)) 44%, var(--border));
+  background: color-mix(in srgb, var(--html-accent, var(--accent)) var(--color-frame-strength, 17%), var(--panel-2));
+}
+
+.html-card.has-custom-color:hover {
+  border-color: color-mix(in srgb, var(--html-accent, var(--accent)) 62%, var(--border));
+  background: color-mix(in srgb, var(--html-accent, var(--accent)) var(--color-frame-hover-strength, 25%), var(--panel-2));
+}
+
+.html-card.has-custom-color .html-card-head {
+  background: color-mix(in srgb, var(--html-accent, var(--accent)) 10%, var(--panel-2));
+  border-bottom-color: color-mix(in srgb, var(--html-accent, var(--accent)) 26%, var(--border));
+}
+
+.html-card.has-custom-color .html-card-name {
+  color: color-mix(in srgb, var(--html-accent, var(--accent)) 55%, var(--text));
 }
 
 .html-card.resizing {

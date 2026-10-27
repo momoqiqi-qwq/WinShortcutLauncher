@@ -374,6 +374,10 @@ export interface Directory {
   htmlPath?: string;
   /** v173: 仅 kind='html' 使用 —— 单个页面卡片的尺寸覆盖，key 是文件绝对路径。 */
   htmlCards?: Record<string, HtmlCardSize>;
+  /** v175: 仅 kind='html' 使用 —— 卡片自定义显示名（key 同上），只改显示，不动真实文件名。 */
+  htmlNames?: Record<string, string>;
+  /** v175: 仅 kind='html' 使用 —— 卡片颜色（key 同上），参与「相邻颜色组合」与成组框。 */
+  htmlColors?: Record<string, string>;
   /** v173: 仅 kind='html' 使用 —— 目录级预览/卡片默认设置。 */
   htmlView?: HtmlViewSettings;
   /** v169: 仅 kind='link' 使用 —— 内容实时镜像自某个配置里的子目录。 */
@@ -728,7 +732,9 @@ export type ContextMenuState =
   | { kind: 'item'; itemId: string; x: number; y: number }
   | { kind: 'area'; x: number; y: number }
   | { kind: 'group'; groupId: string; x: number; y: number }
-  | { kind: 'directory'; directoryId: string; x: number; y: number };
+  | { kind: 'directory'; directoryId: string; x: number; y: number }
+  /** v175: HTML 目录里的单张页面卡片（改名 / 上色 / 恢复尺寸）。 */
+  | { kind: 'htmlPage'; directoryId: string; pagePath: string; x: number; y: number };
 
 export interface DroppedPath {
   path: string;

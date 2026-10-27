@@ -18,7 +18,9 @@
 
 use serde::Serialize;
 use std::{
+  collections::hash_map::DefaultHasher,
   fs,
+  hash::{Hash, Hasher},
   path::{Path, PathBuf},
   time::UNIX_EPOCH,
 };
@@ -166,6 +168,128 @@ fn scan(root: &str, recursive: bool) -> Result<Vec<HtmlPage>, String> {
   Ok(pages)
 }
 
+/// v175: 目录「指纹」—— 页面清单 + 每个文件的修改时间和大小。
+///
+/// 前端拿它做自动刷新：指纹没变就不重扫，变了才刷新卡片墙。
+/// 只做 stat 不读内容，几十个页面的目录跑一次是毫秒级，2 秒轮一次不会拖慢界面。
+fn fingerprint(root: &Path, recursive: bool) -> String {
+  let mut pages = Vec::new();
+  collect_pages(root, root, 0, recursive, &mut pages);
+  let mut hasher = DefaultHasher::new();
+  for page in &pages {
+    page.relative.hash(&mut hasher);
+    page.modified.unwrap_or(0).hash(&mut hasher);
+    fs::metadata(&page.path)
+      .map(|meta| meta.len())
+      .unwrap_or(0)
+      .hash(&mut hasher);
+  }
+  format!("{:x}", hasher.finish())
+}
+
+/// v175: 复制 / 新增进 HTML 根目录的结果。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HtmlCopyResult {
+  /// 真正落盘的页面（绝对路径），前端用它提示「新增了几张卡片」。
+  pub copied: Vec<String>,
+  /// 被跳过的来源，附带原因。
+  pub skipped: Vec<String>,
+}
+
+/// 目标重名时自动加序号：`index.html` → `index (2).html`。
+///
+/// 刻意不覆盖同名文件 —— 拖进来一个同名页面，用户要的是「多一张卡」，
+/// 不是「悄悄替换掉原来那张」。
+fn unique_target(dir: &Path, name: &str) -> PathBuf {
+  let candidate = dir.join(name);
+  if !candidate.exists() {
+    return candidate;
+  }
+  let path = Path::new(name);
+  let stem = path
+    .file_stem()
+    .map(|value| value.to_string_lossy().to_string())
+    .unwrap_or_else(|| name.to_string());
+  let extension = path
+    .extension()
+    .map(|value| format!(".{}", value.to_string_lossy()))
+    .unwrap_or_default();
+  for index in 2..1000u32 {
+    let next = dir.join(format!("{stem} ({index}){extension}"));
+    if !next.exists() {
+      return next;
+    }
+  }
+  dir.join(format!("{stem}-{}{extension}", std::process::id()))
+}
+
+/// 整目录复制（页面依赖的 css / js / 图片跟着一起走）。
+///
+/// 深度上限 8：防止误拖一个巨型目录把磁盘写满；隐藏文件跳过，
+/// 和扫描时忽略 `.` 开头的规则保持一致。
+fn copy_dir_recursive(source: &Path, target: &Path, depth: u8) -> Result<(), String> {
+  if depth > 8 {
+    return Ok(());
+  }
+  fs::create_dir_all(target).map_err(|error| format!("创建文件夹失败：{error}"))?;
+  let entries = match fs::read_dir(source) {
+    Ok(entries) => entries,
+    Err(error) => return Err(format!("读取文件夹失败：{error}")),
+  };
+  for entry in entries.filter_map(Result::ok) {
+    let name = entry.file_name().to_string_lossy().to_string();
+    if name.starts_with('.') {
+      continue;
+    }
+    let path = entry.path();
+    let destination = target.join(&name);
+    if path.is_dir() {
+      copy_dir_recursive(&path, &destination, depth + 1)?;
+    } else {
+      fs::copy(&path, &destination).map_err(|error| format!("复制「{name}」失败：{error}"))?;
+    }
+  }
+  Ok(())
+}
+
+fn copy_into_folder(root: &Path, sources: Vec<String>) -> Result<HtmlCopyResult, String> {
+  if !root.is_dir() {
+    return Err("HTML 目录还没有选择有效的文件夹".to_string());
+  }
+  let mut copied = Vec::new();
+  let mut skipped = Vec::new();
+  for raw in sources {
+    let source = PathBuf::from(raw.trim().trim_matches('"'));
+    let label = source
+      .file_name()
+      .map(|value| value.to_string_lossy().to_string())
+      .unwrap_or_else(|| raw.clone());
+    if !source.exists() {
+      skipped.push(format!("{label}：找不到这个文件"));
+      continue;
+    }
+    if source.is_dir() {
+      let destination = unique_target(root, &label);
+      match copy_dir_recursive(&source, &destination, 0) {
+        Ok(_) => copied.push(destination.to_string_lossy().to_string()),
+        Err(error) => skipped.push(format!("{label}：{error}")),
+      }
+      continue;
+    }
+    if !is_html(&source) {
+      skipped.push(format!("{label}：不是 .html / .htm 文件"));
+      continue;
+    }
+    let destination = unique_target(root, &label);
+    match fs::copy(&source, &destination) {
+      Ok(_) => copied.push(destination.to_string_lossy().to_string()),
+      Err(error) => skipped.push(format!("{label}：复制失败（{error}）")),
+    }
+  }
+  Ok(HtmlCopyResult { copied, skipped })
+}
+
 /// 校验用户选的 HTML 根目录，返回规整后的绝对路径。
 ///
 /// 前端在「选择文件夹」之后立刻调一次，好在建目录之前就把不存在的路径挡掉。
@@ -182,6 +306,28 @@ pub async fn validate_html_folder(path: String) -> Result<String, String> {
 #[tauri::command]
 pub async fn list_html_folder(path: String, recursive: Option<bool>) -> Result<Vec<HtmlPage>, String> {
   crate::blocking::offload(move || scan(&path, recursive.unwrap_or(true))).await
+}
+
+/// v175: 把拖进来的 .html / .htm（或整个页面文件夹）复制到 HTML 根目录。
+///
+/// 只复制、不移动 —— 用户手里的原件不能被启动器顺走。
+#[tauri::command]
+pub async fn copy_html_into_folder(path: String, sources: Vec<String>) -> Result<HtmlCopyResult, String> {
+  crate::blocking::offload(move || {
+    let root = crate::folder_mirror::resolve_root(&path)?;
+    copy_into_folder(&root, sources)
+  })
+  .await
+}
+
+/// v175: 取 HTML 目录的指纹，供前端判断「文件夹里有没有新页面」。
+#[tauri::command]
+pub async fn html_folder_signature(path: String, recursive: Option<bool>) -> Result<String, String> {
+  crate::blocking::offload(move || {
+    let root = crate::folder_mirror::resolve_root(&path)?;
+    Ok(fingerprint(&root, recursive.unwrap_or(true)))
+  })
+  .await
 }
 
 /// 把 HTML 根目录（递归）加进 asset 协议的作用域，让 iframe 能读到页面和它的相对资源。

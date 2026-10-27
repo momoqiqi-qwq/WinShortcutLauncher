@@ -87,6 +87,14 @@ export interface NavigationSlice {
   setHtmlCardSize: (directoryId: string, pagePath: string, size: HtmlCardSize) => void;
   /** v173: 清掉所有单卡尺寸，回到目录默认大小。 */
   resetHtmlCardSizes: (directoryId: string) => void;
+  /** v175: 改单张卡片的显示名（不动真实文件名）；传空串恢复文件名。 */
+  setHtmlPageName: (directoryId: string, pagePath: string, name: string) => void;
+  /** v175: 忘掉单张卡片被拖出来的尺寸（回到目录默认值）。 */
+  clearHtmlCardSize: (directoryId: string, pagePath: string) => void;
+  /** v175: 给单张卡片上色；传空串回到跟随主题。 */
+  setHtmlPageColor: (directoryId: string, pagePath: string, color: string) => void;
+  /** v175: 清掉所有卡片的改名与颜色。 */
+  resetHtmlCardAppearance: (directoryId: string) => void;
   /** v173: 改 HTML 子目录的显示设置（预览开关 / 默认卡片尺寸 / 是否递归）。 */
   updateHtmlView: (directoryId: string, patch: HtmlViewSettings) => void;
   getActiveGroup: () => Group | undefined;

@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 
-export function useDragDrop(onDropPaths: (paths: string[]) => void, enabled = true) {
+/** v175: 原生拖拽落点的物理坐标 —— 用来判断「松手时鼠标压在哪个子目录上」。 */
+export interface DragDropPoint {
+  x: number;
+  y: number;
+}
+
+export function useDragDrop(
+  onDropPaths: (paths: string[], point?: DragDropPoint) => void,
+  enabled = true,
+) {
   const [dragHover, setDragHover] = useState(false);
 
   useEffect(() => {
@@ -22,7 +31,11 @@ export function useDragDrop(onDropPaths: (paths: string[]) => void, enabled = tr
         }
         if (payload.type === 'drop') {
           setDragHover(false);
-          onDropPaths(payload.paths ?? []);
+          const position = (payload as { position?: { x: number; y: number } }).position;
+          onDropPaths(
+            payload.paths ?? [],
+            position ? { x: position.x, y: position.y } : undefined,
+          );
         }
       })
       .then((unlisten) => {

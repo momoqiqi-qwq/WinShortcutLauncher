@@ -29,6 +29,7 @@ import {
 } from '../lib/nativeExternalDrop';
 import { isStartMenuDirectory } from '../lib/startMenu';
 import { isMappedDirectory } from '../lib/mappedFolder';
+import { copyHtmlIntoFolder, getHtmlPath, isHtmlDirectory } from '../lib/htmlFolder';
 import type { BrowserRouteOverride, Directory, Group, ItemClickAction } from '../types';
 
 export type DropTargetSelection = { groupId: string; directoryId: string } | null;
@@ -93,10 +94,10 @@ function findDirectoryById(directoryId: string): Directory | undefined {
   return undefined;
 }
 
-/** 普通子目录、便签子目录与镜像子目录（开始菜单 / 映射文件夹）都能接收拖入。 */
+/** 普通子目录、便签子目录、镜像子目录（开始菜单 / 映射文件夹）和 HTML 子目录都能接收拖入。 */
 function isDropAcceptingDirectory(directory?: Directory) {
   const kind = directory?.kind ?? 'normal';
-  return kind === 'normal' || kind === 'startMenu' || kind === 'mapped' || kind === 'notes';
+  return kind === 'normal' || kind === 'startMenu' || kind === 'mapped' || kind === 'notes' || kind === 'html';
 }
 
 function findDropGroupId(target: EventTarget | null) {
@@ -155,6 +156,26 @@ function resolvePreferredTarget(target: EventTarget | null): DropTargetSelection
   return { groupId: group.id, directoryId: createdDirectoryId };
 }
 
+/**
+ * v175: 按落点坐标找目标子目录（原生拖拽用）。
+ *
+ * 刻意**不做**「父目录下没有普通子目录就自动建一个」那套兜底 ——
+ * 原生拖拽只应该落到用户真正压着的那个子目录上，找不到就交给当前子目录。
+ */
+function resolvePointTarget(point: { x: number; y: number }): DropTargetSelection {
+  const element = targetFromClientPoint(point.x, point.y);
+  const directoryId = findDropDirectoryId(element);
+  if (!directoryId) return null;
+  const state = useAppStore.getState();
+  for (const group of state.groups) {
+    const directory = group.directories.find((entry) => entry.id === directoryId);
+    if (directory && isDropAcceptingDirectory(directory)) {
+      return { groupId: group.id, directoryId: directory.id };
+    }
+  }
+  return null;
+}
+
 function activeFallbackTarget(): DropTargetSelection {
   const state = useAppStore.getState();
   const activeGroup = state.getActiveGroup();
@@ -186,6 +207,34 @@ function appendDroppedTextToNote(directoryId: string, rawText: string) {
   flushActiveNoteDraft();
   useAppStore.getState().appendDirectoryNote(directoryId, text);
   return true;
+}
+
+/**
+ * v175: 拖到 HTML 子目录 —— 把页面**复制**进那个文件夹，然后立刻重扫。
+ *
+ * 只复制不移动：原件留在用户拖出来的地方。
+ * 文件夹也可以拖（整页连同 css/js/图片一起过去），重名不会覆盖，会自动加序号。
+ */
+async function copyDroppedHtml(directoryId: string, paths: string[]) {
+  const clean = paths.map((path) => path.trim()).filter(Boolean);
+  if (!clean.length) return;
+  const directory = findDirectoryById(directoryId);
+  const root = getHtmlPath(directory);
+  if (!root) {
+    showLauncherNotice('这个 HTML 子目录还没有选择文件夹');
+    return;
+  }
+  const label = directory?.name ?? 'HTML 子目录';
+  try {
+    const result = await copyHtmlIntoFolder(root, clean);
+    const parts: string[] = [];
+    if (result.copied.length) parts.push(`已复制 ${result.copied.length} 个页面到「${label}」`);
+    if (result.skipped.length) parts.push(`${result.skipped.length} 个跳过：${result.skipped[0]}`);
+    showLauncherNotice(parts.length ? parts.join('；') : '没有复制任何页面');
+    if (result.copied.length) await useAppStore.getState().refreshHtmlFolder(directoryId);
+  } catch (error) {
+    showLauncherNotice(`复制到「${label}」失败：${String(error)}`);
+  }
 }
 
 /** 拖到镜像子目录：直接在该文件夹里生成快捷方式，不进「添加快捷项目」对话框。 */
@@ -239,6 +288,11 @@ export function useWebsiteDropController({ disabled }: WebsiteDropControllerOpti
 
     // 拖到镜像子目录：写成那个真实文件夹里的 .url 快捷方式。
     const mirrorDirectory = findDirectoryById(resolvedTarget.directoryId);
+    // v175: HTML 子目录只收网页文件，网址没有「落盘」的意义，直接说明白。
+    if (isHtmlDirectory(mirrorDirectory)) {
+      showLauncherNotice('HTML 子目录只收 .html / .htm 文件：把网页文件拖进来，网址请拖到普通子目录');
+      return;
+    }
     if (isStartMenuDirectory(mirrorDirectory) || isMappedDirectory(mirrorDirectory)) {
       const isMapped = isMappedDirectory(mirrorDirectory);
       const label = isMapped ? '映射文件夹' : '开始菜单';
@@ -357,6 +411,13 @@ export function useWebsiteDropController({ disabled }: WebsiteDropControllerOpti
         return;
       }
     }
+    // v175: 落在 HTML 子目录上：把页面复制进去并立刻重扫，不进「添加快捷项目」对话框。
+    const htmlTarget = preferredTarget ?? activeFallbackTarget();
+    const htmlDirectory = htmlTarget ? findDirectoryById(htmlTarget.directoryId) : undefined;
+    if (htmlTarget && isHtmlDirectory(htmlDirectory)) {
+      void copyDroppedHtml(htmlTarget.directoryId, paths);
+      return;
+    }
     // 落在镜像子目录上：直接写进那个真实文件夹，不再弹「添加快捷项目」。
     const mirrorTarget = preferredTarget ?? activeFallbackTarget();
     const mirrorDirectory = mirrorTarget ? findDirectoryById(mirrorTarget.directoryId) : undefined;
@@ -454,7 +515,12 @@ export function useWebsiteDropController({ disabled }: WebsiteDropControllerOpti
     };
   }, [disabled, handleDroppedWebLink, handleDropPaths]);
 
-  const { dragHover } = useDragDrop((paths) => handleDropPaths(paths, undefined, 'native'), !disabled);
+  // v175: 原生拖拽也带上落点坐标 —— 拖到左侧某个 HTML 子目录上时才复制到「那个」文件夹，
+  // 而不是一律落到当前打开的子目录。
+  const { dragHover } = useDragDrop((paths, point) => {
+    const target = point ? resolvePointTarget(point) : undefined;
+    handleDropPaths(paths, target, 'native');
+  }, !disabled);
 
   useEffect(() => {
     function maybeAcceptExternalDrag(event: DragEvent) {

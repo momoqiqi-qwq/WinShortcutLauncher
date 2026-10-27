@@ -423,6 +423,48 @@ function normalizeHtmlCards(value: unknown): Record<string, HtmlCardSize> | unde
   return count > 0 ? result : undefined;
 }
 
+/**
+ * v175: 规范化 `Directory.htmlNames`（key = 页面绝对路径，value = 卡片显示名）。
+ *
+ * 只用来改卡片标题，绝不参与文件操作；空白名直接丢掉，等于「跟随文件名」。
+ */
+function normalizeHtmlNames(value: unknown): Record<string, string> | undefined {
+  const raw = asRecord(value);
+  const result: Record<string, string> = {};
+  let count = 0;
+  for (const [rawKey, rawName] of Object.entries(raw)) {
+    const key = rawKey.trim();
+    if (!key) continue;
+    const name = cleanText(rawName, '', 240).trim();
+    if (!name) continue;
+    result[key] = name;
+    count += 1;
+    if (count >= HTML_MAX_CARD_ENTRIES) break;
+  }
+  return count > 0 ? result : undefined;
+}
+
+/**
+ * v175: 规范化 `Directory.htmlColors`（key = 页面绝对路径，value = 十六进制颜色）。
+ *
+ * 颜色非法就丢掉这一项 —— 宁可卡片回到跟随主题，也不要把 `undefined` 拼进 CSS 变量。
+ */
+function normalizeHtmlColors(value: unknown): Record<string, string> | undefined {
+  const raw = asRecord(value);
+  const result: Record<string, string> = {};
+  let count = 0;
+  for (const [rawKey, rawColor] of Object.entries(raw)) {
+    const key = rawKey.trim();
+    if (!key) continue;
+    const color = normalizeAccentColor(rawColor);
+    if (!color) continue;
+    result[key] = color;
+    count += 1;
+    if (count >= HTML_MAX_CARD_ENTRIES) break;
+  }
+  return count > 0 ? result : undefined;
+}
+
 /** v173: 规范化 `Directory.htmlView`；没设置过的字段不写进去（保持「跟随默认」）。 */
 function normalizeHtmlView(value: unknown): HtmlViewSettings | undefined {
   const raw = asRecord(value);
@@ -481,6 +523,8 @@ export function normalizeDirectory(
     ? cleanText(raw.htmlPath ?? raw.htmlRoot ?? raw.htmlFolder, '', 4096).trim()
     : '';
   const htmlCards = kind === 'html' ? normalizeHtmlCards(raw.htmlCards) : undefined;
+  const htmlNames = kind === 'html' ? normalizeHtmlNames(raw.htmlNames) : undefined;
+  const htmlColors = kind === 'html' ? normalizeHtmlColors(raw.htmlColors) : undefined;
   const htmlView = kind === 'html' ? normalizeHtmlView(raw.htmlView) : undefined;
   const link = kind === 'link' ? normalizeDirectoryLinkRef(raw.link) : undefined;
   const display = normalizeDirectoryDisplay(raw.display);
@@ -493,6 +537,8 @@ export function normalizeDirectory(
     ...(mappedPath ? { mappedPath } : {}),
     ...(htmlPath ? { htmlPath } : {}),
     ...(htmlCards ? { htmlCards } : {}),
+    ...(htmlNames ? { htmlNames } : {}),
+    ...(htmlColors ? { htmlColors } : {}),
     ...(htmlView ? { htmlView } : {}),
     ...(link ? { link } : {}),
     ...(display ? { display } : {}),

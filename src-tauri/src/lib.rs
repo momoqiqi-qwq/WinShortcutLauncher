@@ -432,6 +432,8 @@ pub fn run() {
       mapped_folder::rename_mapped_entry,
       html_folder::validate_html_folder,
       html_folder::list_html_folder,
+      html_folder::copy_html_into_folder,
+      html_folder::html_folder_signature,
       html_folder::allow_html_preview,
       html_folder::open_html_folder_location,
       commands::save_config,

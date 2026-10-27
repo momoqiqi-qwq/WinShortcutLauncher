@@ -447,6 +447,86 @@ export const createNavigationSlice: AppSliceCreator<NavigationActions> = (set, g
       }),
     })),
   })),
+  /** v175: 忘掉单张卡片被拖出来的尺寸（回到目录默认值）。 */
+  clearHtmlCardSize: (directoryId, pagePath) => {
+    const key = pagePath.trim();
+    if (!key) return;
+    set((state) => ({
+      groups: state.groups.map((group) => ({
+        ...group,
+        directories: group.directories.map((directory) => {
+          if (directory.id !== directoryId || !directory.htmlCards?.[key]) return directory;
+          const cards = { ...directory.htmlCards };
+          delete cards[key];
+          const next: Directory = { ...directory };
+          if (Object.keys(cards).length > 0) next.htmlCards = cards;
+          else delete next.htmlCards;
+          return next;
+        }),
+      })),
+    }));
+  },
+  /**
+   * v175: 改单张卡片在界面上显示的名字。
+   *
+   * 只动配置里的显示名，**不碰真实文件名** —— 卡片墙是浏览入口，
+   * 改个中文名不该把用户磁盘上的 `index.html` 一起改掉。
+   * 传空串等于恢复文件名。
+   */
+  setHtmlPageName: (directoryId, pagePath, name) => {
+    const key = pagePath.trim();
+    if (!key) return;
+    const clean = name.trim().slice(0, 240);
+    set((state) => ({
+      groups: state.groups.map((group) => ({
+        ...group,
+        directories: group.directories.map((directory) => {
+          if (directory.id !== directoryId) return directory;
+          const names = { ...(directory.htmlNames ?? {}) };
+          if (clean) names[key] = clean;
+          else delete names[key];
+          const next: Directory = { ...directory };
+          if (Object.keys(names).length > 0) next.htmlNames = names;
+          else delete next.htmlNames;
+          return next;
+        }),
+      })),
+    }));
+  },
+  /** v175: 给单张卡片上色；传空串表示回到跟随主题。 */
+  setHtmlPageColor: (directoryId, pagePath, color) => {
+    const key = pagePath.trim();
+    if (!key) return;
+    const clean = color.trim();
+    set((state) => ({
+      groups: state.groups.map((group) => ({
+        ...group,
+        directories: group.directories.map((directory) => {
+          if (directory.id !== directoryId) return directory;
+          const colors = { ...(directory.htmlColors ?? {}) };
+          if (clean) colors[key] = clean;
+          else delete colors[key];
+          const next: Directory = { ...directory };
+          if (Object.keys(colors).length > 0) next.htmlColors = colors;
+          else delete next.htmlColors;
+          return next;
+        }),
+      })),
+    }));
+  },
+  /** v175: 清掉所有卡片的改名 / 颜色（恢复默认外观）。 */
+  resetHtmlCardAppearance: (directoryId) => set((state) => ({
+    groups: state.groups.map((group) => ({
+      ...group,
+      directories: group.directories.map((directory) => {
+        if (directory.id !== directoryId) return directory;
+        const next: Directory = { ...directory };
+        delete next.htmlNames;
+        delete next.htmlColors;
+        return next;
+      }),
+    })),
+  })),
   /** v173: 改 HTML 子目录的显示设置；传 undefined 的字段会被忽略。 */
   updateHtmlView: (directoryId, patch) => {
     const cleaned = Object.fromEntries(

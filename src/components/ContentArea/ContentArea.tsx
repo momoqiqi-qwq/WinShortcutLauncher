@@ -11,9 +11,11 @@ import { ShortcutGrid, getContentAreaStyle } from './ShortcutGrid/ShortcutGrid';
 interface ContentAreaProps {
   onContextMenuItem: (itemId: string, x: number, y: number) => void;
   onContextMenuArea: (x: number, y: number) => void;
+  /** v175: HTML 目录里的单张卡片右键。 */
+  onContextMenuHtmlPage: (directoryId: string, pagePath: string, x: number, y: number) => void;
 }
 
-export function ContentArea({ onContextMenuItem, onContextMenuArea }: ContentAreaProps) {
+export function ContentArea({ onContextMenuItem, onContextMenuArea, onContextMenuHtmlPage }: ContentAreaProps) {
   const activeGroup = useAppStore((state) => state.getActiveGroup());
   const activeDirectory = useAppStore((state) => state.getActiveDirectory());
   const behavior = useAppStore((state) => state.behavior);
@@ -99,7 +101,10 @@ export function ContentArea({ onContextMenuItem, onContextMenuArea }: ContentAre
       {isNotesDirectory ? (
         <NoteEditor directory={activeDirectory} />
       ) : isHtml ? (
-        <HtmlGallery directory={activeDirectory} />
+        <HtmlGallery
+          directory={activeDirectory}
+          onContextMenuPage={(pagePath, x, y) => onContextMenuHtmlPage(activeDirectory.id, pagePath, x, y)}
+        />
       ) : (
         <ShortcutGrid
           activeGroup={activeGroup}
