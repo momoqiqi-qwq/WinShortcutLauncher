@@ -1,16 +1,16 @@
 import type { AreaContextMenuItemId, DirectoryContextMenuItemId, ExperienceSettings, GroupContextMenuItemId, SpecialDirectoryStyle } from '../types';
 import { normalizeAfterLaunchAction } from './itemExperience';
 
-/** v174: 特殊子目录边框形式白名单，非法值统一回落到 `outline`。 */
-export const SPECIAL_DIRECTORY_STYLES: SpecialDirectoryStyle[] = ['outline', 'ribbon', 'bar'];
+/** v176: 旧版描边 / 角标 / 强调条统一迁移为名称右上角小字。 */
+export const SPECIAL_DIRECTORY_STYLES: SpecialDirectoryStyle[] = ['superscript'];
 
 export function normalizeSpecialDirectoryStyle(value: unknown): SpecialDirectoryStyle {
-  return SPECIAL_DIRECTORY_STYLES.includes(value as SpecialDirectoryStyle) ? value as SpecialDirectoryStyle : 'outline';
+  return SPECIAL_DIRECTORY_STYLES.includes(value as SpecialDirectoryStyle) ? value as SpecialDirectoryStyle : 'superscript';
 }
 
-export const DIRECTORY_CONTEXT_MENU_IDS: DirectoryContextMenuItemId[] = ['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'refreshHtmlFolder', 'openHtmlFolder', 'changeHtmlFolder', 'toggleHtmlPreview', 'resetHtmlCardSizes', 'rename', 'color', 'fullNames', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete', 'linkRefresh', 'linkLocate', 'linkRetarget', 'linkDetach'];
-export const GROUP_CONTEXT_MENU_IDS: GroupContextMenuItemId[] = ['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete', 'linkDirectory', 'linkGroup', 'linkRefresh', 'linkDetach'];
-export const AREA_CONTEXT_MENU_IDS: AreaContextMenuItemId[] = ['paste', 'createDirectory', 'addFile', 'addFolder', 'addExe', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons', 'linkDirectory', 'linkGroup'];
+export const DIRECTORY_CONTEXT_MENU_IDS: DirectoryContextMenuItemId[] = ['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'refreshHtmlFolder', 'openHtmlFolder', 'changeHtmlFolder', 'toggleHtmlPreview', 'resetHtmlCardSizes', 'rename', 'color', 'fullNames', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete', 'linkRefresh', 'linkLocate', 'linkRetarget', 'linkResetName', 'linkDetach'];
+export const GROUP_CONTEXT_MENU_IDS: GroupContextMenuItemId[] = ['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete', 'linkDirectory', 'linkGroup', 'linkRefresh', 'linkResetName', 'linkDetach'];
+export const AREA_CONTEXT_MENU_IDS: AreaContextMenuItemId[] = ['paste', 'createDirectory', 'addFile', 'addFolder', 'addImage', 'addExe', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons', 'linkDirectory', 'linkGroup'];
 
 function normalizeHiddenMenuItems<T extends string>(value: unknown, allowed: readonly T[]): T[] {
   if (!Array.isArray(value)) return [];
@@ -48,7 +48,7 @@ export const defaultExperience: ExperienceSettings = {
   showDirectoryItemCount: false,
   doubleClickSidebarToCreate: false,
   showSpecialDirectoryMarkers: true,
-  specialDirectoryStyle: 'outline',
+  specialDirectoryStyle: 'superscript',
   compactContextMenus: false,
   showContextMenuIcons: true,
   showContextMenuDirectoryHeader: true,

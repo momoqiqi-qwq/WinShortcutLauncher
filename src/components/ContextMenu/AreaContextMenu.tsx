@@ -1,8 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardPaste, Crosshair, FilePlus2, FolderPlus, FolderSymlink, Globe, LayoutGrid, Link2, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type, FileCode2 } from 'lucide-react';
+import { ChevronRight, ClipboardPaste, Crosshair, FilePlus2, FolderPlus, FolderSymlink, Globe, ImagePlus, LayoutGrid, Link2, RefreshCw, Wrench, Grid2X2, ArrowDownAZ, Clock3, TrendingUp, Tags, StickyNote, Type, FileCode2 } from 'lucide-react';
 import { getMappedPath, isMappedDirectory } from '../../lib/mappedFolder';
 import { isHtmlDirectory } from '../../lib/htmlFolder';
+import { IMAGE_CARD_EXTENSIONS, defaultImageCardSize, isImageFilePath } from '../../lib/imageCard';
 import { uiPickLinkSource } from '../../lib/linkSourcePicker';
 import { describeLinkSource } from '../../lib/directoryLinks';
 import { getActiveConfigProfileId } from '../../lib/configProfiles';
@@ -145,6 +146,41 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
     const paths = normalizeOpenResult(picked as string | string[] | null);
     if (!paths.length) return;
     await addPaths(paths);
+  }
+
+  /**
+   * v188「添加图片」：选图片 → 生成的项目带上 imageSize，卡片直接显示图片本身，
+   * 边框能拖拽改大小。选进来的非图片文件按普通项目加，不会强行套图片卡。
+   */
+  async function addPickedImages() {
+    setOpenSubmenu(null);
+    const picked = await open({
+      multiple: true,
+      directory: false,
+      title: '选择要添加的图片',
+      filters: [{ name: '图片', extensions: IMAGE_CARD_EXTENSIONS }]
+    });
+    const paths = normalizeOpenResult(picked as string | string[] | null);
+    if (!paths.length) return;
+    await addImagePaths(paths);
+  }
+
+  async function addImagePaths(paths: string[]) {
+    if (!paths.length) return;
+    // 镜像子目录（开始菜单 / 映射文件夹）的内容来自真实文件夹，配置里没有项目可存，
+    // 图片卡片尺寸也就没地方记 —— 退回普通添加。
+    if (isStartMenuActive || isMappedActive) {
+      await addPaths(paths);
+      return;
+    }
+    const items = await createShortcutItemsFromPaths(paths);
+    const withSize = items.map((item) => (
+      isImageFilePath(item.path)
+        ? { ...item, imageSize: defaultImageCardSize(), imageFit: 'cover' as const }
+        : item
+    ));
+    addItems(activeGroupId, targetDirectoryId, withSize);
+    onClose();
   }
 
   /** 把一批真实路径加进当前子目录（开始菜单 / 映射文件夹走各自的写入通道）。 */
@@ -459,7 +495,7 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
   const showPasteSection = show('paste');
   const canPaste = itemClipboard.length > 0 && activeKind !== 'notes' && !isStartMenuActive && !isMappedActive && !isHtmlActive && Boolean(targetDirectoryId);
   const showAddSystemItem = show('addSystem') && !isStartMenuActive && !isMappedActive && !isHtmlActive;
-  const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addExe') || show('addUrl') || showAddSystemItem || show('linkGroup');
+  const showAddSection = show('createDirectory') || show('addFile') || show('addFolder') || show('addImage') || show('addExe') || show('addUrl') || showAddSystemItem || show('linkGroup');
   const showLocalDisplaySection = show('iconSize') || show('viewMode') || show('sortMode') || show('directoryColumns');
   const showGlobalDisplaySection = show('globalIconSize') || show('globalViewMode') || show('globalSortMode');
   const showMaintenanceSection = show('refreshIcons');
@@ -525,6 +561,7 @@ export function AreaContextMenu({ menu, onClose }: AreaContextMenuProps) {
       {show('linkGroup') && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void addLinkedParent()}><span>链接父目录…</span><FolderSymlink size={15} /></div>}
       {show('addFile') && !isHtmlActive && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(false)}><span>添加文件</span><FilePlus2 size={15} /></div>}
       {show('addFolder') && !isHtmlActive && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => addPickedPaths(true)}><span>添加文件夹</span><FolderPlus size={15} /></div>}
+      {show('addImage') && !isHtmlActive && <div className="menu-item" title="选几张图片，卡片会直接显示图片本身；拖卡片边框或四角可以改大小" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void addPickedImages()}><span>添加图片</span><ImagePlus size={15} /></div>}
       {show('addExe') && !isHtmlActive && <div className="menu-item" title="不用翻文件夹：点一下就开始拾取，把光标移到目标程序上再点一下即可" onMouseEnter={() => setOpenSubmenu(null)} onClick={openExePick}><span>添加EXE</span><Crosshair size={15} /></div>}
       {show('addUrl') && !isHtmlActive && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={addUrl}><span>添加网址</span><Globe size={15} /></div>}
       {showAddSystemItem && <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('system')} onClick={() => setOpenSubmenu((value) => value === 'system' ? null : 'system')}>

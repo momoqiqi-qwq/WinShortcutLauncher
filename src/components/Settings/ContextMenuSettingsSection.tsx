@@ -41,8 +41,9 @@ const DIRECTORY_LABELS: Record<DirectoryContextMenuItemId, { label: string; hint
   clear: { label: '清空子目录项目', hint: '清空当前普通子目录中的快捷项目。' },
   delete: { label: '删除子目录', hint: '删除当前子目录。' },
   linkRefresh: { label: '立即同步链接', hint: '仅链接子目录显示；马上从源目录拉一次最新内容。' },
-  linkLocate: { label: '定位到源子目录', hint: '仅链接子目录显示；切换到链接指向的那个子目录（同配置时）。' },
+  linkLocate: { label: '定位到源子目录', hint: '仅链接子目录显示；直接跳到链接指向的源子目录，源在别的配置里时会先切过去。' },
   linkRetarget: { label: '更换链接源', hint: '仅链接子目录显示；把链接改成指向别的父目录 / 子目录 / 配置。' },
+  linkResetName: { label: '跟随源名称', hint: '只在你给链接子目录改过名时出现；丢掉显示名，让名字重新跟着源子目录走。' },
   linkDetach: { label: '解除链接', hint: '仅链接子目录显示；断开链接，已同步过来的项目保留成普通项目。' },
 };
 
@@ -57,6 +58,7 @@ const GROUP_LABELS: Record<GroupContextMenuItemId, { label: string; hint: string
   linkDirectory: { label: '链接子目录', hint: '把一个别的子目录（可跨配置）链接进当前父目录，内容实时镜像。' },
   linkGroup: { label: '链接父目录', hint: '新建一个链接父目录，整个父目录（含子目录与项目，可跨配置）实时镜像过来。' },
   linkRefresh: { label: '立即同步链接', hint: '仅链接父目录显示；马上从源父目录拉一次最新内容。' },
+  linkResetName: { label: '跟随源名称', hint: '只在你给链接父目录改过名时出现；丢掉显示名，让名字重新跟着源父目录走。' },
   linkDetach: { label: '解除链接', hint: '仅链接父目录显示；断开链接，已同步过来的子目录与项目保留。' },
 };
 
@@ -65,6 +67,7 @@ const AREA_LABELS: Record<AreaContextMenuItemId, { label: string; hint: string }
   createDirectory: { label: '新建子目录', hint: '在当前父目录中创建普通、全部、便签或开始菜单子目录。' },
   addFile: { label: '添加文件', hint: '选择一个或多个文件。' },
   addFolder: { label: '添加文件夹', hint: '选择文件夹并添加快捷项目。' },
+  addImage: { label: '添加图片', hint: '选几张图片，卡片直接显示图片本身；拖卡片边框或四角可以改大小。' },
   addExe: { label: '添加EXE', hint: '用光标拾取：把光标移到目标程序窗口上点一下，直接添加它的 exe。' },
   addUrl: { label: '添加网址', hint: '打开添加网站窗口。' },
   addSystem: { label: '添加系统功能', hint: '添加 Windows 系统工具。' },

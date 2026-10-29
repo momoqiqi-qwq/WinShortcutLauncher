@@ -13,6 +13,7 @@ mod process_integrity;
 mod native_browser_drop;
 mod folder_mirror;
 mod html_folder;
+mod image_card;
 mod mapped_folder;
 mod start_menu;
 mod transfer_station;
@@ -21,6 +22,7 @@ mod window_persistence;
 #[cfg(target_os = "windows")]
 mod windows_registry;
 mod website_metadata;
+mod website_title_translation;
 
 pub use process_integrity::ensure_medium_integrity_before_run;
 
@@ -435,6 +437,7 @@ pub fn run() {
       html_folder::copy_html_into_folder,
       html_folder::html_folder_signature,
       html_folder::allow_html_preview,
+      image_card::allow_image_preview,
       html_folder::open_html_folder_location,
       commands::save_config,
       commands::load_config,
@@ -446,6 +449,8 @@ pub fn run() {
       commands::set_auto_start,
       commands::get_auto_start,
       process_integrity::get_process_integrity_status,
+      process_integrity::relaunch_with_standard_permissions,
+      process_integrity::relaunch_with_high_permissions,
       commands::set_window_always_on_top,
       commands::open_windows_clipboard_history,
       commands::get_double_click_time_ms,

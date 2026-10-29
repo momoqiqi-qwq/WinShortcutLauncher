@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { AREA_CONTEXT_MENU_IDS, DIRECTORY_CONTEXT_MENU_IDS, GROUP_CONTEXT_MENU_IDS, defaultExperience, normalizeExperience } from '../experienceSettings';
 
 describe('experience settings migration', () => {
+  it('migrates old special-directory styles to name superscripts and preserves the switch', () => {
+    for (const value of ['outline', 'ribbon', 'bar', 'superscript', 'invalid', null]) {
+      expect(normalizeExperience({ specialDirectoryStyle: value as never }).specialDirectoryStyle).toBe('superscript');
+    }
+    expect(normalizeExperience({ showSpecialDirectoryMarkers: false }).showSpecialDirectoryMarkers).toBe(false);
+  });
   it('fills all missing settings from defaults', () => {
     expect(normalizeExperience({ rememberLastPage: false })).toEqual({
       ...defaultExperience,
@@ -49,9 +55,9 @@ describe('experience settings migration', () => {
   });
 
   it('keeps parent, child and blank-area menu definitions independent', () => {
-    expect(GROUP_CONTEXT_MENU_IDS).toEqual(['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete', 'linkDirectory', 'linkGroup', 'linkRefresh', 'linkDetach']);
-    expect(DIRECTORY_CONTEXT_MENU_IDS).toEqual(['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'refreshHtmlFolder', 'openHtmlFolder', 'changeHtmlFolder', 'toggleHtmlPreview', 'resetHtmlCardSizes', 'rename', 'color', 'fullNames', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete', 'linkRefresh', 'linkLocate', 'linkRetarget', 'linkDetach']);
-    expect(AREA_CONTEXT_MENU_IDS).toEqual(['paste', 'createDirectory', 'addFile', 'addFolder', 'addExe', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons', 'linkDirectory', 'linkGroup']);
+    expect(GROUP_CONTEXT_MENU_IDS).toEqual(['copyGroup', 'pasteGroup', 'pasteDirectory', 'create', 'merge', 'color', 'delete', 'linkDirectory', 'linkGroup', 'linkRefresh', 'linkResetName', 'linkDetach']);
+    expect(DIRECTORY_CONTEXT_MENU_IDS).toEqual(['copyDirectory', 'pasteDirectory', 'moveToGroup', 'paste', 'refreshStartMenu', 'openStartMenuFolder', 'refreshMappedFolder', 'openMappedFolder', 'changeMappedFolder', 'refreshHtmlFolder', 'openHtmlFolder', 'changeHtmlFolder', 'toggleHtmlPreview', 'resetHtmlCardSizes', 'rename', 'color', 'fullNames', 'merge', 'switchToNotes', 'switchToNormal', 'clear', 'delete', 'linkRefresh', 'linkLocate', 'linkRetarget', 'linkResetName', 'linkDetach']);
+    expect(AREA_CONTEXT_MENU_IDS).toEqual(['paste', 'createDirectory', 'addFile', 'addFolder', 'addImage', 'addExe', 'addUrl', 'addSystem', 'iconSize', 'viewMode', 'sortMode', 'directoryColumns', 'sidebarFullNames', 'globalIconSize', 'globalViewMode', 'globalSortMode', 'refreshIcons', 'linkDirectory', 'linkGroup']);
     expect(DIRECTORY_CONTEXT_MENU_IDS.filter((id) => AREA_CONTEXT_MENU_IDS.includes(id as never))).toEqual(['paste']);
   });
 

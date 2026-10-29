@@ -1,10 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { Folder, Link2, TerminalSquare, FileIcon, Pin } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { BehaviorSettings, DisplaySettings, ShortcutItem } from '../../types';
+import type { BehaviorSettings, DisplaySettings, ImageCardSize, ShortcutItem } from '../../types';
 import { useAppStore } from '../../stores/appStore';
 import { chooseIconResolveCommand, getCachedIcon, isDirectImageSource, resolveIconDataUrl, type IconResolveCommand } from '../../lib/iconCache';
+import { allowImagePreview, clampImageCardSize, resolveImageCardSize } from '../../lib/imageCard';
 import type { IconResolveMode, TransferStationSettings } from '../../utils/v16Types';
 import { transferStationFolderDropProps } from './ItemCard.drop-patch';
 import { uiAlert } from '../../lib/uiDialog';
@@ -28,6 +30,26 @@ interface ItemCardProps {
 }
 
 const LAUNCH_DEBOUNCE_MS = 500;
+
+/**
+ * v188: 图片卡片的八个缩放手柄。
+ *
+ * 和 HTML 目录卡片是同一套方向约定（n/s/e/w/ne/nw/se/sw），这样两个地方的
+ * 拖拽手感完全一致。手柄按下必须 stopPropagation，否则会被卡片自己的
+ * pointerdown（排序拖拽 / 单击打开）吃掉。
+ */
+const IMAGE_HANDLE_DIRS = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const;
+type ImageHandleDir = (typeof IMAGE_HANDLE_DIRS)[number];
+const IMAGE_HANDLE_CURSOR: Record<ImageHandleDir, string> = {
+  n: 'ns-resize',
+  s: 'ns-resize',
+  e: 'ew-resize',
+  w: 'ew-resize',
+  ne: 'nesw-resize',
+  sw: 'nesw-resize',
+  nw: 'nwse-resize',
+  se: 'nwse-resize'
+};
 
 function safeTrim(value: unknown) {
   return typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
@@ -73,6 +95,20 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
   const cardRef = useRef<HTMLDivElement | null>(null);
   const untrackPointerResetRef = useRef<(() => void) | null>(null);
   const [iconVisible, setIconVisible] = useState(false);
+  // v188: 图片卡片 —— 有 imageSize 就说明这张卡要显示图片本身，并且可以拖边改大小。
+  const imageSize = resolveImageCardSize(item);
+  const isImageCard = imageSize !== null;
+  const updateItem = useAppStore((state) => state.updateItem);
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [liveImageSize, setLiveImageSize] = useState<ImageCardSize | null>(null);
+  const liveImageSizeRef = useRef<ImageCardSize | null>(null);
+  const [imageResize, setImageResize] = useState<{
+    dir: ImageHandleDir;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+  } | null>(null);
   const setCardNodeRef = useCallback((node: HTMLDivElement | null) => {
     cardRef.current = node;
     setNodeRef(node);
@@ -126,6 +162,11 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
 
   useEffect(() => {
     const { rawIcon, command } = iconTarget;
+    if (isImageCard) {
+      // 图片卡片显示的是图片本身，不需要再额外取一次系统图标。
+      setResolvedIcon(undefined);
+      return;
+    }
     if (!rawIcon) {
       setResolvedIcon(undefined);
       return;
@@ -158,20 +199,128 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
     return () => {
       cancelled = true;
     };
-  }, [iconTarget, iconVisible]);
+  }, [iconTarget, iconVisible, isImageCard]);
+
+  // v188: 图片本体走 asset 协议（convertFileSrc）直接给 <img>，不套 base64，
+  // 大图也不会吃内存。读之前必须先把这张图加进协议作用域，否则是空图。
+  useEffect(() => {
+    if (!isImageCard) {
+      setImageSrc(null);
+      return;
+    }
+    const path = safeTrim(item.path);
+    if (!path) {
+      setImageSrc(null);
+      return;
+    }
+    if (isDirectImageSource(path)) {
+      setImageSrc(path);
+      return;
+    }
+    let cancelled = false;
+    allowImagePreview(path)
+      .then(() => {
+        if (!cancelled) setImageSrc(convertFileSrc(path));
+      })
+      .catch(() => {
+        if (!cancelled) setImageSrc(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isImageCard, item.path]);
+
+  // 落盘之后（item.imageSize 变了）就丢掉拖拽过程中的临时尺寸，改用真实值。
+  useEffect(() => {
+    liveImageSizeRef.current = null;
+    setLiveImageSize(null);
+  }, [item.imageSize?.width, item.imageSize?.height]);
+
+  // 拖拽：监听挂在 window 上，鼠标滑出手柄、甚至滑出卡片都不会丢事件。
+  useEffect(() => {
+    if (!imageResize) return;
+    const previousCursor = document.body.style.cursor;
+    const previousSelect = document.body.style.userSelect;
+    document.body.style.cursor = IMAGE_HANDLE_CURSOR[imageResize.dir];
+    document.body.style.userSelect = 'none';
+
+    function handleMove(event: globalThis.PointerEvent) {
+      if (!imageResize) return;
+      const dx = event.clientX - imageResize.startX;
+      const dy = event.clientY - imageResize.startY;
+      let width = imageResize.startWidth;
+      let height = imageResize.startHeight;
+      if (imageResize.dir.includes('e')) width = imageResize.startWidth + dx;
+      if (imageResize.dir.includes('w')) width = imageResize.startWidth - dx;
+      if (imageResize.dir.includes('s')) height = imageResize.startHeight + dy;
+      if (imageResize.dir.includes('n')) height = imageResize.startHeight - dy;
+      const next = clampImageCardSize({ width, height });
+      liveImageSizeRef.current = next;
+      setLiveImageSize(next);
+    }
+
+    function handleUp() {
+      const size = liveImageSizeRef.current;
+      setImageResize(null);
+      if (size) updateItem(item.id, { imageSize: size });
+    }
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousSelect;
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
+    };
+  }, [imageResize, item.id, updateItem]);
 
   const stationDropProps = transferStation?.dragToShortcutFolders === false ? {} : transferStationFolderDropProps(item);
 
+  // v188: 图片卡片用自己记住的宽高（拖拽过程中先用临时值，松手才落盘）。
+  const effectiveImageSize = imageSize ? (liveImageSize ?? imageSize) : null;
+
+  // 拖左边 / 上边时，卡片在 flex 流里的位置不会动，只靠改变宽高会让「被拖的那条边」
+  // 往反方向跑。所以边拖边补一个平移量，让那条边始终黏在光标上；松手时平移归零
+  // （卡片回到正常流位置，尺寸已经变大，邻居按 flex 重新排列）。
+  const liveOffset = imageResize && liveImageSize
+    ? {
+      x: imageResize.dir.includes('w') ? imageResize.startWidth - liveImageSize.width : 0,
+      y: imageResize.dir.includes('n') ? imageResize.startHeight - liveImageSize.height : 0
+    }
+    : null;
+
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Transform.toString(transform) ?? (liveOffset ? `translate(${liveOffset.x}px, ${liveOffset.y}px)` : undefined),
     transition,
     '--label-lines': effectiveLines,
     '--label-chars': display.charsPerLine,
-    '--label-font-size': display.fontSize,
+    // v179: 项目名称字号 = 项目字号 × 全局字号缩放（0.8–1.5）。
+    '--label-font-size': Math.round(display.fontSize * (display.fontScale ?? 1) * 100) / 100,
     // v147: 项目自定义颜色通过 CSS 变量注入，由 ItemCard.css 画成彩色框。
     // v148: frameColor 已经是「相邻组合」算完的最终颜色。
-    ...(frameColor ? { '--item-accent': frameColor } : {})
+    ...(frameColor ? { '--item-accent': frameColor } : {}),
+    ...(effectiveImageSize ? { width: `${effectiveImageSize.width}px`, height: `${effectiveImageSize.height}px` } : {})
   } as CSSProperties;
+
+  /** v188: 手柄按下 —— 必须抢在卡片自己的 pointerdown 之前拦下来。 */
+  function startImageResize(event: PointerEvent<HTMLSpanElement>, dir: ImageHandleDir) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const base = effectiveImageSize ?? imageSize;
+    if (!base) return;
+    liveImageSizeRef.current = base;
+    setImageResize({
+      dir,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: base.width,
+      startHeight: base.height
+    });
+  }
 
   useEffect(() => {
     primeSystemDoubleClickTime();
@@ -371,8 +520,8 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
     <div
       ref={setCardNodeRef}
       style={style}
-      className={`item-card ${selected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${item.pinned ? 'pinned' : ''} ${multiSelectMode ? 'multi-select-item' : ''} ${display.showFullItemName ? 'full-item-name' : ''} ${frameColor ? 'has-custom-color' : ''}`}
-      title={[buildItemTooltip(item, itemTooltipMode), interactionHint].filter(Boolean).join('\n')}
+      className={`item-card ${selected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${item.pinned ? 'pinned' : ''} ${multiSelectMode ? 'multi-select-item' : ''} ${display.showFullItemName ? 'full-item-name' : ''} ${frameColor ? 'has-custom-color' : ''} ${isImageCard ? 'image-card' : ''} ${imageResize ? 'image-card-resizing' : ''}`}
+      title={[buildItemTooltip(item, itemTooltipMode), interactionHint, isImageCard ? '拖拽卡片边框或四角可以调整图片大小' : ''].filter(Boolean).join('\n')}
       data-item-id={item.id}
       aria-selected={selected}
       aria-label={`${item.name}，${interactionHint}`}
@@ -414,11 +563,43 @@ function ItemCardComponent({ item, selected, display, behavior, transferStation,
         <span className="item-launch-count-badge" title={`已启动 ${item.launchCount} 次`}>{item.launchCount}</span>
       )}
       <div className="item-edit-name">
-        <div className="item-icon">
-          {resolvedIcon ? <img src={resolvedIcon} alt="" draggable={false} loading="lazy" decoding="async" /> : <FallbackIcon type={item.type} size={fallbackIconSize} />}
-        </div>
+        {isImageCard ? (
+          <div className="item-icon item-image-box">
+            {imageSrc
+              ? (
+                <img
+                  className="item-image-photo"
+                  src={imageSrc}
+                  alt=""
+                  draggable={false}
+                  loading="lazy"
+                  decoding="async"
+                  style={{ objectFit: item.imageFit === 'contain' ? 'contain' : 'cover' }}
+                  onError={() => setImageSrc(null)}
+                />
+              )
+              : <FallbackIcon type={item.type} size={fallbackIconSize} />}
+          </div>
+        ) : (
+          <div className="item-icon">
+            {resolvedIcon ? <img src={resolvedIcon} alt="" draggable={false} loading="lazy" decoding="async" /> : <FallbackIcon type={item.type} size={fallbackIconSize} />}
+          </div>
+        )}
         <div className="item-label">{item.name}</div>
       </div>
+      {isImageCard && IMAGE_HANDLE_DIRS.map((dir) => (
+        <span
+          key={dir}
+          className={`image-card-handle image-drag-${dir}`}
+          aria-hidden
+          onPointerDown={(event) => startImageResize(event, dir)}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        />
+      ))}
     </div>
   );
 }
@@ -436,6 +617,7 @@ function areItemCardPropsEqual(previous: ItemCardProps, next: ItemCardProps) {
     && previous.display.itemIconResolveMode === next.display.itemIconResolveMode
     && previous.display.charsPerLine === next.display.charsPerLine
     && previous.display.fontSize === next.display.fontSize
+    && (previous.display.fontScale ?? 1) === (next.display.fontScale ?? 1)
     && previous.behavior.launchMode === next.behavior.launchMode
     && previous.behavior.itemDragTolerance === next.behavior.itemDragTolerance
     && previous.behavior.itemDragLongPressMs === next.behavior.itemDragLongPressMs;

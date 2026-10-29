@@ -6,10 +6,14 @@
   padding: 18px;
 }
 
+/* v188: 从 CSS Grid 换成 flex-wrap —— 图片卡片能自己定宽高（比普通卡片大），
+   grid 固定列宽下它只会溢出压到邻居。普通卡片宽度照样由 --item-card-width 固定，
+   排出来的行和原来一模一样。 */
 .items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--item-card-width, 108px), var(--item-card-width, 108px)));
-  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
   gap: var(--items-gap, 14px);
   /* v156: 同色相邻成组框以网格为定位父级（框用卡片的 offsetLeft/offsetTop 定位）。 */
   position: relative;

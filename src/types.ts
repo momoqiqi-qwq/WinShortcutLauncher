@@ -173,6 +173,15 @@ export interface ShortcutItem {
   multiAccountBatch?: MultiAccountBatchMeta;
   /** v147: 项目自定义颜色（彩色框）；未设置时跟随主题。 */
   color?: string;
+  /**
+   * v188: 图片卡片的显示尺寸。
+   *
+   * 有这个字段 = 这是「图片卡片」：卡片不再画成图标 + 名字，而是直接把图片本身
+   * 铺满卡片，边框/四角可以拖拽改大小。没这个字段的项目一切照旧。
+   */
+  imageSize?: ImageCardSize;
+  /** v188: 图片卡片的铺法。cover = 裁切铺满（默认），contain = 完整显示留白。 */
+  imageFit?: 'cover' | 'contain';
 }
 
 export interface TransferItem {
@@ -193,6 +202,10 @@ export interface DisplaySettings {
   fontFamily: string;
   /** 自定义字体生效区域。 */
   fontApplyAreas: FontApplyArea[];
+  /** v179: 全局字号缩放系数（0.8–1.5），乘到主界面、侧栏、菜单、顶部标签、设置和便签的字号上。 */
+  fontScale: number;
+  /** v179: 设置界面字号（px，基线 12px），只影响设置窗口里的文字。 */
+  settingsFontSize: number;
   /** 项目名称是否忽略最大显示行数并完整展示。 */
   showFullItemName: boolean;
   labelLines: number;
@@ -342,6 +355,12 @@ export interface DirectoryLinkRef {
   directoryId?: string;
 }
 
+/** v188: 图片卡片的显示尺寸（px，拖拽边框改的就是它）。 */
+export interface ImageCardSize {
+  width: number;
+  height: number;
+}
+
 /** v173: HTML 目录里单个页面卡片的大小（px，拖拽边框改的就是它）。 */
 export interface HtmlCardSize {
   width: number;
@@ -382,6 +401,13 @@ export interface Directory {
   htmlView?: HtmlViewSettings;
   /** v169: 仅 kind='link' 使用 —— 内容实时镜像自某个配置里的子目录。 */
   link?: DirectoryLinkRef;
+  /**
+   * v182: 仅 kind='link' 使用 —— 用户给链接子目录起的显示名。
+   *
+   * 链接的**内容**跟着源走，**名字**不跟：改名只写这个字段，同步时用它压过源子目录名，
+   * 源子目录自己还是原来的名字。没设置（或清空）就是「跟随源名称」。
+   */
+  linkNameOverride?: string;
   display?: DirectoryDisplaySettings;
   note?: string;
   /** 当前便签是否显示行号，仅在 notes.lineNumberScope='current' 时生效。 */
@@ -401,6 +427,15 @@ export interface Group {
   sidebarColumns?: number;
   /** v169: 父目录链接 —— 整个父目录（连同子目录）实时镜像自某个配置里的父目录。 */
   link?: DirectoryLinkRef;
+  /** v182: 链接父目录的显示名覆盖（语义同 `Directory.linkNameOverride`）。 */
+  linkNameOverride?: string;
+  /**
+   * v182: 链接父目录里镜像出来的子目录各自的显示名，key = **源**子目录 id。
+   *
+   * 镜像子目录每次同步都会整条重建（id 是派生的），改不到自己身上的字段，
+   * 所以覆盖记在父目录这边；同步时按源 id 取出来压过源名字。
+   */
+  linkDirectoryNames?: Record<string, string>;
   directories: Directory[];
 }
 
@@ -531,6 +566,7 @@ export type DirectoryContextMenuItemId =
   | 'linkRefresh'
   | 'linkLocate'
   | 'linkRetarget'
+  | 'linkResetName'
   | 'linkDetach'
   | 'clear'
   | 'delete';
@@ -543,6 +579,7 @@ export type GroupContextMenuItemId =
   | 'linkDirectory'
   | 'linkGroup'
   | 'linkRefresh'
+  | 'linkResetName'
   | 'linkDetach'
   | 'merge'
   | 'color'
@@ -555,6 +592,7 @@ export type AreaContextMenuItemId =
   | 'linkGroup'
   | 'addFile'
   | 'addFolder'
+  | 'addImage'
   | 'addExe'
   | 'addUrl'
   | 'addSystem'
@@ -602,7 +640,7 @@ export interface CommandUsage {
  * - `ribbon`：右侧小角标（HTML / LINK），带一圈淡淡的描边
  * - `bar`：左侧强调条，HTML 实线、链接虚线（与开始菜单、映射文件夹同一套语言）
  */
-export type SpecialDirectoryStyle = 'outline' | 'ribbon' | 'bar';
+export type SpecialDirectoryStyle = 'superscript';
 
 export interface ExperienceSettings {
   /** 重新打开程序时回到上次使用的父目录和子目录。 */
@@ -664,11 +702,11 @@ export interface ExperienceSettings {
   /** 双击左侧子目录空白区域时新建子目录。 */
   doubleClickSidebarToCreate: boolean;
   /**
-   * v174: 侧栏是否给「HTML 目录」「链接目录」这类特殊子目录加区分边框。
+   * v176: 是否在特殊子目录名称右上角显示类型小字。
    * 关掉之后所有子目录长得一样（最省视觉噪音）。
    */
   showSpecialDirectoryMarkers: boolean;
-  /** v174: 特殊子目录边框的形式；`outline` 整圈描边、`ribbon` 角标、`bar` 左侧强调条。 */
+  /** v176: 特殊子目录统一使用名称右上角的小字；旧形式加载时自动迁移。 */
   specialDirectoryStyle: SpecialDirectoryStyle;
   /** 使用更紧凑的右键菜单间距。 */
   compactContextMenus: boolean;

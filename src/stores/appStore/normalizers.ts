@@ -20,6 +20,7 @@ import type {
 import { makeId } from '../../lib/id';
 import { byOrder, reindex } from '../../lib/sort';
 import { clampCardSize } from '../../lib/htmlFolder';
+import { clampImageCardSize } from '../../lib/imageCard';
 import {
   DEFAULT_IMAGE_BROWSER_SETTINGS,
   type ImageBrowserGroup,
@@ -66,6 +67,13 @@ function normalizeFontApplyAreas(value: unknown): FontApplyArea[] {
 
 function normalizeFontFamily(value: unknown) {
   return String(value ?? '').replace(/[\r\n\t]/g, ' ').trim().slice(0, 180);
+}
+
+// v179: 全局字号缩放是百分比量（0.8–1.5），保留两位小数，避免滑杆抖动产生浮点脏值。
+function normalizeFontScale(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return defaultDisplay.fontScale;
+  return Math.round(Math.max(0.8, Math.min(1.5, parsed)) * 100) / 100;
 }
 
 function normalizeWindowControlHidden(hidden?: unknown): WindowControlId[] {
@@ -341,6 +349,12 @@ export function normalizeShortcutItem(value: unknown, fallbackOrder = 0, usedIds
   const rawBatch = asRecord(raw.multiAccountBatch);
   const batchId = cleanText(rawBatch.batchId, '', 240);
   const color = normalizeAccentColor(raw.color);
+  // v188: 图片卡片尺寸 —— 坏了就当作「不是图片卡片」，不要写进 NaN 把卡片撑塌。
+  const rawImageSize = asRecord(raw.imageSize);
+  const imageSize = rawImageSize && finiteNumber(rawImageSize.width, 0) > 0 && finiteNumber(rawImageSize.height, 0) > 0
+    ? clampImageCardSize({ width: finiteNumber(rawImageSize.width, 0), height: finiteNumber(rawImageSize.height, 0) })
+    : undefined;
+  const imageFit = raw.imageFit === 'contain' || raw.imageFit === 'cover' ? raw.imageFit : undefined;
   const multiAccountBatch = batchId ? {
     batchId,
     batchName: cleanText(rawBatch.batchName, '多账号批次', 240),
@@ -365,6 +379,8 @@ export function normalizeShortcutItem(value: unknown, fallbackOrder = 0, usedIds
     ...(doubleClickAction ? { doubleClickAction } : {}),
     ...(multiAccountBatch ? { multiAccountBatch } : {}),
     ...(color ? { color } : {}),
+    ...(imageSize ? { imageSize } : {}),
+    ...(imageFit ? { imageFit } : {}),
   };
 }
 
@@ -465,6 +481,27 @@ function normalizeHtmlColors(value: unknown): Record<string, string> | undefined
   return count > 0 ? result : undefined;
 }
 
+/**
+ * v182: 规范化「链接父目录里镜像子目录的显示名覆盖」（key = 源子目录 id）。
+ *
+ * 只影响显示：空白名字直接丢掉（等于跟随源名称），源子目录不会被改名。
+ */
+function normalizeLinkDirectoryNames(value: unknown): Record<string, string> | undefined {
+  const raw = asRecord(value);
+  const result: Record<string, string> = {};
+  let count = 0;
+  for (const [rawKey, rawName] of Object.entries(raw)) {
+    const key = rawKey.trim();
+    if (!key) continue;
+    const name = cleanText(rawName, '', 240).trim();
+    if (!name) continue;
+    result[key] = name;
+    count += 1;
+    if (count >= HTML_MAX_CARD_ENTRIES) break;
+  }
+  return count > 0 ? result : undefined;
+}
+
 /** v173: 规范化 `Directory.htmlView`；没设置过的字段不写进去（保持「跟随默认」）。 */
 function normalizeHtmlView(value: unknown): HtmlViewSettings | undefined {
   const raw = asRecord(value);
@@ -527,6 +564,8 @@ export function normalizeDirectory(
   const htmlColors = kind === 'html' ? normalizeHtmlColors(raw.htmlColors) : undefined;
   const htmlView = kind === 'html' ? normalizeHtmlView(raw.htmlView) : undefined;
   const link = kind === 'link' ? normalizeDirectoryLinkRef(raw.link) : undefined;
+  // v182: 链接子目录的显示名覆盖 —— 只有真链接才留，源子目录的名字不受影响。
+  const linkNameOverride = kind === 'link' ? cleanText(raw.linkNameOverride, '', 240).trim() : '';
   const display = normalizeDirectoryDisplay(raw.display);
   const color = normalizeAccentColor(raw.color);
   return {
@@ -541,6 +580,7 @@ export function normalizeDirectory(
     ...(htmlColors ? { htmlColors } : {}),
     ...(htmlView ? { htmlView } : {}),
     ...(link ? { link } : {}),
+    ...(linkNameOverride ? { linkNameOverride } : {}),
     ...(display ? { display } : {}),
     note,
     ...(typeof raw.noteShowLineNumbers === 'boolean' ? { noteShowLineNumbers: raw.noteShowLineNumbers } : {}),
@@ -605,6 +645,9 @@ export function normalizeGroups(groups: unknown, fallbackGroups?: unknown): Grou
       : undefined;
     // v169: 父目录链接（没有 directoryId 的 link 才是父目录链接）。
     const groupLink = normalizeDirectoryLinkRef(raw.link, false);
+    // v182: 链接父目录的显示名覆盖与镜像子目录改名，只在真链接父目录上才有意义。
+    const groupLinkNameOverride = groupLink ? cleanText(raw.linkNameOverride, '', 240).trim() : '';
+    const linkDirectoryNames = groupLink ? normalizeLinkDirectoryNames(raw.linkDirectoryNames) : undefined;
     return {
       id: normalizedId(raw.id, 'group', usedGroupIds),
       name: cleanText(raw.name ?? raw.title ?? raw.label, `分组 ${groupIndex + 1}`, 240),
@@ -613,6 +656,8 @@ export function normalizeGroups(groups: unknown, fallbackGroups?: unknown): Grou
       ...(browserRoute ? { browserRoute } : {}),
       ...(sidebarColumns ? { sidebarColumns } : {}),
       ...(groupLink ? { link: groupLink } : {}),
+      ...(groupLinkNameOverride ? { linkNameOverride: groupLinkNameOverride } : {}),
+      ...(linkDirectoryNames ? { linkDirectoryNames } : {}),
       directories,
     } satisfies Group;
   });
@@ -683,6 +728,8 @@ export function normalizeDisplay(value?: unknown): DisplaySettings {
     colorfulTextEnabled: display?.colorfulTextEnabled !== false,
     fontFamily: normalizeFontFamily(display?.fontFamily),
     fontApplyAreas: normalizeFontApplyAreas(display?.fontApplyAreas),
+    fontScale: normalizeFontScale(display?.fontScale),
+    settingsFontSize: Math.round(clampDisplayNumber(display?.settingsFontSize, 9, 20, defaultDisplay.settingsFontSize)),
     showFullItemName: display?.showFullItemName === true,
     uiScale: normalizeUiScale(legacyScale ?? mainUiScale),
     mainUiScale: normalizeUiScale(mainUiScale),
