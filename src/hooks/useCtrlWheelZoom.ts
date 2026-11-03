@@ -21,6 +21,17 @@ function isSettingsTarget(target: EventTarget | null, event?: WheelEvent | Keybo
   return Boolean(active?.closest('.floating-settings-panel'));
 }
 
+/**
+ * v198: 图片卡片自己吃 Ctrl + 滚轮（缩放框里的图片）。
+ *
+ * window 上的 capture 监听比卡片元素上的监听更早执行，所以这里必须先让道 ——
+ * 不然一次捏合既缩放了图片、又把整个界面缩放了。
+ */
+function isImageCardTarget(target: EventTarget | null) {
+  const element = target as HTMLElement | null;
+  return Boolean(element?.closest?.('.item-card.image-card'));
+}
+
 export function useCtrlWheelZoom() {
   const rawMainUiScale = useAppStore((state) => state.display.mainUiScale ?? state.display.uiScale ?? 1);
   const rawSettingsUiScale = useAppStore((state) => state.display.settingsUiScale ?? state.display.uiScale ?? 1);
@@ -45,6 +56,8 @@ export function useCtrlWheelZoom() {
 
     function handleWheel(event: WheelEvent) {
       if (!(event.ctrlKey || event.metaKey)) return;
+      // v198: 鼠标在图片卡片上时，这次 Ctrl + 滚轮归卡片 —— 缩放框里的图片，不动界面。
+      if (isImageCardTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
 

@@ -20,7 +20,8 @@ import type {
 import { makeId } from '../../lib/id';
 import { byOrder, reindex } from '../../lib/sort';
 import { clampCardSize } from '../../lib/htmlFolder';
-import { clampImageCardSize } from '../../lib/imageCard';
+import { clampImageCardSize, clampImageCardZoom } from '../../lib/imageCard';
+import { normalizeTextBoxCard, defaultTextBoxCard, textBoxDisplayName } from '../../lib/textBox';
 import {
   DEFAULT_IMAGE_BROWSER_SETTINGS,
   type ImageBrowserGroup,
@@ -326,7 +327,7 @@ function normalizeGroupColor(value: unknown): string | undefined {
 const normalizeAccentColor = normalizeGroupColor;
 
 function inferShortcutType(value: unknown, path: string): ShortcutType {
-  if (value === 'file' || value === 'folder' || value === 'url' || value === 'command') return value;
+  if (value === 'file' || value === 'folder' || value === 'url' || value === 'command' || value === 'text') return value;
   if (/^(https?:\/\/|mailto:|ftp:\/\/)/i.test(path)) return 'url';
   return 'file';
 }
@@ -339,7 +340,7 @@ export function normalizeShortcutItem(value: unknown, fallbackOrder = 0, usedIds
   const raw = asRecord(value);
   const path = cleanText(raw.path ?? raw.target ?? raw.url ?? raw.command, '', 8192);
   const icon = cleanText(raw.icon ?? raw.iconPath ?? raw.image, '', 8192);
-  const name = cleanText(raw.name ?? raw.title ?? raw.label, '未命名项目', 240);
+  const rawName = cleanText(raw.name ?? raw.title ?? raw.label, '', 240);
   const labelLinesRaw = Math.round(finiteNumber(raw.labelLines, 0));
   const launchCount = Math.max(0, Math.round(finiteNumber(raw.launchCount, 0)));
   const lastLaunchedAtRaw = finiteNumber(raw.lastLaunchedAt, 0);
@@ -355,6 +356,16 @@ export function normalizeShortcutItem(value: unknown, fallbackOrder = 0, usedIds
     ? clampImageCardSize({ width: finiteNumber(rawImageSize.width, 0), height: finiteNumber(rawImageSize.height, 0) })
     : undefined;
   const imageFit = raw.imageFit === 'contain' || raw.imageFit === 'cover' ? raw.imageFit : undefined;
+  // v198: 图片缩放 —— 只在真的是图片卡片、且确实放大过（> 1）时才落盘，1 就是不写。
+  const rawImageZoom = finiteNumber(raw.imageZoom, 1);
+  const imageZoom = imageSize && rawImageZoom > 1 ? clampImageCardZoom(rawImageZoom) : undefined;
+  // v193: 文本框 —— type 为 text，或者带了 textBox 字段，都按文本框处理。
+  const rawTextBox = asRecord(raw.textBox);
+  const isTextItem = raw.type === 'text' || typeof rawTextBox.text === 'string';
+  const textBox = isTextItem
+    ? normalizeTextBoxCard(Object.keys(rawTextBox).length ? rawTextBox : defaultTextBoxCard())
+    : undefined;
+  const name = rawName || (textBox ? textBoxDisplayName(textBox.text) : '未命名项目');
   const multiAccountBatch = batchId ? {
     batchId,
     batchName: cleanText(rawBatch.batchName, '多账号批次', 240),
@@ -368,7 +379,7 @@ export function normalizeShortcutItem(value: unknown, fallbackOrder = 0, usedIds
     name,
     path,
     ...(icon ? { icon } : {}),
-    type: inferShortcutType(raw.type, path),
+    type: textBox ? 'text' : inferShortcutType(raw.type, path),
     order: finiteNumber(raw.order, fallbackOrder),
     ...(labelLinesRaw >= 1 && labelLinesRaw <= 5 ? { labelLines: labelLinesRaw } : {}),
     pinned: raw.pinned === true,
@@ -381,6 +392,8 @@ export function normalizeShortcutItem(value: unknown, fallbackOrder = 0, usedIds
     ...(color ? { color } : {}),
     ...(imageSize ? { imageSize } : {}),
     ...(imageFit ? { imageFit } : {}),
+    ...(imageZoom ? { imageZoom } : {}),
+    ...(textBox ? { textBox } : {}),
   };
 }
 
@@ -482,6 +495,27 @@ function normalizeHtmlColors(value: unknown): Record<string, string> | undefined
 }
 
 /**
+ * v196: 规范化 `Directory.htmlHidden`（key = 页面绝对路径，value 恒为 true）。
+ *
+ * 只记「哪些卡片被藏起来了」。写成 false / 空值的一律当成没隐藏，
+ * 免得配置里留下意义不明的条目。
+ */
+function normalizeHtmlHidden(value: unknown): Record<string, true> | undefined {
+  const raw = asRecord(value);
+  const result: Record<string, true> = {};
+  let count = 0;
+  for (const [rawKey, rawFlag] of Object.entries(raw)) {
+    const key = rawKey.trim();
+    if (!key) continue;
+    if (rawFlag !== true && rawFlag !== 1 && rawFlag !== 'true') continue;
+    result[key] = true;
+    count += 1;
+    if (count >= HTML_MAX_CARD_ENTRIES) break;
+  }
+  return count > 0 ? result : undefined;
+}
+
+/**
  * v182: 规范化「链接父目录里镜像子目录的显示名覆盖」（key = 源子目录 id）。
  *
  * 只影响显示：空白名字直接丢掉（等于跟随源名称），源子目录不会被改名。
@@ -518,6 +552,7 @@ function normalizeHtmlView(value: unknown): HtmlViewSettings | undefined {
   const scale = cleanText(raw.previewScale ?? raw.scale, '', 20).toLowerCase();
   if (scale === 'fit' || scale === 'actual') result.previewScale = scale;
   if (typeof raw.recursive === 'boolean') result.recursive = raw.recursive;
+  if (typeof raw.showHidden === 'boolean') result.showHidden = raw.showHidden;
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
@@ -562,6 +597,7 @@ export function normalizeDirectory(
   const htmlCards = kind === 'html' ? normalizeHtmlCards(raw.htmlCards) : undefined;
   const htmlNames = kind === 'html' ? normalizeHtmlNames(raw.htmlNames) : undefined;
   const htmlColors = kind === 'html' ? normalizeHtmlColors(raw.htmlColors) : undefined;
+  const htmlHidden = kind === 'html' ? normalizeHtmlHidden(raw.htmlHidden) : undefined;
   const htmlView = kind === 'html' ? normalizeHtmlView(raw.htmlView) : undefined;
   const link = kind === 'link' ? normalizeDirectoryLinkRef(raw.link) : undefined;
   // v182: 链接子目录的显示名覆盖 —— 只有真链接才留，源子目录的名字不受影响。
@@ -578,6 +614,7 @@ export function normalizeDirectory(
     ...(htmlCards ? { htmlCards } : {}),
     ...(htmlNames ? { htmlNames } : {}),
     ...(htmlColors ? { htmlColors } : {}),
+    ...(htmlHidden ? { htmlHidden } : {}),
     ...(htmlView ? { htmlView } : {}),
     ...(link ? { link } : {}),
     ...(linkNameOverride ? { linkNameOverride } : {}),

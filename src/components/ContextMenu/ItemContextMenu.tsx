@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronRight, ClipboardCopy, ClipboardPaste, Copy, CopyPlus, FolderOpen, ImagePlus, Palette, Pencil, Pin, PinOff, RefreshCw, Scissors, Shield, Sparkles, Trash2, CheckSquare, Type } from 'lucide-react';
+import { ChevronRight, ClipboardCopy, ClipboardPaste, Copy, CopyPlus, FolderOpen, ImagePlus, Palette, Pencil, Pin, PinOff, RefreshCw, RotateCcw, Scissors, Shield, Sparkles, Trash2, CheckSquare, Type } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import type { BrowserRouteOverride, ContextMenuState, ItemClickAction, ShortcutItem, ShortcutType } from '../../types';
 import { useAppStore } from '../../stores/appStore';
@@ -17,6 +17,8 @@ import { ItemClickActionPicker } from '../ItemInteraction/ItemClickActionPicker'
 import { writeTextToClipboard } from '../../lib/clipboardText';
 import { isStartMenuItemId } from '../../lib/startMenu';
 import { isMappedItemId } from '../../lib/mappedFolder';
+import { clampTextBoxFontSize, defaultTextBoxCard, textBoxDisplayName, type TextBoxAlign } from '../../lib/textBox';
+import { resolveImageCardZoom } from '../../lib/imageCard';
 
 interface ItemContextMenuProps {
   menu: Extract<ContextMenuState, { kind: 'item' }>;
@@ -58,12 +60,36 @@ function ItemEditDialog({ item, onSave, onCancel }: {
   const [browserRoute, setBrowserRoute] = useState<BrowserRouteOverride>(item.browserRoute ?? { mode: 'inherit' });
   const [singleClickAction, setSingleClickAction] = useState<ItemClickAction>(item.singleClickAction ?? 'inherit');
   const [doubleClickAction, setDoubleClickAction] = useState<ItemClickAction>(item.doubleClickAction ?? 'inherit');
+  // v193: 文本框内容 / 字号 / 对齐。
+  const [text, setText] = useState(item.textBox?.text ?? '');
+  const [fontSize, setFontSize] = useState(String(item.textBox?.fontSize ?? 15));
+  const [textAlign, setTextAlign] = useState<TextBoxAlign>(item.textBox?.align ?? 'left');
+  const isText = type === 'text';
   const router = useAppStore((state) => state.browserRouter);
   const globalLaunchMode = useAppStore((state) => state.behavior.launchMode);
   const { catalog } = useBrowserCatalog(router.customBrowsers);
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (isText) {
+      const nextText = text.replace(/\r\n/g, '\n');
+      onSave({
+        name: name.trim() || textBoxDisplayName(nextText),
+        type: 'text',
+        path: '',
+        icon: undefined,
+        browserRoute: undefined,
+        singleClickAction: undefined,
+        doubleClickAction: undefined,
+        textBox: {
+          ...(item.textBox ?? defaultTextBoxCard()),
+          text: nextText,
+          fontSize: clampTextBoxFontSize(fontSize),
+          align: textAlign,
+        },
+      });
+      return;
+    }
     onSave({
       name: name.trim() || item.name,
       path: path.trim() || item.path,
@@ -72,6 +98,7 @@ function ItemEditDialog({ item, onSave, onCancel }: {
       browserRoute: type === 'url' ? browserRoute : item.browserRoute,
       singleClickAction: singleClickAction === 'inherit' ? undefined : singleClickAction,
       doubleClickAction: doubleClickAction === 'inherit' ? undefined : doubleClickAction,
+      ...(item.type === 'text' ? { textBox: undefined } : {}),
     });
   }
 
@@ -81,12 +108,53 @@ function ItemEditDialog({ item, onSave, onCancel }: {
         <div className="edit-dialog-title">编辑快捷项目</div>
         <label className="edit-field">
           <span>名称</span>
-          <input autoFocus value={name} onChange={(event) => setName(event.target.value)} />
+          <input autoFocus={!isText} value={name} onChange={(event) => setName(event.target.value)} placeholder={isText ? '留空时自动取正文第一行' : ''} />
         </label>
-        <label className="edit-field">
-          <span>路径或命令</span>
-          <textarea rows={3} value={path} onChange={(event) => setPath(event.target.value)} />
-        </label>
+        {isText ? (
+          <>
+            <label className="edit-field">
+              <span>文本内容</span>
+              <textarea
+                autoFocus
+                rows={8}
+                value={text}
+                placeholder="输入要显示的文字，支持换行"
+                onChange={(event) => setText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                }}
+              />
+            </label>
+            <label className="edit-field">
+              <span>字号 / 对齐</span>
+              <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  min={12}
+                  max={48}
+                  step={1}
+                  value={fontSize}
+                  onChange={(event) => setFontSize(event.target.value)}
+                  style={{ width: 88 }}
+                />
+                <select value={textAlign} onChange={(event) => setTextAlign(event.target.value as TextBoxAlign)}>
+                  <option value="left">左对齐</option>
+                  <option value="center">居中</option>
+                  <option value="right">右对齐</option>
+                </select>
+              </span>
+              <small className="settings-hint">字号可填 12–48；卡片大小仍然拖边框或四角调整，双击卡片也能直接改字。</small>
+            </label>
+          </>
+        ) : (
+          <label className="edit-field">
+            <span>路径或命令</span>
+            <textarea rows={3} value={path} onChange={(event) => setPath(event.target.value)} />
+          </label>
+        )}
         <label className="edit-field">
           <span>类型</span>
           <select value={type} onChange={(event) => setType(event.target.value as ShortcutType)}>
@@ -94,6 +162,7 @@ function ItemEditDialog({ item, onSave, onCancel }: {
             <option value="folder">文件夹</option>
             <option value="url">网址</option>
             <option value="command">命令</option>
+            <option value="text">文本框</option>
           </select>
         </label>
         {type === 'url' && (
@@ -108,41 +177,45 @@ function ItemEditDialog({ item, onSave, onCancel }: {
             <small className="settings-hint">“继承上一级”会先读取所在父目录设置，再读取全局浏览器路由中心。</small>
           </label>
         )}
-        <div className="edit-field item-click-action-editor">
-          <span>点击动作</span>
-          <div className="item-click-action-grid">
-            <label>
-              <small>左键单击</small>
-              <ItemClickActionPicker
-                value={singleClickAction}
-                interaction="single"
-                itemType={type}
-                globalLaunchMode={globalLaunchMode}
-                onChange={setSingleClickAction}
-              />
-            </label>
-            <label>
-              <small>左键双击</small>
-              <ItemClickActionPicker
-                value={doubleClickAction}
-                interaction="double"
-                itemType={type}
-                globalLaunchMode={globalLaunchMode}
-                onChange={setDoubleClickAction}
-              />
-            </label>
+        {!isText && (
+          <div className="edit-field item-click-action-editor">
+            <span>点击动作</span>
+            <div className="item-click-action-grid">
+              <label>
+                <small>左键单击</small>
+                <ItemClickActionPicker
+                  value={singleClickAction}
+                  interaction="single"
+                  itemType={type}
+                  globalLaunchMode={globalLaunchMode}
+                  onChange={setSingleClickAction}
+                />
+              </label>
+              <label>
+                <small>左键双击</small>
+                <ItemClickActionPicker
+                  value={doubleClickAction}
+                  interaction="double"
+                  itemType={type}
+                  globalLaunchMode={globalLaunchMode}
+                  onChange={setDoubleClickAction}
+                />
+              </label>
+            </div>
+            <small className="settings-hint">可分别设置打开、复制名称、复制{type === 'url' ? '网址' : type === 'command' ? '命令' : '路径'}、复制“名称 + 内容”或无动作。单击和双击都有动作时，会按 Windows 双击速度自动区分，不会误触发两次复制。</small>
           </div>
-          <small className="settings-hint">可分别设置打开、复制名称、复制{type === 'url' ? '网址' : type === 'command' ? '命令' : '路径'}、复制“名称 + 内容”或无动作。单击和双击都有动作时，会按 Windows 双击速度自动区分，不会误触发两次复制。</small>
-        </div>
-        <label className="edit-field">
-          <span>图标</span>
-          <textarea
-            rows={3}
-            placeholder="可填 data:image/base64、相对路径 icons/app.png、本地图标路径、/system/imageres.dll,0"
-            value={icon}
-            onChange={(event) => setIcon(event.target.value)}
-          />
-        </label>
+        )}
+        {!isText && (
+          <label className="edit-field">
+            <span>图标</span>
+            <textarea
+              rows={3}
+              placeholder="可填 data:image/base64、相对路径 icons/app.png、本地图标路径、/system/imageres.dll,0"
+              value={icon}
+              onChange={(event) => setIcon(event.target.value)}
+            />
+          </label>
+        )}
         <div className="edit-dialog-actions">
           <button type="button" className="btn-secondary" onClick={onCancel}>取消</button>
           <button type="submit" className="btn-primary">保存</button>
@@ -215,6 +288,10 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
 
   if (!item) return null;
   const currentItem = item;
+  const isTextItem = currentItem.type === 'text';
+  // v198: 图片卡片 —— 缩放只作用在框里的图片，还原也只需要清掉 imageZoom 一个字段。
+  const isImageCard = Boolean(currentItem.imageSize);
+  const imageZoom = resolveImageCardZoom(currentItem);
   const currentIsSelected = selectedItemIds.includes(currentItem.id);
   const actionItemIds = currentIsSelected ? selectedItemIds : [currentItem.id];
   const actionCount = actionItemIds.length;
@@ -307,6 +384,13 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
   function togglePinned() {
     updateItem(currentItem.id, { pinned: !currentItem.pinned });
     showLauncherNotice(currentItem.pinned ? `已取消固定：${currentItem.name}` : `已固定到前面：${currentItem.name}`);
+    onClose();
+  }
+
+  /** v198: 把图片缩放清回 100%（卡片尺寸不动）。 */
+  function resetImageZoom() {
+    updateItem(currentItem.id, { imageZoom: undefined });
+    showLauncherNotice(`已还原「${currentItem.name}」的图片缩放`);
     onClose();
   }
 
@@ -478,13 +562,21 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
         onMouseDown={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.preventDefault()}
       >
-        <div className="menu-item" onClick={() => { launchShortcutItem(currentItem, false).catch((error) => uiAlert(`启动失败：${String(error)}`)); onClose(); }}>打开</div>
-        <div className="menu-item" onClick={() => { launchShortcutItem(currentItem, true).catch((error) => uiAlert(`启动失败：${String(error)}`)); onClose(); }}>
-          <span>以管理员身份运行</span><Shield size={14} />
-        </div>
-        <div className="menu-item" onClick={() => { invoke('open_file_location', { path: currentItem.path }).catch((error) => uiAlert(`打开所在文件夹失败：${String(error)}`)); onClose(); }}>
-          <span>打开所在文件夹</span><FolderOpen size={14} />
-        </div>
+        {isTextItem ? (
+          <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => setEditOpen(true)}>
+            <span>编辑文本</span><Type size={14} />
+          </div>
+        ) : (
+          <>
+            <div className="menu-item" onClick={() => { launchShortcutItem(currentItem, false).catch((error) => uiAlert(`启动失败：${String(error)}`)); onClose(); }}>打开</div>
+            <div className="menu-item" onClick={() => { launchShortcutItem(currentItem, true).catch((error) => uiAlert(`启动失败：${String(error)}`)); onClose(); }}>
+              <span>以管理员身份运行</span><Shield size={14} />
+            </div>
+            <div className="menu-item" onClick={() => { invoke('open_file_location', { path: currentItem.path }).catch((error) => uiAlert(`打开所在文件夹失败：${String(error)}`)); onClose(); }}>
+              <span>打开所在文件夹</span><FolderOpen size={14} />
+            </div>
+          </>
+        )}
         <div className="menu-separator" />
         <div
           className="menu-item"
@@ -515,7 +607,7 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
           </>
         ) : (
         <>
-        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => setEditOpen(true)}><span>编辑</span><Pencil size={14} /></div>
+        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => setEditOpen(true)}><span>{isTextItem ? '编辑文本' : '编辑'}</span><Pencil size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={togglePinned}>
           <span>{currentItem.pinned ? '取消固定项目' : '固定项目到前面'}</span>{currentItem.pinned ? <PinOff size={14} /> : <Pin size={14} />}
         </div>
@@ -523,16 +615,28 @@ export function ItemContextMenu({ menu, onClose }: ItemContextMenuProps) {
         <div className="menu-item" title="剪切后到目标子目录按 Ctrl+V，项目会直接移动过去（不会产生副本）" onMouseEnter={() => setOpenSubmenu(null)} onClick={cutActionItems}><span>剪切项目{actionCount > 1 ? `（${actionCount} 项）` : ''}</span><Scissors size={14} /></div>
         <div className={`menu-item ${itemClipboard.length ? '' : 'disabled'}`} onMouseEnter={() => setOpenSubmenu(null)} onClick={() => itemClipboard.length && pasteActionItems()}><span>粘贴项目{itemClipboard.length ? `（${itemClipboard.length} 项）` : ''}</span><ClipboardPaste size={14} /></div>
         <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={duplicateCurrentItem}><span>创建当前项目副本</span><CopyPlus size={14} /></div>
-        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void copyText(currentItem.path, currentItem.type === 'url' ? '网址' : '路径')}><span>复制{currentItem.type === 'url' ? '网址' : '路径'}</span><ClipboardCopy size={14} /></div>
-        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={refreshCurrentItemIcon}><span>刷新当前项目图标</span><RefreshCw size={14} /></div>
-        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={editIconByText}><span>编辑图标</span><ImagePlus size={14} /></div>
-        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={useSystemIcon}><span>引用系统图标</span><Sparkles size={14} /></div>
-        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={chooseLocalIcon}><span>浏览本地图标</span><FolderOpen size={14} /></div>
-        <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('text')} onClick={() => setOpenSubmenu((value) => value === 'text' ? null : 'text')}>
-          <span>文字显示</span><ChevronRight size={14} />
-          {openSubmenu === 'text' && <TextDisplaySubmenu item={currentItem} onDone={onClose} />}
-        </div>
-        <div className="menu-item" title="开启后项目名称完整换行显示，不再按最大显示行数截断（全局设置，等同 设置-字体 里的“完整显示项目名称”）" onMouseEnter={() => setOpenSubmenu(null)} onClick={toggleFullItemName}><span>显示完整名称</span>{globalDisplay.showFullItemName ? <span>✓</span> : <Type size={14} />}</div>
+        <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={() => void copyText(isTextItem ? (currentItem.textBox?.text ?? '') : currentItem.path, isTextItem ? '文本内容' : currentItem.type === 'url' ? '网址' : '路径')}><span>复制{isTextItem ? '文本内容' : currentItem.type === 'url' ? '网址' : '路径'}</span><ClipboardCopy size={14} /></div>
+        {!isTextItem && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={refreshCurrentItemIcon}><span>刷新当前项目图标</span><RefreshCw size={14} /></div>}
+        {!isTextItem && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={editIconByText}><span>编辑图标</span><ImagePlus size={14} /></div>}
+        {!isTextItem && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={useSystemIcon}><span>引用系统图标</span><Sparkles size={14} /></div>}
+        {!isTextItem && <div className="menu-item" onMouseEnter={() => setOpenSubmenu(null)} onClick={chooseLocalIcon}><span>浏览本地图标</span><FolderOpen size={14} /></div>}
+        {!isTextItem && (
+          <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('text')} onClick={() => setOpenSubmenu((value) => value === 'text' ? null : 'text')}>
+            <span>文字显示</span><ChevronRight size={14} />
+            {openSubmenu === 'text' && <TextDisplaySubmenu item={currentItem} onDone={onClose} />}
+          </div>
+        )}
+        {!isTextItem && <div className="menu-item" title="开启后项目名称完整换行显示，不再按最大显示行数截断（全局设置，等同 设置-字体 里的“完整显示项目名称”）" onMouseEnter={() => setOpenSubmenu(null)} onClick={toggleFullItemName}><span>显示完整名称</span>{globalDisplay.showFullItemName ? <span>✓</span> : <Type size={14} />}</div>}
+        {isImageCard && (
+          <div
+            className={`menu-item ${imageZoom > 1 ? '' : 'disabled'}`}
+            title="鼠标悬停在图片卡片上，Ctrl + 滚轮（或触控板双指捏合）可以缩放框里的图片；卡片本身的宽高不变"
+            onMouseEnter={() => setOpenSubmenu(null)}
+            onClick={() => imageZoom > 1 && resetImageZoom()}
+          >
+            <span>还原图片缩放{imageZoom > 1 ? `（当前 ${Math.round(imageZoom * 100)}%）` : '（100%）'}</span><RotateCcw size={14} />
+          </div>
+        )}
         <div className="menu-item with-submenu" onMouseEnter={() => setOpenSubmenu('color')} onClick={() => setOpenSubmenu((value) => value === 'color' ? null : 'color')}>
           <span>项目背景色{actionCount > 1 ? `（${actionCount} 项）` : ''}</span><ChevronRight size={14} />
           {openSubmenu === 'color' && (

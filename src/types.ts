@@ -1,5 +1,5 @@
 import type { GlobalSearchSettings, TransferStationSettings, ImageBrowserSettings, ImageBrowserItem, IconResolveMode } from './utils/v16Types';
-export type ShortcutType = 'file' | 'folder' | 'url' | 'command';
+export type ShortcutType = 'file' | 'folder' | 'url' | 'command' | 'text';
 export type ViewMode = 'grid' | 'compact';
 export type SortMode = 'custom' | 'name' | 'type' | 'recent' | 'frequent';
 export type DirectoryKind = 'normal' | 'all' | 'notes' | 'startMenu' | 'mapped' | 'link' | 'html';
@@ -182,6 +182,20 @@ export interface ShortcutItem {
   imageSize?: ImageCardSize;
   /** v188: 图片卡片的铺法。cover = 裁切铺满（默认），contain = 完整显示留白。 */
   imageFit?: 'cover' | 'contain';
+  /**
+   * v198: 图片卡片里那张图自己的缩放倍数（1 = 原样，最大 6）。
+   *
+   * 只影响框里的图片，卡片的宽高（imageSize）一点都不变 —— Ctrl + 滚轮 / 双指捏合
+   * 改的就是它。没这个字段或等于 1 时按原样渲染。
+   */
+  imageZoom?: number;
+  /**
+   * v193: 文本框卡片。
+   *
+   * 有这个字段（且 type 为 text）= 卡片正文就是这段文字，不再画图标和名称；
+   * 双击直接改字，边框/四角可以拖拽改大小。没这个字段的项目一切照旧。
+   */
+  textBox?: TextBoxCard;
 }
 
 export interface TransferItem {
@@ -361,6 +375,19 @@ export interface ImageCardSize {
   height: number;
 }
 
+/** v193: 文本框卡片的内容与外观（尺寸同样由拖拽边框改写）。 */
+export interface TextBoxCard {
+  /** 卡片正文，保留换行。 */
+  text: string;
+  /** 卡片显示尺寸（px）。 */
+  width: number;
+  height: number;
+  /** 字号（px），12–48。 */
+  fontSize?: number;
+  /** 正文对齐方式。 */
+  align?: 'left' | 'center' | 'right';
+}
+
 /** v173: HTML 目录里单个页面卡片的大小（px，拖拽边框改的就是它）。 */
 export interface HtmlCardSize {
   width: number;
@@ -379,6 +406,8 @@ export interface HtmlViewSettings {
   previewScale?: 'fit' | 'actual';
   /** 是否递归扫描子文件夹。 */
   recursive?: boolean;
+  /** v196: 是否把「已隐藏」的卡片一起显示出来（临时查看 / 找回用）。 */
+  showHidden?: boolean;
 }
 
 export interface Directory {
@@ -397,6 +426,13 @@ export interface Directory {
   htmlNames?: Record<string, string>;
   /** v175: 仅 kind='html' 使用 —— 卡片颜色（key 同上），参与「相邻颜色组合」与成组框。 */
   htmlColors?: Record<string, string>;
+  /**
+   * v196: 仅 kind='html' 使用 —— 被隐藏的卡片（key = 页面绝对路径，value 恒为 true）。
+   *
+   * 只影响卡片墙显示，不动磁盘文件和扫描结果；「显示隐藏项目」开关打开时
+   * 这些卡片会以半透明 + 虚线框回来，方便随时取消隐藏。
+   */
+  htmlHidden?: Record<string, true>;
   /** v173: 仅 kind='html' 使用 —— 目录级预览/卡片默认设置。 */
   htmlView?: HtmlViewSettings;
   /** v169: 仅 kind='link' 使用 —— 内容实时镜像自某个配置里的子目录。 */
@@ -593,6 +629,7 @@ export type AreaContextMenuItemId =
   | 'addFile'
   | 'addFolder'
   | 'addImage'
+  | 'addText'
   | 'addExe'
   | 'addUrl'
   | 'addSystem'
@@ -730,9 +767,20 @@ export interface WindowState {
 
 export interface AutoSaveSettings {
   enabled: boolean;
+  /** 关闭应用或 Windows 关机/注销前，再写入一次指定的配置文件。 */
+  saveOnExit: boolean;
   directory: string;
   intervalMinutes: number;
   fileName: string;
+}
+
+export interface GitHubBackupSettings {
+  enabled: boolean;
+  repository: string;
+  branch: string;
+  autoBackup: boolean;
+  intervalMinutes: number;
+  deviceName: string;
 }
 
 export interface AppConfig {
@@ -744,6 +792,7 @@ export interface AppConfig {
   multiAccount?: MultiAccountSettings;
   windowState: WindowState;
   autoSave: AutoSaveSettings;
+  githubBackup: GitHubBackupSettings;
   transferItems?: TransferItem[];
   imageBrowserItems?: ImageBrowserItem[];
   imageBrowser?: ImageBrowserSettings;
