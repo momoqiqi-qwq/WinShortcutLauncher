@@ -1,6 +1,6 @@
 [package]
 name = "shortcut-launcher"
-version = "0.1.188"
+version = "0.1.195"
 description = "Windows desktop shortcut launcher built with Tauri 2, React and TypeScript"
 authors = ["Ava Wright"]
 edition = "2021"
@@ -30,8 +30,9 @@ base64 = "0.22"
 png = "0.17"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "charset", "http2", "rustls-tls"] }
 html-escape = "0.2"
+flate2 = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_UI_Controls", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Threading", "Win32_System_Registry", "Win32_Security"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_UI_Controls", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Threading", "Win32_System_Registry", "Win32_Security", "Win32_Security_Cryptography"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_SystemServices", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

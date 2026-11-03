@@ -195,6 +195,7 @@ pub struct HtmlCopyResult {
   pub copied: Vec<String>,
   /// 被跳过的来源，附带原因。
   pub skipped: Vec<String>,
+  pub contains_folders: bool,
 }
 
 /// 目标重名时自动加序号：`index.html` → `index (2).html`。
@@ -244,7 +245,11 @@ fn copy_dir_recursive(source: &Path, target: &Path, depth: u8) -> Result<(), Str
     }
     let path = entry.path();
     let destination = target.join(&name);
-    if path.is_dir() {
+    let file_type = entry.file_type().map_err(|error| error.to_string())?;
+    if file_type.is_symlink() {
+      continue;
+    }
+    if file_type.is_dir() {
       copy_dir_recursive(&path, &destination, depth + 1)?;
     } else {
       fs::copy(&path, &destination).map_err(|error| format!("复制「{name}」失败：{error}"))?;
@@ -259,6 +264,7 @@ fn copy_into_folder(root: &Path, sources: Vec<String>) -> Result<HtmlCopyResult,
   }
   let mut copied = Vec::new();
   let mut skipped = Vec::new();
+  let mut contains_folders = false;
   for raw in sources {
     let source = PathBuf::from(raw.trim().trim_matches('"'));
     let label = source
@@ -270,9 +276,19 @@ fn copy_into_folder(root: &Path, sources: Vec<String>) -> Result<HtmlCopyResult,
       continue;
     }
     if source.is_dir() {
+      // 不能把根目录或其祖先再复制到自己里面，避免递归自复制。
+      let source_real = fs::canonicalize(&source).map_err(|error| error.to_string())?;
+      let root_real = fs::canonicalize(root).map_err(|error| error.to_string())?;
+      if root_real.starts_with(&source_real) {
+        skipped.push(format!("{label}：不能把文件夹复制到它自身或其子文件夹中"));
+        continue;
+      }
       let destination = unique_target(root, &label);
       match copy_dir_recursive(&source, &destination, 0) {
-        Ok(_) => copied.push(destination.to_string_lossy().to_string()),
+        Ok(_) => {
+          copied.push(destination.to_string_lossy().to_string());
+          contains_folders = true;
+        }
         Err(error) => skipped.push(format!("{label}：{error}")),
       }
       continue;
@@ -287,7 +303,7 @@ fn copy_into_folder(root: &Path, sources: Vec<String>) -> Result<HtmlCopyResult,
       Err(error) => skipped.push(format!("{label}：复制失败（{error}）")),
     }
   }
-  Ok(HtmlCopyResult { copied, skipped })
+  Ok(HtmlCopyResult { copied, skipped, contains_folders })
 }
 
 /// 校验用户选的 HTML 根目录，返回规整后的绝对路径。
@@ -348,18 +364,107 @@ pub async fn allow_html_preview(app: AppHandle, path: String) -> Result<String, 
 }
 
 /// 打开 HTML 目录所在位置（在资源管理器里）。
+///
+/// v195: 命令行文本走 `commands::explorer_argument` + `raw_arg`，和「在文件管理器中
+/// 显示」共用一套拼法 —— 用 `arg()` 会被 Rust 再套一层引号，explorer 解析失败。
 #[tauri::command]
 pub async fn open_html_folder_location(path: String) -> Result<(), String> {
   crate::blocking::offload(move || {
     let root = crate::folder_mirror::resolve_root(&path)?;
+    let argument = crate::commands::explorer_argument(&root);
     let mut command = std::process::Command::new("explorer.exe");
-    command.arg(root.as_os_str());
     #[cfg(target_os = "windows")]
     {
       use std::os::windows::process::CommandExt;
+      command.raw_arg(argument.as_str());
       command.creation_flags(0x08000000);
     }
+    #[cfg(not(target_os = "windows"))]
+    command.arg(&argument);
     command.spawn().map(|_| ()).map_err(|error| error.to_string())
   })
   .await
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::sync::atomic::{AtomicUsize, Ordering};
+
+  static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+
+  struct TestFolder(PathBuf);
+
+  impl TestFolder {
+    fn new() -> Self {
+      let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/html-drop-tests").join(format!(
+        "yue-html-drop-{}-{}", std::process::id(), NEXT_ID.fetch_add(1, Ordering::Relaxed)
+      ));
+      fs::create_dir_all(&path).unwrap();
+      Self(path)
+    }
+  }
+
+  impl Drop for TestFolder {
+    fn drop(&mut self) {
+      let _ = fs::remove_dir_all(&self.0);
+    }
+  }
+
+  #[test]
+  fn copies_html_without_overwriting_or_removing_source() {
+    let sandbox = TestFolder::new();
+    let root = sandbox.0.join("destination");
+    fs::create_dir(&root).unwrap();
+    let source = sandbox.0.join("demo.html");
+    fs::write(&source, "new page").unwrap();
+    fs::write(root.join("demo.html"), "existing page").unwrap();
+
+    let result = copy_into_folder(&root, vec![source.to_string_lossy().into_owned()]).unwrap();
+
+    assert_eq!(result.copied.len(), 1);
+    assert!(!result.contains_folders);
+    assert_eq!(fs::read_to_string(&source).unwrap(), "new page");
+    assert_eq!(fs::read_to_string(root.join("demo.html")).unwrap(), "existing page");
+    assert_eq!(fs::read_to_string(root.join("demo (2).html")).unwrap(), "new page");
+    let mut pages = Vec::new();
+    collect_pages(&root, &root, 0, false, &mut pages);
+    assert_eq!(pages.len(), 2);
+  }
+
+  #[test]
+  fn copies_page_folder_with_assets_then_lists_the_copied_page() {
+    let sandbox = TestFolder::new();
+    let root = sandbox.0.join("destination");
+    let source = sandbox.0.join("project");
+    fs::create_dir(&root).unwrap();
+    fs::create_dir_all(source.join("assets")).unwrap();
+    fs::write(source.join("index.htm"), "<link href='assets/style.css'>").unwrap();
+    fs::write(source.join("assets/style.css"), "body { color: red; }").unwrap();
+
+    let result = copy_into_folder(&root, vec![source.to_string_lossy().into_owned()]).unwrap();
+
+    assert!(result.contains_folders);
+    assert!(result.skipped.is_empty());
+    assert!(root.join("project/assets/style.css").is_file());
+    let mut pages = Vec::new();
+    collect_pages(&root, &root, 0, true, &mut pages);
+    assert_eq!(pages.len(), 1);
+    assert!(Path::new(&pages[0].path).starts_with(&root));
+  }
+
+  #[test]
+  fn skips_self_and_ancestor_folder_drops_before_creating_any_copy() {
+    let sandbox = TestFolder::new();
+    let root = sandbox.0.join("destination");
+    fs::create_dir(&root).unwrap();
+
+    let result = copy_into_folder(&root, vec![
+      root.to_string_lossy().into_owned(), sandbox.0.to_string_lossy().into_owned()
+    ]).unwrap();
+
+    assert!(result.copied.is_empty());
+    assert_eq!(result.skipped.len(), 2);
+    assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
+  }
 }

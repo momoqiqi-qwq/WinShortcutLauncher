@@ -1,6 +1,10 @@
-# Yue launcher v0.1.188
+# Yue launcher v0.1.195
 
 Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快捷启动器。
+
+设置 → 数据中提供配置导入/导出：导出时可在文件对话框中指定文件夹和文件名；自动保存支持指定目录、文件名、1–120 分钟间隔，并可开启“退出或关机时再保存一次”（开启后配置变更会及时更新文件，避免关机前来不及写盘）。
+
+同一页面还支持 GitHub 私有仓库配置备份：可按 `Backup-YueLauncher` 规则创建私有仓库、连接已有仓库、手动/定时备份、查看历史并恢复；PAT 仅以 Windows DPAPI 加密文件保存在本机。
 
 
 

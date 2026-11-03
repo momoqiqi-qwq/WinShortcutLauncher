@@ -777,19 +777,41 @@ pub async fn open_file_location(path: String) -> Result<(), String> {
   crate::blocking::offload(move || open_file_location_blocking(&path)).await
 }
 
-fn open_file_location_blocking(path: &str) -> Result<(), String> {
-  let target = Path::new(path);
-  let arg = if target.is_dir() {
-    quote_for_explorer(path)
+/// v195: 交给 explorer.exe 的那一段命令行文本（不含程序名）。
+///
+/// **必须用 `raw_arg` 原样送进命令行**，不能用 `arg()`：Rust 的 `arg()` 发现参数里
+/// 有引号时会再套一层引号、把内部的 `"` 转义成 `\"`，变成
+/// `"/select,\"C:\a b\index.html\""`。explorer 认不出这个 `/select` 前缀，于是
+/// 退化成打开「文档」—— 表现就是「在文件管理器中显示」定位不到文件所在目录。
+///
+/// 目录分支顺手去掉尾部反斜杠：`"C:\dir\"` 结尾的 `\"` 会被当成转义引号，引号配不上对。
+pub(crate) fn explorer_argument(target: &Path) -> String {
+  if target.is_dir() {
+    let raw = target.to_string_lossy();
+    let trimmed = if raw.chars().count() > 3 {
+      raw.trim_end_matches(|ch| ch == '\\' || ch == '/').to_string()
+    } else {
+      raw.to_string()
+    };
+    quote_for_explorer(&trimmed)
   } else {
-    format!("/select,{}", quote_for_explorer(path))
-  };
+    format!("/select,{}", quote_for_explorer(&target.to_string_lossy()))
+  }
+}
 
-  Command::new("explorer.exe")
-    .arg(arg)
-    .spawn()
-    .map(|_| ())
-    .map_err(|error| error.to_string())
+fn open_file_location_blocking(path: &str) -> Result<(), String> {
+  let argument = explorer_argument(Path::new(path));
+
+  let mut command = Command::new("explorer.exe");
+  #[cfg(target_os = "windows")]
+  {
+    command.raw_arg(argument.as_str());
+    command.creation_flags(CREATE_NO_WINDOW);
+  }
+  #[cfg(not(target_os = "windows"))]
+  command.arg(&argument);
+
+  command.spawn().map(|_| ()).map_err(|error| error.to_string())
 }
 
 /// 写整份配置 JSON。文件可能有几百 KB，别占着主线程。
@@ -958,4 +980,45 @@ pub fn open_windows_clipboard_history() -> Result<(), String> {
 #[tauri::command]
 pub fn open_windows_clipboard_history() -> Result<(), String> {
   Err("Windows clipboard history is only available on Windows".to_string())
+}
+
+#[cfg(test)]
+mod explorer_argument_tests {
+  use super::*;
+
+  /// v195 的回归钉子：command line 必须是**一层**引号。
+  ///
+  /// Rust 的 `arg()` 会把含引号的参数再套一层并转义成 `\"`，explorer 就认不出
+  /// `/select` 前缀、退回「文档」；这条测试保证拼出来的文本只有一层引号，
+  /// 也提醒以后改这里必须继续用 `raw_arg`。
+  #[test]
+  fn builds_single_quoted_explorer_arguments() {
+    // 和其它磁盘测试一样落在 target 下：cargo test 里 env::temp_dir() 可能被重定向到不可写位置。
+    let stamp = std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .map(|value| value.as_nanos())
+      .unwrap_or(0);
+    let sandbox = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join("target/explorer-arg-tests")
+      .join(format!("yue-explorer-arg-{}-{stamp}", std::process::id()));
+    fs::create_dir_all(&sandbox).unwrap();
+    let file = sandbox.join("probe page.html");
+    fs::write(&file, "<h1>probe</h1>").unwrap();
+
+    let select = explorer_argument(&file);
+    assert!(select.starts_with("/select,\""), "{select}");
+    assert!(select.ends_with('"'), "{select}");
+    assert_eq!(select.matches('"').count(), 2, "只允许一层引号：{select}");
+    assert!(!select.starts_with('"'), "整体不能被外层引号包住：{select}");
+
+    let folder = explorer_argument(&sandbox);
+    assert_eq!(folder, format!("\"{}\"", sandbox.to_string_lossy()));
+    assert_eq!(folder.matches('"').count(), 2, "只允许一层引号：{folder}");
+
+    // 尾部反斜杠必须先去掉：`"C:\dir\"` 的 `\"` 会被当成转义引号。
+    let trailing = explorer_argument(Path::new(&format!("{}\\", sandbox.to_string_lossy())));
+    assert_eq!(trailing, folder);
+
+    let _ = fs::remove_dir_all(&sandbox);
+  }
 }
