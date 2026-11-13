@@ -1,12 +1,14 @@
 <div align="center">
 
-<img src="./assets/readme-hero.svg" alt="WinShortcutLauncher" width="1000" />
+<img src="./assets/hero.svg" alt="WinShortcutLauncher" width="1000" />
 
 **Windows desktop shortcut launcher built with Tauri 2 + Reac…**
 
 [![stars](https://img.shields.io/github/stars/momoqiqi-qwq/WinShortcutLauncher?style=for-the-badge&color=f5c518&labelColor=2b2b2b)](https://github.com/momoqiqi-qwq/WinShortcutLauncher/stargazers) ![license](https://img.shields.io/github/license/momoqiqi-qwq/WinShortcutLauncher?style=for-the-badge&color=3da639) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white) ![Tauri 2](https://img.shields.io/badge/Tauri%202-24C8DB?style=for-the-badge&logo=tauri&logoColor=white) ![Windows](https://img.shields.io/badge/Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)
 
 </div>
+
+---
 
 <details open>
 <summary><b>目录</b></summary>
