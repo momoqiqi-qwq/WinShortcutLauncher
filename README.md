@@ -1,3 +1,34 @@
+<div align="center">
+
+<img src="./assets/readme-hero.svg" alt="WinShortcutLauncher" width="1000" />
+
+**Windows desktop shortcut launcher built with Tauri 2 + Reac…**
+
+[![stars](https://img.shields.io/github/stars/momoqiqi-qwq/WinShortcutLauncher?style=for-the-badge&color=f5c518&labelColor=2b2b2b)](https://github.com/momoqiqi-qwq/WinShortcutLauncher/stargazers) ![license](https://img.shields.io/github/license/momoqiqi-qwq/WinShortcutLauncher?style=for-the-badge&color=3da639) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white) ![Tauri 2](https://img.shields.io/badge/Tauri%202-24C8DB?style=for-the-badge&logo=tauri&logoColor=white) ![Windows](https://img.shields.io/badge/Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)
+
+</div>
+
+<details>
+<summary><b>目录</b></summary>
+
+- [v0.1.136 父目录字母排序 · 一键还原](#v01136-父目录字母排序-一键还原)
+- [v0.1.121 多账号模板 · URL 矩阵 · 账号别名 · 批次管理](#v01121-多账号模板-url-矩阵-账号别名-批次管理)
+- [v0.1.120 多账号批量生成与项目粘贴](#v01120-多账号批量生成与项目粘贴)
+- [v0.1.116 浏览器拖入网址兼容](#v01116-浏览器拖入网址兼容)
+- [v0.1.115 设置搜索精确定位](#v01115-设置搜索精确定位)
+- [v0.1.114 设置生效链路修复](#v01114-设置生效链路修复)
+- [v0.1.113 首次启动、搜索设置与网站拖入重命名](#v01113-首次启动搜索设置与网站拖入重命名)
+- [v0.1.110 拼音搜索扩展](#v01110-拼音搜索扩展)
+- [v0.1.106 父目录配色、外观自由度与拖入体验](#v01106-父目录配色外观自由度与拖入体验)
+- [v0.1.105 设置面板透明度与玻璃效果修复](#v01105-设置面板透明度与玻璃效果修复)
+- [v0.1.104 性能优化](#v01104-性能优化)
+- [v0.1.103 主要更新](#v01103-主要更新)
+- [开发与构建](#开发与构建)
+
+</details>
+
+---
+
 # Yue launcher v0.1.198
 
 Yue launcher 是基于 Tauri 2、React 18、TypeScript 和 Vite 的 Windows 快捷启动器。
